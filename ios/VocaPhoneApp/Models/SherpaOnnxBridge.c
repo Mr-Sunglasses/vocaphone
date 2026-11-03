@@ -104,6 +104,35 @@ static int copy_joined_tokens(
         output, output_capacity);
 }
 
+/// Each token of `result` with its log probability, one per line as
+/// `<log probability>\t<token>`, or an empty string when the result carries
+/// none or the lines do not fit: half a list would leave the words it cut
+/// looking like words the engine never decoded.
+static void copy_token_confidence(
+    const SherpaOnnxOfflineRecognizerResult *result,
+    char *output,
+    int32_t output_capacity
+) {
+    if (output == NULL || output_capacity <= 0) return;
+    output[0] = '\0';
+    if (result->ys_log_probs == NULL || result->tokens_arr == NULL || result->count <= 0) return;
+    size_t used = 0;
+    for (int32_t i = 0; i < result->count; i++) {
+        const char *token = result->tokens_arr[i];
+        // A token that would break the line format is left out; it is never
+        // a word.
+        if (token == NULL || strchr(token, '\n') != NULL || strchr(token, '\t') != NULL) continue;
+        int written = snprintf(
+            output + used, (size_t)output_capacity - used, "%.4f\t%s\n",
+            result->ys_log_probs[i], token);
+        if (written < 0 || used + (size_t)written >= (size_t)output_capacity) {
+            output[0] = '\0';
+            return;
+        }
+        used += (size_t)written;
+    }
+}
+
 VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     int family,
     const char *model1,
@@ -247,12 +276,15 @@ int VocaPhoneSherpaDecode(
     int32_t output_capacity,
     char *language,
     int32_t language_capacity,
-    float *last_token_seconds
+    float *last_token_seconds,
+    char *confidence,
+    int32_t confidence_capacity
 ) {
     // Emptied up front so a caller never reads a stale or uninitialised buffer
     // on any of the paths below that return without decoding.
     if (language != NULL && language_capacity > 0) language[0] = '\0';
     if (last_token_seconds != NULL) *last_token_seconds = -1.0f;
+    if (confidence != NULL && confidence_capacity > 0) confidence[0] = '\0';
 
     struct VocaPhoneSherpaContext *context =
         (struct VocaPhoneSherpaContext *)recognizer;
@@ -294,6 +326,7 @@ int VocaPhoneSherpaDecode(
         if (language != NULL && language_capacity > 0 && result->lang != NULL) {
             copy_text(result->lang, language, language_capacity);
         }
+        if (copied >= 0) copy_token_confidence(result, confidence, confidence_capacity);
         SherpaOnnxDestroyOfflineRecognizerResult(result);
     }
     SherpaOnnxDestroyOfflineStream(stream);

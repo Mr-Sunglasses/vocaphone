@@ -89,9 +89,6 @@ enum SherpaEmptyChunkRecovery {
     }
 
     private static func trimmed(_ transcript: SherpaTranscript) -> SherpaTranscript {
-        SherpaTranscript(
-            text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
-            language: transcript.language
-        )
+        transcript.trimmed
     }
 }

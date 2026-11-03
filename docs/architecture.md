@@ -303,7 +303,7 @@ where it does:
    [tools/grammar-eval](../tools/grammar-eval/README.md) for the recipe.
 5. **Style**, for on-device transcripts only: a gateway has already styled its
    own.
-6. **Custom vocabulary**. Not for Raw.
+6. **Replacements, then custom vocabulary**. Not for Raw. See below.
 7. **Spoken emoji**, when on. Not for Raw.
 8. **Digits**, when on.
 9. **Snippet expansion**, last.
@@ -313,6 +313,41 @@ The grammar model runs in the containing app only. Android reaches the
 (`android/app/src/main/cpp/grammar`); iOS reaches the ONNX Runtime that
 sherpa-onnx links through `GrammarOnnxBridge.c`. Neither adds a second
 runtime, and the F-Droid flavor builds neither.
+
+## Custom vocabulary after decoding
+
+Step 6 above runs on every route, after styling so the user's spelling is the
+last word on a term:
+
+- **Replacements** (`WordReplacements`, `core/WordReplacement.kt` and
+  `ios/VocaPhoneShared/WordReplacement.swift`): "heard → written" pairs the user
+  enters, one written form for one or more heard forms ("get hub, git hub" →
+  GitHub). Whole words, ignoring case, longest heard form first, one pass, in
+  any language. A snippet trigger is never replaced, and what a replacement
+  wrote is protected from the vocabulary pass after it. Stored next to the
+  vocabulary: `localTranscriptionReplacements` (JSON) in the App Group
+  defaults on iOS, `replacements` (JSON) in the settings DataStore on Android.
+- **Vocabulary correction** (`VocabularyCorrection`): exact matches once
+  spacing and case are gone ("whisper kit" → WhisperKit) in any language; in
+  English only, near misses within an edit budget. A spelling that sounds
+  like the term (Double Metaphone, Soundex where Metaphone cannot key) gets a
+  wider budget, but only when a word in the span is not on the shipped word
+  list. Two or three words whose joined letters share a term's primary
+  Metaphone key ("cooper netties" → Kubernetes) are joined only with evidence
+  the engine misheard them: a word it decoded below 0.6 probability every time
+  it was heard, or, from an engine that reports no confidence, a word not on
+  the list. A single ordinary word is never respelled. These are VocaMac's
+  rules, except that the list never overrules an engine that reports
+  confidence.
+- **Confidence** (`RecognitionConfidence`): WhisperKit and whisper.cpp give
+  each token's log probability as part of decoding; a word is the geometric
+  mean of its tokens (WhisperKit's own word probability, without turning on
+  word timestamps, whose alignment pass costs a decoder run). On iOS the
+  sherpa-onnx transducers (Parakeet, Zipformer) fill `ys_log_probs`, which the
+  bridge passes on per token; a word is its least sure token. Every other
+  sherpa family, and every sherpa model on Android (the prebuilt JNI's result
+  has no log probabilities), reports nothing, and a run of real words is then
+  left as heard. A gateway reports nothing either.
 
 ## Custom vocabulary while decoding
 
@@ -324,7 +359,8 @@ get them from one builder, `RecognitionHints` on both platforms
 - **The list.** `RecognitionHints.terms` orders the hints least important
   first: terms from the text around the cursor, then replacement targets, then
   the user's custom vocabulary, each source with its first-ranked term last.
-  Only the vocabulary is filled in today. Every engine that has to shorten the
+  Replacement targets are the written forms that read like a term
+  (`isHintableReplacement`: not an address, a link or a sentence). Every engine that has to shorten the
   list cuts from the front, so the user's own words, and among them the ones
   written first, are the last to go. What an engine keeps it writes most
   important first, which for the vocabulary alone is the order the user wrote. The list stays on the phone and in memory

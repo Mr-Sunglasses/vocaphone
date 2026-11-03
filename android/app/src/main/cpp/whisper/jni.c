@@ -1,8 +1,11 @@
 #include <jni.h>
 #include <android/log.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include "whisper.h"
 #include "ggml-backend.h"
@@ -271,6 +274,59 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getText(
     UNUSED(thiz);
     struct whisper_context *context = context_of(context_ptr);
     return joined_segment_text(env, context, whisper_full_n_segments(context), whisper_segment_text);
+}
+
+/**
+ * Every text token of the last decode with its log probability, one per line
+ * as `<log probability>\t<token text>\n`, as UTF-8 bytes. Special and
+ * timestamp tokens (ids from end-of-text up) are left out, and so is a token
+ * that would break the line format; it is never a word. Empty when nothing was
+ * decoded or memory ran out. RecognitionConfidence groups the tokens into
+ * words: the probabilities are what decoding computed anyway, so this costs a
+ * pass over the tokens and no model work.
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getTokenConfidence(
+        JNIEnv *env, jobject thiz, jlong context_ptr) {
+    UNUSED(thiz);
+    struct whisper_context *context = context_of(context_ptr);
+    const whisper_token end_of_text = whisper_token_eot(context);
+    size_t capacity = 4096;
+    size_t used = 0;
+    char *lines = malloc(capacity);
+    const int segments = whisper_full_n_segments(context);
+    for (int segment = 0; lines != NULL && segment < segments; segment++) {
+        const int tokens = whisper_full_n_tokens(context, segment);
+        for (int token = 0; token < tokens; token++) {
+            if (whisper_full_get_token_id(context, segment, token) >= end_of_text) continue;
+            const char *text = whisper_full_get_token_text(context, segment, token);
+            if (text == NULL || strchr(text, '\n') != NULL || strchr(text, '\t') != NULL) continue;
+            const float probability = whisper_full_get_token_p(context, segment, token);
+            // A probability of zero has no logarithm; it is as unsure as a
+            // token gets.
+            const double log_probability = probability > 0 ? log((double) probability) : -30.0;
+            const size_t needed = strlen(text) + 32;
+            if (used + needed > capacity) {
+                while (used + needed > capacity) capacity *= 2;
+                char *grown = realloc(lines, capacity);
+                if (grown == NULL) {
+                    free(lines);
+                    lines = NULL;
+                    break;
+                }
+                lines = grown;
+            }
+            const int written = snprintf(lines + used, capacity - used, "%.4f\t%s\n", log_probability, text);
+            if (written > 0) used += (size_t) written;
+        }
+    }
+    if (lines == NULL) used = 0;
+    jbyteArray result = (*env)->NewByteArray(env, (jsize) used);
+    if (result != NULL && used > 0) {
+        (*env)->SetByteArrayRegion(env, result, 0, (jsize) used, (const jbyte *) lines);
+    }
+    free(lines);
+    return result;
 }
 
 /**

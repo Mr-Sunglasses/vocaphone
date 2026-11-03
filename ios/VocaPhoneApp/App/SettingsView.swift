@@ -514,6 +514,10 @@ struct DictationSettingsView: View {
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var savedCustomVocabulary = ""
     @State private var customVocabularyDraft = ""
+    @AppStorage(
+        LocalTranscriptionPreferences.replacementsKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var replacementsData = Data()
     /// A `List` row re-runs `onAppear` when it scrolls back into view, and
     /// reloading the draft there would throw away a half-typed word.
     @State private var hasLoadedVocabularyDraft = false
@@ -761,6 +765,11 @@ struct DictationSettingsView: View {
                 .font(.body)
             Button("Save words") { savedCustomVocabulary = customVocabularyDraft }
                 .disabled(customVocabularyDraft == savedCustomVocabulary)
+            NavigationLink {
+                ReplacementsSettingsView()
+            } label: {
+                LabeledContent("Replacements", value: replacementCountDetail)
+            }
         } header: {
             LearnMoreHeader(title: "Custom words", topic: SettingsHelp.customWords, presented: $learnMore)
         } footer: {
@@ -778,6 +787,11 @@ struct DictationSettingsView: View {
             customVocabularyDraft = savedCustomVocabulary
             hasLoadedVocabularyDraft = true
         }
+    }
+
+    private var replacementCountDetail: String {
+        let count = WordReplacement.decode(replacementsData).count
+        return count == 0 ? "None" : "\(count)"
     }
 
     /// The selected on-device model when it cannot take a vocabulary, so the
@@ -1649,6 +1663,165 @@ private struct SnippetEditorView: View {
     }
 }
 
+// MARK: - Replacements
+
+/// "Heard → written" pairs for words a model always hears as something else.
+/// Laid out like Snippets: a list, an add button, and one form for add and edit.
+struct ReplacementsSettingsView: View {
+    @State private var replacements: [WordReplacement] = LocalTranscriptionPreferences.replacements
+    @State private var isAdding = false
+    @State private var editing: WordReplacement?
+
+    var body: some View {
+        List {
+            Section {
+                if replacements.isEmpty {
+                    Button {
+                        isAdding = true
+                    } label: {
+                        Label("Add a replacement", systemImage: "plus.circle")
+                    }
+                } else {
+                    ForEach(replacements) { replacement in
+                        ReplacementRow(replacement: replacement) { editing = replacement }
+                    }
+                    .onDelete(perform: delete)
+                }
+            } footer: {
+                Text("When dictation writes what you say, it types your text instead: "
+                    + "\u{201C}get hub\u{201D} becomes GitHub. Case does not matter.")
+            }
+        }
+        .navigationTitle("Replacements")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isAdding = true
+                } label: {
+                    Label("Add Replacement", systemImage: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $isAdding) {
+            ReplacementEditorView(title: "Add Replacement", confirmation: "Add") { heard, written in
+                replacements.append(WordReplacement(heard: heard, written: written))
+                persist()
+            }
+        }
+        .sheet(item: $editing) { replacement in
+            ReplacementEditorView(
+                title: "Edit Replacement", confirmation: "Save", replacement: replacement
+            ) { heard, written in
+                guard let index = replacements.firstIndex(where: { $0.id == replacement.id }) else { return }
+                replacements[index].heard = heard
+                replacements[index].written = written
+                persist()
+            }
+        }
+    }
+
+    private func delete(at offsets: IndexSet) {
+        replacements.remove(atOffsets: offsets)
+        persist()
+    }
+
+    /// Every row was validated behind Save, so the list is written as it is.
+    private func persist() {
+        LocalTranscriptionPreferences.replacements = replacements
+    }
+}
+
+private struct ReplacementRow: View {
+    let replacement: WordReplacement
+    let onEdit: () -> Void
+
+    var body: some View {
+        Button(action: onEdit) {
+            HStack {
+                VStack(alignment: .leading, spacing: VocaMetrics.tight) {
+                    Text(replacement.written)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(replacement.heardForms.joined(separator: ", "))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .accessibilityHint("Edits this replacement")
+    }
+}
+
+/// Add and edit share one form; nothing reaches the store until the
+/// confirmation button.
+private struct ReplacementEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var heard: String
+    @State private var written: String
+    let title: String
+    let confirmation: String
+    let onSave: (String, String) -> Void
+
+    init(
+        title: String,
+        confirmation: String,
+        replacement: WordReplacement? = nil,
+        onSave: @escaping (String, String) -> Void
+    ) {
+        self.title = title
+        self.confirmation = confirmation
+        self.onSave = onSave
+        _heard = State(initialValue: replacement?.heard ?? "")
+        _written = State(initialValue: replacement?.written ?? "")
+    }
+
+    private var draft: WordReplacement {
+        WordReplacement(heard: heard, written: written.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("e.g. get hub, git hub", text: $heard)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("Dictation writes")
+                } footer: {
+                    Text("Separate several with commas.")
+                }
+                Section("Type instead") {
+                    TextField("e.g. GitHub", text: $written)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(confirmation) {
+                        let saved = draft
+                        onSave(saved.heardForms.joined(separator: ", "), saved.written)
+                        dismiss()
+                    }
+                    .disabled(!draft.isValid)
+                }
+            }
+        }
+    }
+}
+
 #if DEBUG
 
 // MARK: - Previews
@@ -1690,6 +1863,12 @@ private struct SnippetEditorView: View {
 #Preview("Settings — snippets") {
     PreviewHost {
         NavigationStack { SnippetsSettingsView() }
+    }
+}
+
+#Preview("Settings — replacements") {
+    PreviewHost {
+        NavigationStack { ReplacementsSettingsView() }
     }
 }
 

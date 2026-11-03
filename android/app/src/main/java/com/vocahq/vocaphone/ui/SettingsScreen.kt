@@ -70,6 +70,7 @@ import com.vocahq.vocaphone.core.RecordingLimit
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.Snippet
+import com.vocahq.vocaphone.core.WordReplacement
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.UsageStats
@@ -165,6 +166,9 @@ fun SettingsScreen(
     onAddSnippet: (trigger: String, expansion: String) -> Unit,
     onUpdateSnippet: (id: String, trigger: String, expansion: String) -> Unit,
     onDeleteSnippet: (id: String) -> Unit,
+    onAddReplacement: (heard: String, written: String) -> Unit = { _, _ -> },
+    onUpdateReplacement: (id: String, heard: String, written: String) -> Unit = { _, _, _ -> },
+    onDeleteReplacement: (id: String) -> Unit = {},
     onAsciiEmoji: (Boolean) -> Unit,
     onSwipeTyping: (Boolean) -> Unit,
     onClipboardChip: (Boolean) -> Unit,
@@ -543,6 +547,12 @@ fun SettingsScreen(
                     unsupportedModel = localModel
                         ?.takeIf { settings.localTranscriptionEnabled && !it.supportsCustomVocabulary }
                         ?.displayName,
+                )
+                ReplacementsSection(
+                    replacements = settings.replacements,
+                    onAdd = onAddReplacement,
+                    onUpdate = onUpdateReplacement,
+                    onDelete = onDeleteReplacement,
                 )
             }
 
@@ -1087,6 +1097,161 @@ private fun PersonalDictionaryPage(
             },
         )
     }
+}
+
+/**
+ * "Heard → written" pairs, beside the custom words they work with: what to
+ * type when dictation keeps writing something the user did not say. Laid out
+ * like [SnippetsSection]; nothing reaches storage until Save.
+ */
+@Composable
+private fun ReplacementsSection(
+    replacements: List<WordReplacement>,
+    onAdd: (heard: String, written: String) -> Unit,
+    onUpdate: (id: String, heard: String, written: String) -> Unit,
+    onDelete: (id: String) -> Unit,
+) {
+    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<WordReplacement?>(null) }
+    var pendingDelete by remember { mutableStateOf<WordReplacement?>(null) }
+
+    SettingsGroup(
+        title = "Replacements",
+        footer = "When dictation writes what you say, it types your text instead. " +
+            "Separate several with commas.",
+    ) {
+        replacements.forEach { replacement ->
+            ReplacementRow(
+                replacement = replacement,
+                onEdit = { editing = replacement },
+                onDelete = { pendingDelete = replacement },
+            )
+            SettingsDivider()
+        }
+        SettingsActionRow(
+            title = "Add replacement",
+            icon = R.drawable.ic_add,
+            onClick = { adding = true },
+        )
+    }
+
+    if (adding) {
+        ReplacementEditorDialog(
+            title = "Add replacement",
+            initialHeard = "",
+            initialWritten = "",
+            onDismiss = { adding = false },
+            onSave = { heard, written ->
+                onAdd(heard, written)
+                adding = false
+            },
+        )
+    }
+
+    editing?.let { replacement ->
+        ReplacementEditorDialog(
+            title = "Edit replacement",
+            initialHeard = replacement.heard,
+            initialWritten = replacement.written,
+            onDismiss = { editing = null },
+            onSave = { heard, written ->
+                onUpdate(replacement.id, heard, written)
+                editing = null
+            },
+        )
+    }
+
+    pendingDelete?.let { replacement ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete replacement?") },
+            text = { Text("\"${replacement.heard}\" will no longer become \"${replacement.written}\".") },
+            confirmButton = {
+                DestructiveTextButton(
+                    text = "Delete",
+                    onClick = {
+                        onDelete(replacement.id)
+                        pendingDelete = null
+                    },
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ReplacementRow(
+    replacement: WordReplacement,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SettingsTapRow(
+            title = replacement.heard,
+            supporting = "→ ${replacement.written}",
+            onClick = onEdit,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDelete, modifier = Modifier.padding(end = 4.dp)) {
+            Icon(
+                painterResource(R.drawable.ic_delete),
+                contentDescription = "Delete ${replacement.heard}",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Add and edit share one form. A heard form with nothing to match or an empty
+ * written form cannot be saved, so a row never silently does nothing.
+ */
+@Composable
+private fun ReplacementEditorDialog(
+    title: String,
+    initialHeard: String,
+    initialWritten: String,
+    onDismiss: () -> Unit,
+    onSave: (heard: String, written: String) -> Unit,
+) {
+    var heard by remember { mutableStateOf(initialHeard) }
+    var written by remember { mutableStateOf(initialWritten) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = heard,
+                    onValueChange = { heard = it },
+                    label = { Text("You say") },
+                    placeholder = { Text("get hub, git hub") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = written,
+                    onValueChange = { written = it },
+                    label = { Text("Write") },
+                    placeholder = { Text("GitHub") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(heard.trim(), written.trim()) },
+                enabled = WordReplacement(heard = heard, written = written).isValid,
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 /**

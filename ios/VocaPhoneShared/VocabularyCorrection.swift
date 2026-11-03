@@ -20,8 +20,23 @@ import Foundation
 ///   term would be fair game — German "Wagen" would become a colleague called
 ///   "Wagner".
 ///
-/// What it will not do is hear "Cooper Netties" as "Kubernetes". That takes a
-/// model that was listening; this only has the text.
+/// - **Sounds alike.** Double Metaphone (`DoubleMetaphone`) says when a heard
+///   spelling sounds like a term, and then the slip may be wider: one more
+///   edit, two more for a term of eight letters or more ("Postgersql" for
+///   "PostgreSQL", "Kayzer" for "Kaiser"), and the first letter may differ
+///   within one sound (c/k/q, s/z, f/ph). Only for a span with a word that is
+///   not an ordinary word, and only words that are not, where the span has
+///   more words than the term: sounding alike is no reason to respell real
+///   ones.
+/// - **Several words heard for one.** "cooper netties" for "Kubernetes", "pie
+///   torch" for "PyTorch": two or three words whose letters sound exactly like
+///   a term of six letters or more. Real words are never respelled on spelling
+///   alone, so this needs evidence the engine misheard them: the engine
+///   decoded one of the words with low confidence (`RecognitionConfidence`),
+///   or, for an engine that reports no confidence, one of them is not an
+///   ordinary word. Such an engine leaves a run of real words alone, and a
+///   single real word is never respelled —
+///   "cloud" stays "cloud" with Claude listed. VocaMac's rules.
 ///
 /// Mirrors `VocabularyCorrection.kt`.
 enum VocabularyCorrection {
@@ -49,17 +64,21 @@ enum VocabularyCorrection {
     /// overlap `protectedRanges` — snippet triggers, which expand after this
     /// runs — are never touched. With `nearMisses` false only the spacing and
     /// case of a term are corrected, which is certain in any language.
+    /// `lowConfidenceWords` are the keys the engine was unsure of
+    /// (`RecognitionConfidence.lowConfidenceWords`), or nil when it reports
+    /// nothing.
     ///
     /// Every term is used, however long the list. An exact match is a lookup;
-    /// for a near miss, terms are filed by first letter and length, the two
-    /// things every match already has to share within two, so each run of
-    /// words is only compared with the terms that could match it.
+    /// for a near miss, terms are filed by first sound and length, the two
+    /// things every match already has to share, so each run of words is only
+    /// compared with the terms that could match it.
     static func apply(
         _ text: String,
         terms: [String],
         isDictionaryWord: (String) -> Bool = { _ in false },
         protectedRanges: [Range<String.Index>] = [],
-        nearMisses: Bool = true
+        nearMisses: Bool = true,
+        lowConfidenceWords: Set<String>? = nil
     ) -> String {
         guard !text.isEmpty else { return text }
         var exact: [String: Term] = [:]
@@ -67,7 +86,7 @@ enum VocabularyCorrection {
         var widest = 0
         for term in terms.compactMap(Term.init) {
             if exact[term.key] == nil { exact[term.key] = term }
-            filed[term.key.first!, default: [:]][term.key.count, default: []].append(term)
+            filed[term.sound, default: [:]][term.key.count, default: []].append(term)
             widest = max(widest, term.wordCount + extraWords)
         }
         guard !filed.isEmpty else { return text }
@@ -77,6 +96,7 @@ enum VocabularyCorrection {
         let protected = Set(words.indices.filter { index in
             protectedRanges.contains { $0.overlaps(words[index].range) }
         })
+        var phonetic = PhoneticKeys()
 
         var replacements: [(range: Range<String.Index>, term: String)] = []
         var index = 0
@@ -95,26 +115,47 @@ enum VocabularyCorrection {
                     }
                     continue
                 }
-                guard budget > 0, let first = key.first, let byLength = filed[first] else { continue }
-                let dictionaryWord = length == 1 && isDictionaryWord(key)
-                for termLength in max(1, key.count - 2)...(key.count + 2) {
-                    for term in byLength[termLength] ?? []
-                    where term.wordCount + extraWords >= length
-                        && Self.isContiguous(span, in: text, allowing: term.joiners)
-                    {
-                        budget -= 1
-                        guard let distance = term.accepts(
-                            key, wordCount: length, isDictionaryWord: dictionaryWord
-                        ) else { continue }
-                        // A term already written correctly still wins here, so
-                        // a longer near-miss cannot swallow it with the next word.
-                        if best == nil || distance < best!.distance
-                            || (distance == best!.distance && length > best!.length)
+                guard budget > 0, !key.isEmpty else { continue }
+                // An ordinary word on its own is only ever the term if it *is*
+                // the term; anything else is a real word the user said.
+                if length == 1, isDictionaryWord(key) { continue }
+                let candidate = Candidate(
+                    key: key,
+                    wordCount: length,
+                    unknownWords: span.filter { !isDictionaryWord($0.key) }.count
+                )
+                for sound in Self.soundsToSearch(key) {
+                    guard let byLength = filed[sound] else { continue }
+                    for termLength in max(1, key.count - maximumDistance)...(key.count + maximumDistance) {
+                        for term in byLength[termLength] ?? []
+                        where term.wordCount + extraWords >= length
+                            && Self.isContiguous(span, in: text, allowing: term.joiners)
                         {
-                            best = (length, term, distance)
+                            budget -= 1
+                            guard let distance = term.accepts(candidate, phonetic: &phonetic) else { continue }
+                            // A term already written correctly still wins here, so
+                            // a longer near-miss cannot swallow it with the next word.
+                            if best == nil || distance < best!.distance
+                                || (distance == best!.distance && length > best!.length)
+                            {
+                                best = (length, term, distance)
+                            }
                         }
                     }
                 }
+            }
+            if best == nil, budget > 0, let joined = soundAlikeJoin(
+                at: index,
+                words: words,
+                text: text,
+                filed: filed,
+                protected: protected,
+                isDictionaryWord: isDictionaryWord,
+                lowConfidenceWords: lowConfidenceWords,
+                budget: &budget,
+                phonetic: &phonetic
+            ) {
+                best = (length: joined.length, term: joined.term, distance: Int.max)
             }
             if let best {
                 let span = words[index..<(index + best.length)]
@@ -137,10 +178,43 @@ enum VocabularyCorrection {
 
     // MARK: - Terms
 
+    /// The most edits any near miss is allowed: two for a long term, one more
+    /// when it sounds alike.
+    private static let maximumDistance = 3
+
+    /// A sound-alike term must be at least this long, as in VocaMac: shorter
+    /// keys share their Metaphone keys with too many words.
+    private static let minimumSoundAlikeLength = 5
+
+    /// The shortest term a run of words may be joined into by sound alone.
+    private static let minimumJoinedTermLength = 6
+
+    /// The most transcript words joined into one term by sound.
+    private static let maximumJoinedWords = 3
+
+    private struct Candidate {
+        /// The span's words' keys, joined.
+        let key: String
+        let wordCount: Int
+        /// How many of the span's words are not ordinary words.
+        let unknownWords: Int
+
+        /// Whether sounding like `term` may widen the match: a word in the
+        /// span is not an ordinary word — every word, when the span has more
+        /// words than the term, so the wider budget never takes a real word
+        /// along with the name beside it. (Joining real words by sound is
+        /// `soundAlikeJoin`'s, under its own rules.)
+        func mayWiden(for term: Term) -> Bool {
+            wordCount > term.wordCount ? unknownWords == wordCount : unknownWords > 0
+        }
+    }
+
     private struct Term {
         let text: String
         /// Letters and digits, lowercased: what spacing and case cannot change.
         let key: String
+        /// `firstSound(key)`, the bucket the term is filed under.
+        let sound: Character
         let wordCount: Int
         /// What may sit between the transcript words matched against this
         /// term: a space, and whatever punctuation the term itself uses inside
@@ -150,26 +224,38 @@ enum VocabularyCorrection {
 
         init?(_ text: String) {
             let key = VocabularyCorrection.key(text)
-            guard key.count >= VocabularyCorrection.minimumTermLength else { return nil }
+            guard key.count >= VocabularyCorrection.minimumTermLength,
+                  let sound = VocabularyCorrection.firstSound(key)
+            else { return nil }
             self.text = text
             self.key = key
+            self.sound = sound
             wordCount = max(1, VocabularyCorrection.words(in: text).count)
             joiners = Set(text.filter { !$0.isLetter && !$0.isNumber }).union([" "])
         }
 
         /// The edit distance at which `candidate` is taken to be this term, or
-        /// `nil` when it is not.
-        func accepts(_ candidate: String, wordCount: Int, isDictionaryWord: Bool) -> Int? {
-            if candidate == key { return 0 }
-            // An ordinary word on its own is only ever the term if it *is* the
-            // term; anything else is a real word the user said.
-            guard !isDictionaryWord, candidate.first == key.first else { return nil }
-            let allowed = allowedDistance
-            guard allowed > 0, abs(candidate.count - key.count) <= allowed else { return nil }
+        /// `nil` when it is not. A single ordinary word never gets here.
+        func accepts(_ candidate: Candidate, phonetic: inout PhoneticKeys) -> Int? {
+            let heard = candidate.key
+            if heard == key { return 0 }
             // One word against a one-word term needs the stricter bar: that is
             // where a real word sits one letter from a name.
-            if wordCount == 1, self.wordCount == 1, key.count < 6 { return nil }
-            let distance = VocabularyCorrection.distance(candidate, key, limit: allowed)
+            if candidate.wordCount == 1, wordCount == 1, key.count < 6 { return nil }
+            let sameLetter = heard.first == key.first
+            guard sameLetter || VocabularyCorrection.firstSound(heard) == sound else { return nil }
+            var allowed = allowedDistance
+            let alike = candidate.mayWiden(for: self) && key.count >= VocabularyCorrection.minimumSoundAlikeLength
+                && abs(heard.count - key.count) <= VocabularyCorrection.maximumDistance
+                && phonetic.soundAlike(heard, key)
+            if alike {
+                allowed = key.count >= 8 ? max(allowed + 1, 3) : allowed + 1
+            }
+            // A different first letter is only the same first sound when the
+            // whole word sounds alike: "Kayzer" may be "Caesar", "cable" not.
+            guard sameLetter || alike else { return nil }
+            guard abs(heard.count - key.count) <= allowed else { return nil }
+            let distance = VocabularyCorrection.distance(heard, key, limit: allowed)
             return distance <= allowed ? distance : nil
         }
 
@@ -180,6 +266,158 @@ enum VocabularyCorrection {
             default: 2
             }
         }
+    }
+
+    // MARK: - Sounding alike
+
+    /// Double Metaphone keys, worked out once per dictation and spelling.
+    private struct PhoneticKeys {
+        private var keys: [String: DoubleMetaphone.Key?] = [:]
+
+        mutating func key(_ text: String) -> DoubleMetaphone.Key? {
+            if let known = keys[text] { return known }
+            let key = DoubleMetaphone.encode(text)
+            keys[text] = key
+            return key
+        }
+
+        /// Whether two letter keys sound alike: their Double Metaphone keys
+        /// meet, or, for what Metaphone cannot key, their Soundex codes agree.
+        mutating func soundAlike(_ heard: String, _ term: String) -> Bool {
+            if let heardKey = key(heard), let termKey = key(term) {
+                return heardKey.matches(termKey)
+            }
+            guard let code = VocabularyCorrection.soundex(heard) else { return false }
+            return code == VocabularyCorrection.soundex(term)
+        }
+    }
+
+    /// Term lengths worth comparing with a joined run of `heardLength` letters:
+    /// within a third of the term's length (at least two), closest first, then
+    /// shorter. Spelled out step by step because the one-expression version
+    /// is more than Xcode 26's type checker will finish.
+    private static func joinCandidateLengths(heardLength: Int) -> [Int] {
+        let upper = max(minimumJoinedTermLength, heardLength * 2)
+        var lengths: [Int] = []
+        for length in minimumJoinedTermLength...upper {
+            let distance: Int = abs(length - heardLength)
+            let allowed: Int = max(2, length / 3)
+            if distance <= allowed { lengths.append(length) }
+        }
+        lengths.sort { (lhs: Int, rhs: Int) -> Bool in
+            let lhsDistance: Int = abs(lhs - heardLength)
+            let rhsDistance: Int = abs(rhs - heardLength)
+            if lhsDistance != rhsDistance { return lhsDistance < rhsDistance }
+            return lhs < rhs
+        }
+        return lengths
+    }
+
+    /// Two or three words heard for one longer term that sounds exactly like
+    /// them: their joined letters and the term share a primary Metaphone key.
+    /// Needs evidence the engine misheard: a word it decoded with low
+    /// confidence, or, from an engine that reports no confidence, a word that
+    /// is not an ordinary word. The term itself must not be an ordinary word,
+    /// or "cooper" and "pans" could become "Copperpans".
+    private static func soundAlikeJoin(
+        at index: Int,
+        words: [Word],
+        text: String,
+        filed: [Character: [Int: [Term]]],
+        protected: Set<Int>,
+        isDictionaryWord: (String) -> Bool,
+        lowConfidenceWords: Set<String>?,
+        budget: inout Int,
+        phonetic: inout PhoneticKeys
+    ) -> (length: Int, term: Term)? {
+        let longest = min(maximumJoinedWords, words.count - index)
+        guard longest >= 2 else { return nil }
+        for length in stride(from: longest, through: 2, by: -1) {
+            guard !(index..<(index + length)).contains(where: protected.contains) else { continue }
+            let span = words[index..<(index + length)]
+            guard isContiguous(span, in: text, allowing: [" ", "-"]) else { continue }
+            let keys = span.map(\.key)
+            // An engine that reports confidence has said which words it
+            // doubted, and a word missing from a 10 000-word list is no
+            // evidence beside that: "said Ruth" is not "Siddharth" because
+            // "Ruth" is a name. Only an engine that says nothing is judged
+            // by the list.
+            let misheard = if let lowConfidenceWords {
+                keys.contains(where: lowConfidenceWords.contains)
+            } else {
+                keys.contains { !isDictionaryWord($0) }
+            }
+            guard misheard else { continue }
+            let joined = keys.joined()
+            guard let heardKey = phonetic.key(joined), heardKey.primary.count >= 3 else { continue }
+            // Closest length first, then the order the user wrote them in.
+            let lengths = joinCandidateLengths(heardLength: joined.count)
+            for sound in soundsToSearch(joined) {
+                guard let byLength = filed[sound] else { continue }
+                for termLength in lengths {
+                    for term in byLength[termLength] ?? [] {
+                        guard budget > 0 else { return nil }
+                        budget -= 1
+                        guard firstSound(joined) == term.sound,
+                              phonetic.key(term.key)?.primary == heardKey.primary,
+                              !isDictionaryWord(term.key)
+                        else { continue }
+                        return (length, term)
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Rough first sound, so a near miss never swaps a word for a term that
+    /// starts differently: c/k/q, s/z and ph/f are each one sound.
+    static func firstSound(_ key: String) -> Character? {
+        if key.hasPrefix("ph") { return "f" }
+        guard let first = key.first else { return nil }
+        switch first {
+        case "c", "q": return "k"
+        case "z": return "s"
+        default: return first
+        }
+    }
+
+    /// The buckets that hold every term a key could be matched with: its own
+    /// first sound, and for a "p" word the "f" bucket too, where a "ph" term
+    /// with the same first letter is filed.
+    private static func soundsToSearch(_ key: String) -> [Character] {
+        guard let sound = firstSound(key) else { return [] }
+        guard key.first == "p" else { return [sound] }
+        return sound == "f" ? ["f", "p"] : ["p", "f"]
+    }
+
+    /// American Soundex of a lowercase ASCII key, or nil for anything else.
+    /// It only ever widens a match, never makes one.
+    static func soundex(_ key: String) -> String? {
+        guard let first = key.first, key.allSatisfy({ $0.isASCII && $0.isLetter }) else { return nil }
+        func code(_ character: Character) -> Character? {
+            switch character {
+            case "b", "f", "p", "v": "1"
+            case "c", "g", "j", "k", "q", "s", "x", "z": "2"
+            case "d", "t": "3"
+            case "l": "4"
+            case "m", "n": "5"
+            case "r": "6"
+            default: nil
+            }
+        }
+        var result = String(first)
+        var previous = code(first)
+        for character in key.dropFirst() {
+            let current = code(character)
+            if let current, current != previous {
+                result.append(current)
+                if result.count == 4 { break }
+            }
+            // "h" and "w" do not separate equal codes; vowels do.
+            if character != "h" && character != "w" { previous = current }
+        }
+        return result.padding(toLength: 4, withPad: "0", startingAt: 0)
     }
 
     // MARK: - Text

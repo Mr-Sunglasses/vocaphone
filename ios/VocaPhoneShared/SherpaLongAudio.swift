@@ -259,21 +259,36 @@ enum SherpaLongAudio {
 struct SherpaTranscript: Sendable, Equatable {
     let text: String
     let language: String
+    /// What the engine was unsure of, for every family that says.
+    let confidence: RecognitionConfidence
 
-    init(text: String, language: String = "") {
+    init(text: String, language: String = "", confidence: RecognitionConfidence = .unreported) {
         self.text = text
         self.language = language
+        self.confidence = confidence
     }
 
     static let empty = SherpaTranscript(text: "")
 
     /// The first language anything reported wins; later chunks rarely disagree.
+    /// Confidence is merged whole: a word repeated across an overlap is just
+    /// heard twice.
     func appending(_ next: SherpaTranscript, deduplicateOverlap: Bool) -> SherpaTranscript {
         SherpaTranscript(
             text: SherpaTranscriptMerger.append(
                 existing: text, next: next.text, deduplicateOverlap: deduplicateOverlap
             ),
-            language: language.isEmpty ? next.language : language
+            language: language.isEmpty ? next.language : language,
+            confidence: confidence.merging(next.confidence)
+        )
+    }
+
+    /// The same transcript without surrounding whitespace.
+    var trimmed: SherpaTranscript {
+        SherpaTranscript(
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+            language: language,
+            confidence: confidence
         )
     }
 

@@ -90,6 +90,13 @@ internal class WhisperLib {
          * Decode it with [WhisperText.decode]: a segment can end mid-character.
          */
         external fun getText(contextPtr: Long): ByteArray
+
+        /**
+         * Every text token of the last decode with its log probability, one per
+         * line as `<log probability>\t<token text>`, as UTF-8 bytes. See
+         * [com.vocahq.vocaphone.core.RecognitionConfidence.fromTokenLines].
+         */
+        external fun getTokenConfidence(contextPtr: Long): ByteArray
         external fun getSystemInfo(): String
     }
 }

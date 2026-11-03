@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.RecognitionConfidence
 import com.vocahq.vocaphone.core.RecognitionHints
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.util.concurrent.Executors
@@ -85,6 +86,12 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
         }
         return LocalTranscription(
             text = text,
+            // What the decode that produced `text` was unsure of: the
+            // probabilities whisper.cpp already computed for each token.
+            confidence = RecognitionConfidence.fromTokenLines(
+                String(WhisperLib.getTokenConfidence(pointer), Charsets.UTF_8),
+                RecognitionConfidence.WordScore.GEOMETRIC_MEAN,
+            ),
             // Detection is meaningful only for Automatic. With an explicit
             // selection, the user's requested output language remains the
             // contract even if the engine reports something contradictory.

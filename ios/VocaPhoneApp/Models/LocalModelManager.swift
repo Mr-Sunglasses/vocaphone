@@ -1319,12 +1319,13 @@ final class LocalModelManager {
     }
 
     /// What a sherpa-onnx `descriptor` is told to listen for: the user's
-    /// custom vocabulary as Qwen3-ASR's or Parakeet Unified's hotwords, and
-    /// nothing for a model that takes none. Read per dictation, like Whisper's
-    /// prompt, so a list saved between two dictations applies to the second.
+    /// custom vocabulary and replacement targets as Qwen3-ASR's or Parakeet
+    /// Unified's hotwords, and nothing for a model that takes none. Read per
+    /// dictation, like Whisper's prompt, so a list saved between two dictations applies to the second.
     static func sherpaHotwords(for descriptor: LocalModelDescriptor) -> String? {
         let terms = RecognitionHints.terms(
-            vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+            vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary),
+            replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements)
         )
         return RecognitionHints.sherpaHotwords(for: descriptor, terms: terms)
     }
@@ -2211,6 +2212,8 @@ final class LocalModelManager {
         var decodedEarly = false
         /// Milliseconds of trailing non-speech left out of the decode.
         var trimmedMilliseconds = 0
+        /// What the engine was unsure of, when it says.
+        var confidence: RecognitionConfidence = .unreported
     }
 
     /// `whisperSession` is the dictation's own capture, used in place of the
@@ -2383,7 +2386,8 @@ final class LocalModelManager {
                     translateTo: translateTo
                 ),
                 decodedEarly: windowCount == 0 && (cache?.hits ?? 0) > hitsBefore,
-                trimmedMilliseconds: trimmedMilliseconds
+                trimmedMilliseconds: trimmedMilliseconds,
+                confidence: WhisperTranscription.confidence(results, tokenizer: whisperKit?.tokenizer)
             )
 
         case .sherpaOnnx:
@@ -2427,7 +2431,8 @@ final class LocalModelManager {
                     requested: resolvedLanguage,
                     reported: decoded.language,
                     translateTo: descriptor.resolvedTranslationTarget
-                )
+                ),
+                confidence: decoded.confidence
             )
         }
     }

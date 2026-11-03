@@ -506,6 +506,28 @@ enum WhisperTranscription {
         results.first(where: carriesSpeech)?.language ?? results.first?.language ?? ""
     }
 
+    /// How sure the decoder was of each word, from the log probability every
+    /// text token already carries. A word is the geometric mean of its tokens,
+    /// which is WhisperKit's own word probability, without the word-timestamp
+    /// alignment pass that computes it there. Unreported without a tokenizer.
+    static func confidence(
+        _ results: [TranscriptionResult],
+        tokenizer: (any WhisperTokenizer)?
+    ) -> RecognitionConfidence {
+        guard let tokenizer else { return .unreported }
+        let specialTokenBegin = tokenizer.specialTokens.specialTokenBegin
+        var tokens: [RecognitionConfidence.Token] = []
+        for segment in results.flatMap(\.segments) {
+            for (index, token) in segment.tokens.enumerated() where token < specialTokenBegin {
+                guard index < segment.tokenLogProbs.count,
+                      let logProbability = segment.tokenLogProbs[index][token]
+                else { continue }
+                tokens.append(.init(text: tokenizer.decode(tokens: [token]), logProbability: logProbability))
+            }
+        }
+        return RecognitionConfidence(tokens: tokens, score: .geometricMean)
+    }
+
     /// Five seconds of audio: enough speech for detection to mean something.
     static let minimumDetectionSamples = 5 * WhisperKit.sampleRate
 

@@ -205,10 +205,7 @@ final class SherpaIncrementalSession: @unchecked Sendable {
 
         func result(reusedEarlyDecode: Bool = false, trimmed: Int = 0) -> SherpaIncrementalResult {
             var result = SherpaIncrementalResult(
-                transcript: SherpaTranscript(
-                    text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                    language: transcript.language
-                ),
+                transcript: transcript.trimmed,
                 droppedAudibleChunk: droppedAudibleChunk
             )
             result.reusedEarlyDecode = reusedEarlyDecode

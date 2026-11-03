@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.audio.InputDevices
 import com.vocahq.vocaphone.audio.TonePreview
+import com.vocahq.vocaphone.core.WordReplacements
 import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.TraditionalChinese
@@ -635,6 +636,15 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     fun deleteSnippet(id: String) =
         viewModelScope.launch { container.settings.deleteSnippet(id) }
 
+    fun addReplacement(heard: String, written: String) =
+        viewModelScope.launch { container.settings.addReplacement(heard, written) }
+
+    fun updateReplacement(id: String, heard: String, written: String) =
+        viewModelScope.launch { container.settings.updateReplacement(id, heard, written) }
+
+    fun deleteReplacement(id: String) =
+        viewModelScope.launch { container.settings.deleteReplacement(id) }
+
     fun setAsciiEmojiEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setAsciiEmojiEnabled(enabled) }
 
@@ -725,6 +735,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
                 quality = configuration.transcriptionQuality,
                 translateTo = configuration.translationTarget,
                 vocabulary = configuration.whisperVocabulary,
+                replacementTargets = WordReplacements.hintTargets(configuration.replacements),
             )
         }
     }
@@ -781,6 +792,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
                                     quality = intended.transcriptionQuality,
                                     translateTo = intended.translationTarget,
                                     vocabulary = intended.whisperVocabulary,
+                                    replacementTargets = WordReplacements.hintTargets(intended.replacements),
                                 )
                             } catch (error: CancellationException) {
                                 throw error

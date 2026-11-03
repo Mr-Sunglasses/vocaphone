@@ -244,12 +244,7 @@ final class SherpaRecognizer: @unchecked Sendable {
                 decoded, deduplicateOverlap: chunk.overlapsPrevious && !translating
             )
         }
-        return .decoded(
-            SherpaTranscript(
-                text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                language: transcript.language
-            )
-        )
+        return .decoded(transcript.trimmed)
     }
 
     func transcribeChunk(_ samples: [Float], hotwords: String? = nil) -> SherpaDecodeOutcome {
@@ -287,20 +282,26 @@ final class SherpaRecognizer: @unchecked Sendable {
         // Only ever holds a short tag such as "<|en|>".
         var languageOutput = [CChar](repeating: 0, count: 32)
         var lastToken: Float = -1
+        // A line of about a dozen bytes per token.
+        var confidenceOutput = [CChar](repeating: 0, count: 131_072)
         let result = samples.withUnsafeBufferPointer { sampleBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 languageOutput.withUnsafeMutableBufferPointer { languageBuffer in
-                    VocaPhoneSherpaDecode(
-                        native,
-                        sampleBuffer.baseAddress,
-                        Int32(samples.count),
-                        hotwords,
-                        outputBuffer.baseAddress,
-                        Int32(outputBuffer.count),
-                        languageBuffer.baseAddress,
-                        Int32(languageBuffer.count),
-                        &lastToken
-                    )
+                    confidenceOutput.withUnsafeMutableBufferPointer { confidenceBuffer in
+                        VocaPhoneSherpaDecode(
+                            native,
+                            sampleBuffer.baseAddress,
+                            Int32(samples.count),
+                            hotwords,
+                            outputBuffer.baseAddress,
+                            Int32(outputBuffer.count),
+                            languageBuffer.baseAddress,
+                            Int32(languageBuffer.count),
+                            &lastToken,
+                            confidenceBuffer.baseAddress,
+                            Int32(confidenceBuffer.count)
+                        )
+                    }
                 }
             }
         }
@@ -311,7 +312,11 @@ final class SherpaRecognizer: @unchecked Sendable {
             text: lowercasesCapitals
                 ? SherpaFamily.lowercasingCapitals(Self.string(from: output))
                 : Self.string(from: output),
-            language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
+            language: SherpaTranscript.languageCode(Self.string(from: languageOutput)),
+            // A word is its least sure token, as VocaMac reads Parakeet.
+            confidence: RecognitionConfidence(
+                tokenLines: Self.string(from: confidenceOutput), score: .minimum
+            )
         )
         return (.decoded(transcript), lastToken >= 0 ? Double(lastToken) : nil)
     }

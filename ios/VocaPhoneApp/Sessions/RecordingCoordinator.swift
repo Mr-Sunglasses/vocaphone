@@ -1773,7 +1773,8 @@ final class RecordingCoordinator {
                     text: incrementalResult.transcript.text,
                     language: incrementalResult.transcript.language,
                     decodedEarly: incrementalResult.reusedEarlyDecode,
-                    trimmedMilliseconds: incrementalResult.trimmedMilliseconds
+                    trimmedMilliseconds: incrementalResult.trimmedMilliseconds,
+                    confidence: incrementalResult.transcript.confidence
                 )
                 // A whole-file retry for an empty result, and equally for one
                 // that lost a chunk: the attention families answer a long
@@ -1856,6 +1857,8 @@ final class RecordingCoordinator {
             let chineseScript = KeyboardPreferences.chineseScript
             let snippets = SnippetStore.snippets
             let vocabulary = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+            let replacements = LocalTranscriptionPreferences.replacements
+            let lowConfidenceWords = transcribed.confidence.lowConfidenceWords
             // The on-device route only: the gateway calls above pass
             // `styledUpstream` and no grammar.
             let grammar: GrammarCorrector? = KeyboardPreferences.fixGrammar ? grammar : nil
@@ -1871,6 +1874,8 @@ final class RecordingCoordinator {
                     chineseScript: chineseScript,
                     snippets: snippets,
                     vocabulary: vocabulary,
+                    replacements: replacements,
+                    lowConfidenceWords: lowConfidenceWords,
                     grammar: grammar,
                     learnedWords: learnedWords
                 )

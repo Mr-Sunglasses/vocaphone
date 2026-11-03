@@ -17,6 +17,8 @@ import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.Snippet
+import com.vocahq.vocaphone.core.WordReplacement
+import com.vocahq.vocaphone.core.WordReplacements
 import com.vocahq.vocaphone.local.GrammarModelConsent
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
@@ -374,6 +376,11 @@ data class VocaPhoneSettings(
     val telemetryAsked: Boolean = false,
     /** Trigger phrases dictated text is expanded against, after formatting. */
     val snippets: List<Snippet> = emptyList(),
+    /**
+     * "Heard → written" pairs applied to every dictation except Raw, before
+     * custom words. See [WordReplacements].
+     */
+    val replacements: List<WordReplacement> = emptyList(),
     /**
      * Whether a finished floating-mic dictation is written into the focused
      * field by itself. Off leaves it in History for a manual copy. X build only.
@@ -781,6 +788,39 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Adds [heard] → [written] to the replacements, merged the way
+     * [WordReplacements.adding] merges: one row per written form, and a heard
+     * form only ever on one row. Settings adds through this, and so may
+     * anything that learns a replacement from the user's own edits.
+     */
+    suspend fun addReplacement(heard: String, written: String) {
+        context.dataStore.edit { preferences ->
+            val current = WordReplacement.decode(preferences[Keys.REPLACEMENTS])
+            preferences[Keys.REPLACEMENTS] = WordReplacement.encode(WordReplacements.adding(heard, written, current))
+        }
+    }
+
+    /**
+     * Replaces row [id]'s heard forms and written form as typed. A row that
+     * would match nothing never reaches storage.
+     */
+    suspend fun updateReplacement(id: String, heard: String, written: String) {
+        val edited = WordReplacement(id = id, heard = heard.trim(), written = written.trim())
+        if (!edited.isValid) return
+        context.dataStore.edit { preferences ->
+            val current = WordReplacement.decode(preferences[Keys.REPLACEMENTS])
+            preferences[Keys.REPLACEMENTS] = WordReplacement.encode(current.map { if (it.id == id) edited else it })
+        }
+    }
+
+    suspend fun deleteReplacement(id: String) {
+        context.dataStore.edit { preferences ->
+            val current = WordReplacement.decode(preferences[Keys.REPLACEMENTS])
+            preferences[Keys.REPLACEMENTS] = WordReplacement.encode(current.filter { it.id != id })
+        }
+    }
+
     suspend fun setTelemetryEnabled(enabled: Boolean) = put(Keys.TELEMETRY_ENABLED, enabled)
 
     suspend fun setTelemetryAsked(asked: Boolean) = put(Keys.TELEMETRY_ASKED, asked)
@@ -922,6 +962,7 @@ class SettingsRepository(private val context: Context) {
             ?: com.vocahq.vocaphone.telemetry.TelemetryConfig.DEFAULT_ENABLED,
         telemetryAsked = this[Keys.TELEMETRY_ASKED] ?: false,
         snippets = Snippet.decode(this[Keys.SNIPPETS]),
+        replacements = WordReplacement.decode(this[Keys.REPLACEMENTS]),
         automaticInsertion = this[Keys.AUTOMATIC_INSERTION] ?: true,
         bubbleBehavior = this[Keys.BUBBLE_BEHAVIOR]?.let { name ->
             BubbleBehavior.entries.firstOrNull { it.name == name }
@@ -994,6 +1035,7 @@ class SettingsRepository(private val context: Context) {
         val TELEMETRY_ASKED = booleanPreferencesKey("telemetry_asked")
         val TELEMETRY_MILESTONES = stringSetPreferencesKey("telemetry_milestones")
         val SNIPPETS = stringPreferencesKey("snippets")
+        val REPLACEMENTS = stringPreferencesKey("replacements")
         val AUTOMATIC_INSERTION = booleanPreferencesKey("automatic_insertion")
         val BUBBLE_BEHAVIOR = stringPreferencesKey("bubble_behavior")
         val EXCLUDED_PACKAGES = stringSetPreferencesKey("excluded_packages")

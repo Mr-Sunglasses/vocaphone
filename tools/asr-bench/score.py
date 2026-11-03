@@ -19,6 +19,12 @@ boundaries vary between transcribers.
 app's own repair, digits and styling. A gap between the two is the finishing
 stage gaining or losing words.
 
+A run made with a control vocabulary (`VOCA_ASR_BENCH_FINISH_VOCABULARY` on
+iOS, `finish_vocabulary` on Android) also carries `finishedVocabulary`: the
+same decode finished with that vocabulary. A second table compares it with
+`finished`, and counts the clips it changed. On speech that names none of the
+terms, every change is a false correction.
+
 A set whose clips list `terms` (`vocab-en`) also reports term accuracy: the
 share of those terms' uses in the reference that the text spells exactly,
 case included ("PostgreSQL", not "Postgres QL" or "postgresql"). WER cannot
@@ -92,6 +98,24 @@ def score(results: Path, manifest: Path, only: set[str] | None = None) -> dict |
                 hit, total = vocab.term_hits(clip["text"], h[field], clip.get("terms", []))
                 spelled, expected = spelled + hit, expected + total
             row[f"{field}_terms"] = spelled / expected * 100 if expected else 0.0
+    controlled = [h for h in hypotheses if h.get("finishedVocabulary") is not None]
+    if controlled:
+        # Both columns from the same records: a run resumed with the control
+        # switched on has it for only some clips, and comparing that subset
+        # with every clip's finished text would measure different speech.
+        triples = [
+            (
+                normalise(references[h["id"]]["text"], language),
+                normalise(h["finished"], language),
+                normalise(h["finishedVocabulary"], language),
+            )
+            for h in controlled
+        ]
+        triples = [t for t in triples if t[0]]
+        row["control_clips"] = len(controlled)
+        row["control_baseline_wer"] = jiwer.wer([r for r, _, _ in triples], [f for _, f, _ in triples]) * 100
+        row["control_wer"] = jiwer.wer([r for r, _, _ in triples], [c for _, _, c in triples]) * 100
+        row["control_changed"] = sum(1 for h in controlled if h["finishedVocabulary"] != h["finished"])
     row["empty"] = sum(1 for h in hypotheses if not h["raw"].strip())
     row["empty_windows"] = sum(h.get("emptyWindows", 0) for h in hypotheses)
     audio = sum(references[h["id"]]["seconds"] for h in hypotheses)
@@ -123,6 +147,16 @@ def print_table(tag: str, table: dict) -> None:
             f"{row['finished_sub']} / {row['finished_del']} / {row['finished_ins']} | "
             f"{row['empty']} | {row['rtf']:.3f} |"
         )
+    controlled = {key: row for key, row in table.items() if "control_wer" in row}
+    if controlled:
+        print(f"\n### {tag}: finished again with the control vocabulary\n")
+        print("| Model | Set | Path | Clips | WER finished | WER with vocabulary | Clips changed |")
+        print("|---|---|---|---|---|---|---|")
+        for (model, set_name, path), row in sorted(controlled.items()):
+            print(
+                f"| {model} | {set_name} | {path} | {row['control_clips']} | {row['control_baseline_wer']:.2f} | "
+                f"{row['control_wer']:.2f} | {row['control_changed']} |"
+            )
 
 
 def clip_ids(path: Path) -> set[str]:

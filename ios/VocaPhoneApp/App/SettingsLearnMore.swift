@@ -220,8 +220,19 @@ enum SettingsHelp {
                     + "They have room for only part of a long list, so put the words that "
                     + "matter most first.",
                 "Other models cannot be nudged while they decode, so only close "
-                    + "matches are corrected. A word such a model hears as something "
-                    + "else entirely stays as it heard it.",
+                    + "matches are corrected. In English that includes spellings that "
+                    + "sound like your word, and two or three words heard for one, such "
+                    + "as \"cooper netties\" for Kubernetes, when the model was unsure of "
+                    + "them. A single ordinary word is never changed.",
+            ]),
+            .init(heading: "Replacements", paragraphs: [
+                "For a word a model always hears as something else, add a replacement: "
+                    + "what it writes, and what you want instead, such as \"get hub\" to "
+                    + "GitHub. List several heard forms with commas between them.",
+                "Replacements match whole words, ignoring case, in every language and "
+                    + "on every route except Raw, before custom words are applied. What "
+                    + "they write is also passed to Whisper, Qwen3-ASR and Parakeet Unified "
+                    + "models like a custom word. They stay on this iPhone.",
             ]),
         ]
     )

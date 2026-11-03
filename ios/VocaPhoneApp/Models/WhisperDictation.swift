@@ -10,6 +10,9 @@ struct WhisperDictationSettings: Equatable, Sendable {
     let translate: Bool
     let quality: TranscriptionQuality
     let vocabulary: String?
+    /// What the user's replacements write, which Whisper may be told to
+    /// listen for. See `WordReplacements.hintTargets`.
+    var replacementTargets: [String] = []
 
     @MainActor
     static func current(for descriptor: LocalModelDescriptor, language: String) -> WhisperDictationSettings {
@@ -22,7 +25,8 @@ struct WhisperDictationSettings: Equatable, Sendable {
             // the same feature; it is nothing at all.
             translate: !descriptor.resolvedTranslationTarget.isEmpty,
             quality: LocalTranscriptionPreferences.quality,
-            vocabulary: LocalTranscriptionPreferences.customVocabulary
+            vocabulary: LocalTranscriptionPreferences.customVocabulary,
+            replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements)
         )
     }
 
@@ -40,7 +44,10 @@ struct WhisperDictationSettings: Equatable, Sendable {
 
     /// The hint list for this dictation. See `RecognitionHints`.
     var hintTerms: [String] {
-        RecognitionHints.terms(vocabulary: CustomVocabulary.terms(vocabulary))
+        RecognitionHints.terms(
+            vocabulary: CustomVocabulary.terms(vocabulary),
+            replacementTargets: replacementTargets
+        )
     }
 
     private func promptTokens(_ tokenizer: (any WhisperTokenizer)?) -> [Int]? {

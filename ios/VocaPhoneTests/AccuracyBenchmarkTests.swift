@@ -25,7 +25,14 @@ import Testing
 /// into the finishing funnel. Every other clip is decoded with none, unless
 /// `VOCA_ASR_BENCH_BACKGROUND` names `vocab-en`: then it is decoded with that
 /// set's whole term list, which is what ordinary speech meets when a user with
-/// a long vocabulary dictates something unrelated to it.
+/// a long vocabulary dictates something unrelated to it. Finishing also gets
+/// the words the engine was unsure of, as the app passes them, and they are
+/// written out as `unsure` (null when the engine reports no confidence).
+///
+/// `VOCA_ASR_BENCH_FINISH_VOCABULARY` names a file of terms, one per line,
+/// that clips without a vocabulary of their own are finished with a second
+/// time, as `finishedVocabulary`: the same decode, so the two columns differ
+/// only by what correction did to ordinary speech.
 ///
 /// A clip already in the results file is skipped, so an interrupted run picks
 /// up where it stopped.
@@ -34,6 +41,7 @@ import Testing
 struct AccuracyBenchmarkTests {
     @Test func decodeEverySet() async throws {
         let configuration = try #require(AccuracyBenchmark.configuration)
+        #expect(!AccuracyBenchmark.englishWords.isEmpty, "assets/keyboard/en.txt not found")
         for set in configuration.sets {
             let clips = try AccuracyBenchmark.clips(in: set, limit: configuration.limit)
             guard let language = clips.first?.language else { continue }
@@ -65,6 +73,8 @@ enum AccuracyBenchmark {
         /// text, or nil for none. See the type's documentation.
         let background: String?
         let backgroundName: String
+        /// Terms for `finishedVocabulary`, or nil.
+        let finishVocabulary: [String]?
     }
 
     struct Clip: Decodable {
@@ -88,6 +98,8 @@ enum AccuracyBenchmark {
         let finished: String
         let milliseconds: Int
         let emptyWindows: Int
+        let unsure: [String]?
+        let finishedVocabulary: String?
     }
 
     nonisolated static let configuration: Configuration? = {
@@ -109,7 +121,10 @@ enum AccuracyBenchmark {
             tag: environment["VOCA_ASR_BENCH_TAG"].flatMap { $0.isEmpty ? nil : $0 } ?? "current",
             quality: environment["VOCA_ASR_BENCH_QUALITY"].flatMap(TranscriptionQuality.init(rawValue:)) ?? .default,
             background: backgroundVocabulary(environment["VOCA_ASR_BENCH_BACKGROUND"] ?? ""),
-            backgroundName: environment["VOCA_ASR_BENCH_BACKGROUND"] ?? ""
+            backgroundName: environment["VOCA_ASR_BENCH_BACKGROUND"] ?? "",
+            finishVocabulary: environment["VOCA_ASR_BENCH_FINISH_VOCABULARY"]
+                .flatMap { $0.isEmpty ? nil : try? String(contentsOfFile: $0, encoding: .utf8) }
+                .map(CustomVocabulary.terms)
         )
     }()
 
@@ -162,6 +177,11 @@ enum AccuracyBenchmark {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         var settings = ["quality": configuration.quality.rawValue]
         if !configuration.backgroundName.isEmpty { settings["background"] = configuration.backgroundName }
+        // The list itself, not its file name: a resume with other terms, or
+        // with none where there were some, must not pass as the same control.
+        if let terms = configuration.finishVocabulary {
+            settings["finishVocabulary"] = terms.joined(separator: "\n")
+        }
         try checkSettings(in: output, settings)
         let file = output.appendingPathComponent("\(set).\(path).jsonl")
         try trimIncompleteRecord(file)
@@ -186,26 +206,56 @@ enum AccuracyBenchmark {
         for clip in clips where !done.contains(clip.id) {
             let samples = try loadSamples(configuration.root.appendingPathComponent("sets/\(set)/\(clip.file)"))
             let started = Date()
-            let (raw, emptyWindows) = try await decode(samples, clip: clip, model: configuration.model, path: path)
+            let result = try await decode(samples, clip: clip, model: configuration.model, path: path)
             let milliseconds = Int(Date().timeIntervalSince(started) * 1_000)
-            let finished = DictatedTranscript.finished(
-                raw,
-                style: .casual,
-                language: clip.language,
-                repairSpeech: true,
-                numbersAsDigits: true,
-                spokenEmoji: true,
-                snippets: [],
-                vocabulary: CustomVocabulary.terms(vocabularyText(clip))
+            let unsure = result.confidence.lowConfidenceWords
+            let finished = finish(
+                result.text, language: clip.language,
+                vocabulary: CustomVocabulary.terms(vocabularyText(clip)), unsure: unsure
             )
+            let finishedVocabulary = clip.vocabulary == nil
+                ? configuration.finishVocabulary.map {
+                    finish(result.text, language: clip.language, vocabulary: $0, unsure: unsure)
+                }
+                : nil
             let hypothesis = Hypothesis(
-                id: clip.id, raw: raw, finished: finished,
-                milliseconds: milliseconds, emptyWindows: emptyWindows
+                id: clip.id, raw: result.text, finished: finished,
+                milliseconds: milliseconds, emptyWindows: result.emptyWindows,
+                unsure: unsure.map { $0.sorted() }, finishedVocabulary: finishedVocabulary
             )
             try handle.write(contentsOf: encoder.encode(hypothesis) + Data("\n".utf8))
             decoded += 1
         }
         print("asr-bench: \(configuration.model) \(set).\(path): decoded \(decoded), \(done.count) already done")
+    }
+
+    /// The shipped English word list, read from the repository. The test
+    /// bundle has no host app, so `EnglishWords` finds no `en.txt` in it and
+    /// would call every word unknown: correction would respell words the app
+    /// leaves alone, and the English gate would never open on Automatic.
+    static let englishWords: Set<String> = {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("assets/keyboard/en.txt")
+        let text = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        return Set(text.split(whereSeparator: \.isNewline).map { $0.lowercased() })
+    }()
+
+    /// As the app finishes an on-device dictation, with no replacements.
+    static func finish(_ raw: String, language: String, vocabulary: [String], unsure: Set<String>?) -> String {
+        DictatedTranscript.finished(
+            raw,
+            style: .casual,
+            language: language,
+            repairSpeech: true,
+            numbersAsDigits: true,
+            spokenEmoji: true,
+            snippets: [],
+            vocabulary: vocabulary,
+            replacements: [],
+            lowConfidenceWords: unsure,
+            isDictionaryWord: englishWords.contains
+        )
     }
 
     /// A run resumed with different settings would mix two measurements under
@@ -235,9 +285,15 @@ enum AccuracyBenchmark {
         try handle.truncate(atOffset: UInt64(keep))
     }
 
+    struct Decoded {
+        let text: String
+        var emptyWindows = 0
+        var confidence: RecognitionConfidence = .unreported
+    }
+
     private static func decode(
         _ samples: [Float], clip: Clip, model: String, path: String
-    ) async throws -> (String, Int) {
+    ) async throws -> Decoded {
         let descriptor = try #require(LocalModelCatalog.descriptor(for: model))
         let language = clip.language
         let vocabulary = vocabularyText(clip)
@@ -247,12 +303,16 @@ enum AccuracyBenchmark {
         case (.whisperKit, "streamed"):
             return try await Whisper.streamed(samples, language: language, vocabulary: vocabulary)
         case (.sherpaOnnx, "file"):
-            return (try Sherpa.file(samples, language: language, hotwords: Sherpa.hotwords(vocabulary)), 0)
+            let transcript = try Sherpa.file(samples, language: language, hotwords: Sherpa.hotwords(vocabulary))
+            return Decoded(text: transcript.text, confidence: transcript.confidence)
         case (.sherpaOnnx, "streamed"):
-            return (try await Sherpa.streamed(samples, language: language, hotwords: Sherpa.hotwords(vocabulary)), 0)
+            let transcript = try await Sherpa.streamed(
+                samples, language: language, hotwords: Sherpa.hotwords(vocabulary)
+            )
+            return Decoded(text: transcript.text, confidence: transcript.confidence)
         default:
             Issue.record("unknown path \(path)")
-            return ("", 0)
+            return Decoded(text: "")
         }
     }
 
@@ -298,11 +358,15 @@ enum AccuracyBenchmark {
             return settings.decodingOptions(for: engine)
         }
 
-        private static func text(_ results: [TranscriptionResult]) -> String {
-            results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        private static func decoded(_ results: [TranscriptionResult], empty: Int, engine: WhisperKit) -> Decoded {
+            Decoded(
+                text: results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines),
+                emptyWindows: empty,
+                confidence: WhisperTranscription.confidence(results, tokenizer: engine.tokenizer)
+            )
         }
 
-        static func file(_ samples: [Float], language: String, vocabulary: String?) async throws -> (String, Int) {
+        static func file(_ samples: [Float], language: String, vocabulary: String?) async throws -> Decoded {
             nonisolated(unsafe) let engine = try await loaded()
             var empty = 0
             let results = try await WhisperTranscription.transcribe(
@@ -313,14 +377,14 @@ enum AccuracyBenchmark {
             ) {
                 try await engine.transcribe(audioArray: $0, decodeOptions: $1)
             }
-            return (text(results), empty)
+            return decoded(results, empty: empty, engine: engine)
         }
 
         /// As `LocalModelManager` decodes a dictation: early decodes at each pause
         /// into the dictation's cache, each levelled keeping the gain the last
         /// one settled on, then the trimmed recording at Finish, levelled the
         /// same way.
-        static func streamed(_ captured: [Float], language: String, vocabulary: String?) async throws -> (String, Int) {
+        static func streamed(_ captured: [Float], language: String, vocabulary: String?) async throws -> Decoded {
             nonisolated(unsafe) let engine = try await loaded()
             let options = options(language, vocabulary: vocabulary, engine: engine)
             let cache = WhisperWindowCache()
@@ -348,7 +412,7 @@ enum AccuracyBenchmark {
             ) {
                 try await engine.transcribe(audioArray: $0, decodeOptions: $1)
             }
-            return (text(results), empty)
+            return decoded(results, empty: empty, engine: engine)
         }
     }
 
@@ -424,19 +488,21 @@ enum AccuracyBenchmark {
             return RecognitionHints.sherpaHotwords(for: descriptor, terms: terms)
         }
 
-        static func file(_ samples: [Float], language: String, hotwords: String?) throws -> String {
+        static func file(_ samples: [Float], language: String, hotwords: String?) throws -> SherpaTranscript {
             let outcome = try recognizer(language, hotwords: hotwords).transcribe(
                 SpeechAudioConditioning.condition(samples), hotwords: hotwords
             )
             if let failure = outcome.nativeFailure {
                 Issue.record("sherpa decode failed natively: \(failure)")
             }
-            return outcome.transcriptOrEmpty.text
+            return outcome.transcriptOrEmpty
         }
 
         /// As `SherpaEndToEnd.dictation`: streamed while recording, then the
         /// whole file when the stream came back empty or lost a chunk.
-        static func streamed(_ captured: [Float], language: String, hotwords: String?) async throws -> String {
+        static func streamed(
+            _ captured: [Float], language: String, hotwords: String?
+        ) async throws -> SherpaTranscript {
             let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
             let session = SherpaIncrementalSession(
                 chunks: chunks, recognizer: try recognizer(language, hotwords: hotwords), hotwords: hotwords
@@ -449,12 +515,12 @@ enum AccuracyBenchmark {
             }
             continuation.finish()
             let streamed = await session.finish()
-            var text = streamed.transcript.text
-            if text.isEmpty || streamed.droppedAudibleChunk {
+            var transcript = streamed.transcript
+            if transcript.text.isEmpty || streamed.droppedAudibleChunk {
                 let wholeFile = try file(captured, language: language, hotwords: hotwords)
-                if streamed.supersededBy(wholeFile) { text = wholeFile }
+                if streamed.supersededBy(wholeFile.text) { transcript = wholeFile }
             }
-            return text
+            return transcript
         }
     }
 

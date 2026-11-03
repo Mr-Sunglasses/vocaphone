@@ -9,8 +9,9 @@ import Foundation
 /// own vocabulary, so every engine that has to shorten it cuts from the front
 /// and the user's own words are the last to go. Within each source the term
 /// its caller ranks first ends up last, so the cut takes a source's least
-/// important term first. Today only the vocabulary is filled in; the other two
-/// sources are where replacements and on-screen terms will join it.
+/// important term first. The vocabulary and replacement targets
+/// (`WordReplacements.hintTargets`) are filled in; on-screen terms are where
+/// the text around the cursor will join them.
 ///
 /// What an engine keeps it writes most important first, which for the
 /// vocabulary alone is the order the user wrote it: the order the prompt has

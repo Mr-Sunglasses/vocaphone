@@ -138,6 +138,15 @@ internal object SettingsHelp {
                 "Parakeet Unified models are also nudged toward them while decoding. " +
                 "They have room for only part of a long list, so put the words that " +
                 "matter most first.",
+            "In English, a word that sounds like one of yours is fixed too, and two " +
+                "or three words heard for one — \"cooper netties\" for Kubernetes — " +
+                "when the model was unsure of them. An ordinary word on its own is " +
+                "never changed.",
+            "Replacements are for what no spelling fixes: when dictation writes " +
+                "\"get hub\", type \"GitHub\". They match whole words exactly, " +
+                "ignoring case, in every language and every writing style except Raw, " +
+                "and Whisper, Qwen3-ASR and Parakeet Unified models listen for what " +
+                "they write.",
         ),
     )
 }

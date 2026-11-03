@@ -32,9 +32,12 @@ package com.vocahq.vocaphone.core
  *    twice is how "Hello." becomes "Hello.." on one route and not the other.
  * 6. Custom vocabulary — after styling, so the user's own capitalization of a
  *    name is the last word on it; before spoken emoji and digits. Every route,
- *    because only Whisper can be prompted with the list. Never for `RAW`.
- *    One-letter slips are corrected only in English text; other languages get
- *    spacing and case.
+ *    because only Whisper can be prompted with the list. Never for `RAW`. The
+ *    user's replacements first ("get hub" → "GitHub"), exact and in any
+ *    language; then custom words, which leave a replacement's text alone.
+ *    One-letter slips and sound-alikes are corrected only in English text;
+ *    other languages get spacing and case. `lowConfidenceWords` is what the
+ *    engine was unsure of, or null when it does not say ([RecognitionConfidence]).
  * 7. Spoken emoji — after styling, because the styler has to see "emoji" as an
  *    ordinary word to capitalize and terminate around it; before digits,
  *    because the table's keys are words — "hundred emoji" is 💯, and once
@@ -57,6 +60,8 @@ object DictatedTranscript {
         chineseScript: ChineseScript = ChineseScript.UNCHANGED,
         snippets: List<Snippet> = emptyList(),
         vocabulary: List<String> = emptyList(),
+        replacements: List<WordReplacement> = emptyList(),
+        lowConfidenceWords: Set<String>? = null,
         isDictionaryWord: (String) -> Boolean = { false },
         grammar: GrammarStage? = null,
     ): String {
@@ -78,18 +83,7 @@ object DictatedTranscript {
         // Never for RAW, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         val spelled = if (style != WritingStyle.RAW) {
-            // A trigger corrected into a term would never expand. Found by the
-            // expander's own pattern, so exactly what it will match.
-            VocabularyCorrection.apply(
-                styled,
-                vocabulary,
-                isDictionaryWord,
-                SnippetExpander.triggerRanges(styled, snippets),
-                // The word list that keeps a real word from being taken for a
-                // near miss is English; in any other language nothing would.
-                nearMisses = vocabulary.isNotEmpty() &&
-                    TranscriptRepair.isEnglish(styled, language, isDictionaryWord),
-            )
+            spell(styled, language, snippets, vocabulary, replacements, lowConfidenceWords, isDictionaryWord)
         } else {
             styled
         }
@@ -102,6 +96,38 @@ object DictatedTranscript {
 
         val protected = SnippetExpander.protect(emojified, snippets)
         return protected.restore(SpokenNumbers.digitsIn(protected.text))
+    }
+
+    /** Step 6: the user's replacements, then their custom words. */
+    internal fun spell(
+        text: String,
+        language: String,
+        snippets: List<Snippet>,
+        vocabulary: List<String>,
+        replacements: List<WordReplacement>,
+        lowConfidenceWords: Set<String>?,
+        isDictionaryWord: (String) -> Boolean,
+    ): String {
+        // A trigger replaced or corrected into a term would never expand.
+        // Found by the expander's own pattern, so exactly what it will match.
+        val triggers = SnippetExpander.triggerRanges(text, snippets)
+        val replaced = WordReplacements.apply(text, replacements, triggers)
+        if (vocabulary.isEmpty()) return replaced.text
+        val protected = if (replaced.written.isEmpty()) {
+            triggers
+        } else {
+            SnippetExpander.triggerRanges(replaced.text, snippets) + replaced.written
+        }
+        return VocabularyCorrection.apply(
+            replaced.text,
+            vocabulary,
+            isDictionaryWord,
+            protected,
+            // The word list that keeps a real word from being taken for a near
+            // miss is English; in any other language nothing would.
+            nearMisses = TranscriptRepair.isEnglish(replaced.text, language, isDictionaryWord),
+            lowConfidenceWords = lowConfidenceWords,
+        )
     }
 
     /**

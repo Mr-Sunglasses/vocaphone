@@ -85,6 +85,12 @@ enum VocaPhoneSherpaDecodeStatus {
 /// `last_token_seconds`, which may be NULL, receives when the last token
 /// began, in seconds from the start of `samples`, or -1 when there was no
 /// token or the model reports no timestamps.
+///
+/// `confidence` receives one line per decoded token, `<log probability>\t<token>`,
+/// for the families whose result carries `ys_log_probs` (the transducers:
+/// Parakeet and Zipformer, greedy or beam). It is set to an empty string for
+/// every other family, when it would not fit, and may be NULL if not wanted.
+/// See `RecognitionConfidence`.
 int VocaPhoneSherpaDecode(
     VocaPhoneSherpaRecognizer recognizer,
     const float *samples,
@@ -94,7 +100,9 @@ int VocaPhoneSherpaDecode(
     int32_t output_capacity,
     char *language,
     int32_t language_capacity,
-    float *last_token_seconds
+    float *last_token_seconds,
+    char *confidence,
+    int32_t confidence_capacity
 );
 
 /// Joins decoded tokens into a transcript, without the first word's leading

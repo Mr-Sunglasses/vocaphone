@@ -19,6 +19,7 @@ import com.vocahq.vocaphone.audio.SilentCapture
 import com.vocahq.vocaphone.audio.WavWriter
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
+import com.vocahq.vocaphone.core.WordReplacements
 import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
@@ -739,6 +740,7 @@ class DictationController(
                         configuration.transcriptionQuality,
                         configuration.translationTarget,
                         configuration.whisperVocabulary,
+                        WordReplacements.hintTargets(configuration.replacements),
                     )
                 }
                 try {
@@ -900,6 +902,7 @@ class DictationController(
                     configuration.transcriptionQuality,
                     configuration.translationTarget,
                     configuration.whisperVocabulary,
+                    WordReplacements.hintTargets(configuration.replacements),
                 )
             }
         }
@@ -915,6 +918,7 @@ class DictationController(
                     quality = configuration.transcriptionQuality,
                     translateTo = configuration.translationTarget,
                     vocabulary = configuration.whisperVocabulary,
+                    replacementTargets = WordReplacements.hintTargets(configuration.replacements),
                 )
             }
         } else {
@@ -1345,6 +1349,7 @@ class DictationController(
                 chineseScript = configuration.chineseScript,
                 snippets = configuration.snippets,
                 vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+                replacements = configuration.replacements,
                 isDictionaryWord = ::isEnglishWord,
             )
             if (transcript != null && cleaned.isEmpty()) {
@@ -1458,6 +1463,7 @@ class DictationController(
                 chineseScript = configuration.chineseScript,
                 snippets = configuration.snippets,
                 vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+                replacements = configuration.replacements,
                 isDictionaryWord = ::isEnglishWord,
             )
             if (transcript.isEmpty()) {
@@ -1572,6 +1578,7 @@ class DictationController(
             configuration.whisperVocabulary,
             conditioningStartSample,
             configuration.translationTarget,
+            WordReplacements.hintTargets(configuration.replacements),
         )
         val transcript = styleLocalTranscript(local, configuration)
         if (transcript.isEmpty()) {
@@ -1613,6 +1620,8 @@ class DictationController(
         chineseScript = configuration.chineseScript,
         snippets = configuration.snippets,
         vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+        replacements = configuration.replacements,
+        lowConfidenceWords = local.confidence.lowConfidenceWords,
         isDictionaryWord = ::isEnglishWord,
         // Gateway routes never get here; they pass styledUpstream instead.
         grammar = grammar?.takeIf { configuration.fixGrammar && useGrammar },

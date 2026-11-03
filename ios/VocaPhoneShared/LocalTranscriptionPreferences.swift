@@ -8,6 +8,7 @@ enum LocalTranscriptionPreferences {
     static let modelKey = "localTranscriptionModel"
     static let qualityKey = "localTranscriptionQuality"
     static let vocabularyKey = "localTranscriptionVocabulary"
+    static let replacementsKey = "localTranscriptionReplacements"
     static let transcriptRetentionKey = "transcriptRetention"
 
     nonisolated(unsafe) private static let defaults = UserDefaults(
@@ -95,5 +96,13 @@ enum LocalTranscriptionPreferences {
     static var customVocabulary: String {
         get { defaults?.string(forKey: vocabularyKey) ?? "" }
         set { defaults?.set(newValue, forKey: vocabularyKey) }
+    }
+
+    /// The user's "heard → written" replacements, next to the vocabulary they
+    /// work with. JSON, like snippets; unreadable storage is no replacements
+    /// rather than a failed dictation. See `WordReplacements`.
+    static var replacements: [WordReplacement] {
+        get { WordReplacement.decode(defaults?.data(forKey: replacementsKey)) }
+        set { defaults?.set(WordReplacement.encode(newValue), forKey: replacementsKey) }
     }
 }

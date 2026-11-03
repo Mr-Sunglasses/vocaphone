@@ -90,6 +90,25 @@ spelled-out numbers are not errors. Hindi keeps its vowel signs, which
 Whisper's basic normaliser strips, and also reports character error rate
 (CER).
 
+Each record also carries `unsure`: the words the engine decoded below 0.6
+probability every time it heard them, which finishing uses to decide whether
+ordinary words may be a misheard custom word, or `null` for an engine that
+reports no confidence (see `RecognitionConfidence`).
+
+To check that custom-word correction leaves ordinary speech alone, give a run
+a control vocabulary. Clips without a vocabulary of their own are then also
+finished with it, as `finishedVocabulary`, from the same decode, and `score.py`
+prints the WER with and without it and how many clips it changed:
+
+```bash
+python3 -c 'import json; print("\n".join(t["term"] for t in json.load(open("tools/asr-bench/vocab_en.json"))["terms"]))' \
+    > ~/.cache/vocaphone/asr-bench/vocab-en-terms.txt
+just ios accuracy parakeet-unified-0.6b-en control "librispeech-clean librispeech-other" file 50 \
+    balanced ~/.cache/vocaphone/asr-bench/vocab-en-terms.txt
+just android accuracy small-q8_0 control "librispeech-clean librispeech-other" model balanced 50 \
+    ~/.cache/vocaphone/asr-bench/vocab-en-terms.txt
+```
+
 `vocab-en` adds **term accuracy**: of every use of a vocabulary term in the
 reference, the share the text spells exactly, case and all. "Postgres QL",
 "postgresql" and "Tail scale" are misses. WER barely moves when one word in

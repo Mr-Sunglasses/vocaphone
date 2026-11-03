@@ -80,6 +80,16 @@ used unchanged and the diagnostic log records only that it happened
 (`grammar_failed` and similar), never any text. It reports nothing to usage
 statistics.
 
+**Custom words and replacements** (Settings › Dictation on iOS, Settings ›
+Personal dictionary on Android) are stored on the phone: in the App Group
+defaults on iOS, beside the other dictation settings, and in the app's own
+settings store on Android. They are applied to the finished transcript on the
+phone, on every route, and passed to an on-device Whisper or Qwen3-ASR model as
+a hint. They are never sent to a gateway, logged, or included in a diagnostics
+export. To decide whether ordinary words were a misheard custom word, the
+on-device engines' per-word confidence is read in memory for that one
+dictation and discarded with it.
+
 **Writing check (English)** is VocaPhone's Grammarly-style checker for typed
 text. It has four ways in, and every one of them checks on the phone:
 

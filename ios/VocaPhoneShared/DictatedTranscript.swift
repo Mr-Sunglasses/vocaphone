@@ -33,8 +33,12 @@ import Foundation
 ///    a name is the last word on it rather than something sentence case
 ///    overrides; before spoken emoji and digits, which could otherwise turn
 ///    part of a term into a glyph. Every route, because only Whisper can be
-///    prompted with the list. Never for `raw`. One-letter slips are corrected
-///    only in English text; other languages get spacing and case.
+///    prompted with the list. Never for `raw`. The user's replacements first
+///    ("get hub" → "GitHub"), exact and in any language; then custom words,
+///    which leave a replacement's text alone. One-letter slips and sound-alikes
+///    are corrected only in English text; other languages get spacing and
+///    case. `lowConfidenceWords` is what the engine was unsure of, or nil when
+///    it does not say (`RecognitionConfidence`).
 /// 7. Spoken emoji. After styling, because the styler has to see "emoji" as
 ///    an ordinary word to capitalize and terminate around it; before digits,
 ///    because the table's keys are words — "hundred emoji" is 💯, and once
@@ -62,6 +66,8 @@ enum DictatedTranscript {
         snippets: [Snippet] = SnippetStore.snippets,
         snippetExpander: SnippetExpanding = SnippetExpander(),
         vocabulary: [String] = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary),
+        replacements: [WordReplacement] = LocalTranscriptionPreferences.replacements,
+        lowConfidenceWords: Set<String>? = nil,
         isDictionaryWord: (String) -> Bool = EnglishWords.contains,
         grammar: (any GrammarStage)? = nil,
         learnedWords: [String] = []
@@ -87,18 +93,14 @@ enum DictatedTranscript {
         // Never for `raw`, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         let spelled = style != .raw
-            ? VocabularyCorrection.apply(
+            ? spell(
                 styled,
-                terms: vocabulary,
-                isDictionaryWord: isDictionaryWord,
-                // A trigger corrected into a term would never expand. Found by
-                // the expander's own pattern, so exactly what it will match.
-                protectedRanges: SnippetExpander.triggerRanges(in: styled, using: snippets),
-                // The word list that keeps a real word from being taken for a
-                // near miss is English; in any other language nothing would.
-                nearMisses: !vocabulary.isEmpty && TranscriptRepair.isEnglish(
-                    styled, language: language, isDictionaryWord: isDictionaryWord
-                )
+                language: language,
+                snippets: snippets,
+                vocabulary: vocabulary,
+                replacements: replacements,
+                lowConfidenceWords: lowConfidenceWords,
+                isDictionaryWord: isDictionaryWord
             )
             : styled
         let emojified = spokenEmoji && style != .raw
@@ -106,6 +108,39 @@ enum DictatedTranscript {
             : spelled
         let digited = numbersAsDigits ? SpokenNumbers.digits(in: emojified) : emojified
         return snippetExpander.expand(in: digited, using: snippets)
+    }
+
+    /// Step 6: the user's replacements, then their custom words.
+    static func spell(
+        _ text: String,
+        language: String,
+        snippets: [Snippet],
+        vocabulary: [String],
+        replacements: [WordReplacement],
+        lowConfidenceWords: Set<String>?,
+        isDictionaryWord: (String) -> Bool
+    ) -> String {
+        // A trigger replaced or corrected into a term would never expand.
+        // Found by the expander's own pattern, so exactly what it will match.
+        let triggers = SnippetExpander.triggerRanges(in: text, using: snippets)
+        let replaced = WordReplacements.apply(text, replacements: replacements, protectedRanges: triggers)
+        guard !vocabulary.isEmpty else { return replaced.text }
+        let protected = replaced.written.isEmpty
+            ? triggers
+            : SnippetExpander.triggerRanges(in: replaced.text, using: snippets) + replaced.written
+        // The word list that keeps a real word from being taken for a near
+        // miss is English; in any other language nothing would.
+        let english = TranscriptRepair.isEnglish(
+            replaced.text, language: language, isDictionaryWord: isDictionaryWord
+        )
+        return VocabularyCorrection.apply(
+            replaced.text,
+            terms: vocabulary,
+            isDictionaryWord: isDictionaryWord,
+            protectedRanges: protected,
+            nearMisses: english,
+            lowConfidenceWords: lowConfidenceWords
+        )
     }
 
     /// Every word of the user's vocabulary, learned words and snippet

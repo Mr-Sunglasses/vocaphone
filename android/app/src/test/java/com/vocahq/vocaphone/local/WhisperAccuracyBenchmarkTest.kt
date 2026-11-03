@@ -9,6 +9,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.AfterClass
 import org.junit.Assume.assumeTrue
@@ -69,28 +70,41 @@ class WhisperAccuracyBenchmarkTest {
                     threads = WhisperCpuConfig.preferredThreadCount(model.id),
                 )
                 val milliseconds = (System.nanoTime() - started) / 1_000_000
-                val finished = DictatedTranscript.finished(
-                    transcription.text,
-                    style = WritingStyle.CASUAL,
-                    language = language,
-                    repairSpeech = true,
-                    numbersAsDigits = true,
-                    spokenEmoji = true,
-                    vocabulary = CustomVocabulary.terms(vocabulary),
-                    isDictionaryWord = { it in englishWords },
-                )
+                val unsure = transcription.confidence.lowConfidenceWords
+                val finished = finish(transcription.text, language, CustomVocabulary.terms(vocabulary), unsure)
                 val line = JSONObject()
                     .put("id", id)
                     .put("raw", transcription.text)
                     .put("finished", finished)
                     .put("milliseconds", milliseconds)
                     .put("emptyWindows", 0)
+                    .put("unsure", unsure?.let { JSONArray(it.sorted()) } ?: JSONObject.NULL)
+                if (!clip.has("vocabulary")) {
+                    finishVocabulary?.let {
+                        line.put("finishedVocabulary", finish(transcription.text, language, it, unsure))
+                    }
+                }
                 output.appendText(line.toString() + "\n")
                 decoded += 1
             }
             println("asr-bench: android-${model.id} $set.file: decoded $decoded, ${done.size} already done")
         }
     }
+
+    /** As the app finishes an on-device dictation, with no replacements. */
+    private fun finish(raw: String, language: String, vocabulary: List<String>, unsure: Set<String>?): String =
+        DictatedTranscript.finished(
+            raw,
+            style = WritingStyle.CASUAL,
+            language = language,
+            repairSpeech = true,
+            numbersAsDigits = true,
+            spokenEmoji = true,
+            vocabulary = vocabulary,
+            replacements = emptyList(),
+            lowConfidenceWords = unsure,
+            isDictionaryWord = { it in englishWords },
+        )
 
     /**
      * A run resumed with a different crop or quality would mix two
@@ -99,6 +113,9 @@ class WhisperAccuracyBenchmarkTest {
      */
     private fun checkSettings(directory: File) {
         val settings = JSONObject().put("crop", crop.toString()).put("quality", quality.storedValue)
+        // The list itself, not its file name: a resume with other terms, or
+        // with none where there were some, must not pass as the same control.
+        finishVocabulary?.let { settings.put("finishVocabulary", it.joinToString("\n")) }
         val file = File(directory, "settings.json")
         if (!file.exists()) {
             file.writeText(settings.toString())
@@ -160,6 +177,16 @@ class WhisperAccuracyBenchmarkTest {
         private val sets = (System.getProperty("vocaphone.asrBench.sets") ?: "librispeech-clean librispeech-other librispeech-long fleurs-hi")
             .split(" ").filter { it.isNotBlank() }
         private val limit = System.getProperty("vocaphone.asrBench.limit")?.toIntOrNull()
+
+        /**
+         * Terms, one a line, that clips without a vocabulary of their own are
+         * finished with a second time, as `finishedVocabulary`: the same
+         * decode, so the two columns differ only by what correction did to
+         * ordinary speech.
+         */
+        private val finishVocabulary: List<String>? =
+            System.getProperty("vocaphone.asrBench.finishVocabulary")?.ifBlank { null }
+                ?.let { CustomVocabulary.terms(File(it).readText()) }
         private val quality by lazy {
             TranscriptionQuality.entries.firstOrNull { it.storedValue == System.getProperty("vocaphone.asrBench.quality") }
                 ?: TranscriptionQuality.DEFAULT
