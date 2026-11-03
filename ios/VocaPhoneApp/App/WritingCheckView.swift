@@ -184,14 +184,31 @@ struct WritingCheckView: View {
         case cancelled
     }
 
+    /// How many more times a check is run while the grammar model is still
+    /// loading, and how long apart. The screen used to show the rules' cards
+    /// alone and stop, so a cold model's fixes came only after another edit.
+    private static let modelLoadRetries = 4
+    private static let modelLoadRetryDelay: Duration = .milliseconds(1500)
+
     private func check() async {
-        guard let checker, !text.isEmpty else {
+        guard checker != nil, !text.isEmpty else {
             report = nil
             notEnglish = nil
             return
         }
         isChecking = true
         defer { isChecking = false }
+        for attempt in 0...Self.modelLoadRetries {
+            guard await checkOnce(), attempt < Self.modelLoadRetries else { return }
+            try? await Task.sleep(for: Self.modelLoadRetryDelay)
+            if Task.isCancelled { return }
+        }
+    }
+
+    /// One check of `text`; true when the model had not answered yet, so the
+    /// caller should ask again.
+    private func checkOnce() async -> Bool {
+        guard let checker, !text.isEmpty else { return false }
         let snapshot = text
         let grammar = coordinator.grammar
         let modelReady = coordinator.grammarModel.isReady
@@ -209,7 +226,7 @@ struct WritingCheckView: View {
         let work = Task.detached(priority: .userInitiated) { () -> Outcome in
             // The rules are English ones; on another language they would
             // "correct" words that are right. As the keyboard does.
-            guard WritingCheck.applies(to: snapshot) else { return .notEnglish }
+            guard WritingCheck.applies(to: snapshot, spelling: checker.spelling) else { return .notEnglish }
             // The user opened Writing check to have this text checked: the thorough tier.
             let model: WritingCheck.Model? = modelReady ? { grammar.correctTyped($0, keeping: keep, thorough: true) } : nil
             guard let report = await checker.checkUntilCancelled(snapshot, model: model, options: options) else {
@@ -224,15 +241,15 @@ struct WritingCheckView: View {
         } onCancel: {
             work.cancel()
         }
-        guard !Task.isCancelled, snapshot == text else { return }
+        guard !Task.isCancelled, snapshot == text else { return false }
         var result: WritingCheck.Report
         switch outcome {
         case .cancelled:
-            return
+            return false
         case .notEnglish:
             report = nil
             notEnglish = snapshot
-            return
+            return false
         case let .checked(checked):
             notEnglish = nil
             result = checked
@@ -242,7 +259,7 @@ struct WritingCheckView: View {
         // and only what does not clash with what was already found.
         if #available(iOS 27, *) {
             let extra = await AppleProofreading.systemGrammar(snapshot, rules: checker.rules)
-            guard !Task.isCancelled, snapshot == text else { return }
+            guard !Task.isCancelled, snapshot == text else { return false }
             result = AppleProofreading.merged(result, extra, keep: keepSet, rules: checker.rules)
         }
         #endif
@@ -252,6 +269,7 @@ struct WritingCheckView: View {
             text: result.text, suggestions: result.suggestions, tones: [], stats: result.stats,
             modelPending: result.modelPending
         )
+        return result.modelPending
     }
 
     private static func categories() -> Set<WritingCategory> {

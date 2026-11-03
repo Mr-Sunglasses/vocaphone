@@ -407,7 +407,18 @@ struct DictatedTranscriptTests {
         )
         _ = finished("he don't know", language: "en", grammar: grammar)
         #expect(grammar.seen.count == 2)
+        // A snippet trigger keeps every word, so grammar cannot break its match.
         #expect(grammar.seen.first?.1 == ["vocagate", "kube", "ctl", "biskit", "my", "addy"])
+    }
+
+    @Test func aPhraseKeepsItsOwnWordsNotItsFunctionWords() {
+        #expect(DictatedTranscript.grammarKeeps(vocabulary: ["Bank of America"], snippets: []) == ["bank", "america"])
+        // A snippet trigger keeps all of them: grammar runs before it expands.
+        #expect(DictatedTranscript.grammarKeeps(
+            vocabulary: [], snippets: [Snippet(trigger: "we was", expansion: "x")]
+        ) == ["we", "was"])
+        // A one-word term is kept whatever it is: the user asked for it.
+        #expect(DictatedTranscript.grammarKeeps(vocabulary: ["Will"], snippets: []) == ["will"])
     }
 
     @Test func withoutAGrammarStageNothingChanges() {

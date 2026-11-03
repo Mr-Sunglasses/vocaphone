@@ -116,4 +116,46 @@ class WritingLanguageTest {
         assertFalse(WritingLanguage.applies("") { true })
         assertFalse(WritingLanguage.applies("42 — 7:30 !!") { true })
     }
+
+    private fun typed(text: String) = WritingLanguage.applies(text) {
+        WritingLanguage.typedEnglish(it, { w -> w in englishWords }, WritingFixtures.spelling)
+    }
+
+    /** The more typos, the surer the transcript test was that text was foreign; the keyboards never checked it. */
+    @Test
+    fun `typed English with many typos is still English`() {
+        for (text in listOf(
+            "Teh airport wil be busy",
+            "Teh aiport wil be busy tomorow",
+            "Recieved teh pacakge, thanks alot Sam",
+            "teh meeting wil be tommorow at noon",
+            "Pls snd me teh invoce for Acme asap",
+            "teh kids plays outsdie evry evening aftr school",
+            "kal meeting hai, please send the deck to me",
+            // "per" is English too: the foreign-word veto must not count it.
+            "The rate is per hour, not per day, and not per week or per month",
+            "Are you going to Los Angeles or Las Vegas this year",
+        )) assertTrue(text, typed(text))
+    }
+
+    @Test
+    fun `other languages typed in Latin letters are still not English`() {
+        for (text in listOf(
+            "Je ne sais pas ce que tu veux dire",
+            "Voici la personne dont elle parle souvent.",
+            "kal milte hai bro tu aa jana time pe",
+            "no se que hacer con mi vida ahora",
+            "Ich habe keine Zeit heute abend fur dich",
+        )) assertFalse(text, typed(text))
+    }
+
+    @Test
+    fun `a slip of a marker word counts as the marker`() {
+        assertEquals("the", WritingLanguage.markerSlip("teh"))
+        assertEquals("because", WritingLanguage.markerSlip("becuase"))
+        assertEquals("their", WritingLanguage.markerSlip("thier"))
+        assertEquals("really", WritingLanguage.markerSlip("realy"))
+        assertEquals(null, WritingLanguage.markerSlip("the"))
+        assertEquals(null, WritingLanguage.markerSlip("hai"))
+    }
 }

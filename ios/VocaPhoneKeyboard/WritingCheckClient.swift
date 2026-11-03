@@ -84,8 +84,10 @@ final class WritingCheckClient {
     private(set) var isChecking = false
     /// Called whenever `report` or `isChecking` changes.
     var onChange: (() -> Void)?
-    /// The language gate: the rules and the model are English.
-    var isEnglish: (String) -> Bool = { _ in true }
+    /// The language gate: the rules and the model are English. It may look
+    /// words up in the spelling dictionary, so it runs with the check, off
+    /// the main thread.
+    var isEnglish: @Sendable (String) -> Bool = { _ in true }
 
     private let store: SharedStore
     private let isAppRunning: () -> Bool
@@ -104,7 +106,7 @@ final class WritingCheckClient {
     private var running: Task<Void, Never>?
     /// The check itself, off the main thread: cancelled once its report is no
     /// longer wanted, so its dictionary scan stops instead of running on.
-    private var work: Task<(WritingCheck.Report, [String]), Never>?
+    private var work: Task<(WritingCheck.Report, [String])?, Never>?
     private var generation = 0
     private var observation: VocaPhoneDarwinObservation?
     /// The question in flight. It expires with the request, so an app that
@@ -245,6 +247,15 @@ final class WritingCheckClient {
         await running?.value
     }
 
+    /// A check asked for before the rules had loaded; `rulesLoaded()` runs it.
+    private var waitingForRules: (field: Field, options: Options, retry: Bool)?
+
+    /// The checker has just become available: runs the check that came too early, if any.
+    func rulesLoaded() {
+        guard let waiting = waitingForRules else { return }
+        check(waiting.field, waiting.options, retry: waiting.retry)
+    }
+
     /// Starts a check of `field`. The rules (and the answers the model has
     /// already given) run off the main thread; the report is published only
     /// if nothing newer has started and the field is still the one checked.
@@ -252,12 +263,19 @@ final class WritingCheckClient {
     /// after a pause or a tap, false when an answer has just come in.
     private func check(_ field: Field, _ options: Options, retry: Bool) {
         self.options = options
-        guard let checker = checker() else { return }
-        guard field.text.contains(where: \.isLetter), isEnglish(field.text) else {
+        guard let checker = checker() else {
+            // The rules are still parsing (a tap just after the keyboard
+            // appeared): run this check when they land instead of dropping it.
+            waitingForRules = (field, options, retry)
+            return
+        }
+        waitingForRules = nil
+        guard field.text.contains(where: \.isLetter) else {
             stopChecking()
             publish(nil)
             return
         }
+        let isEnglish = isEnglish
         generation += 1
         let current = generation
         let modelInUse = modelReady() && isAppRunning()
@@ -271,7 +289,8 @@ final class WritingCheckClient {
             onChange?()
         }
         work?.cancel()
-        let job = Task.detached(priority: .userInitiated) { () -> (WritingCheck.Report, [String]) in
+        let job = Task.detached(priority: .userInitiated) { () -> (WritingCheck.Report, [String])? in
+            guard isEnglish(field.text) else { return nil }
             var missing: [String] = []
             let model: WritingCheck.Model? = known.map { known in
                 { sentence in
@@ -284,9 +303,16 @@ final class WritingCheckClient {
         }
         work = job
         running = Task { [weak self] in
-            let (result, missing) = await job.value
+            let outcome = await job.value
             guard let self, current == generation else { return }
             isChecking = false
+            guard let outcome else {
+                // Not English: the rules have nothing to say about it.
+                report = nil
+                onChange?()
+                return
+            }
+            let (result, missing) = outcome
             guard lastField == field, self.options == options else {
                 onChange?()
                 return
@@ -498,6 +524,7 @@ final class WritingCheckClient {
         dismissed = []
         thorough = false
         lastField = nil
+        waitingForRules = nil
         publish(nil)
     }
 

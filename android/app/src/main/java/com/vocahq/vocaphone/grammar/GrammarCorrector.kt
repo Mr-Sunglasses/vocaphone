@@ -89,7 +89,7 @@ class GrammarCorrector internal constructor(
         }
     }
 
-    override fun correct(text: String, keep: Set<String>): String = run(text, keep, budgetMillis) ?: text
+    override fun correct(text: String, keep: Set<String>): String = run(text, keep, budgetMillis)?.text ?: text
 
     /**
      * For Writing check: [text] corrected, or null when the model is not
@@ -100,9 +100,21 @@ class GrammarCorrector internal constructor(
      * (see [GrammarTagger.THOROUGH_KEEP_BIAS]).
      */
     fun correctTyped(text: String, keep: Set<String>, thorough: Boolean = false): String? =
+        run(text, keep, TYPED_BUDGET_MILLIS, thorough)?.text
+
+    /**
+     * [correctTyped], saying whether the model got through [text]: not when
+     * the budget ran out before its last pass, or the model failed. The
+     * keyboard keeps only complete answers, so a slow first call is asked
+     * again rather than remembered as "no edits".
+     */
+    fun correctTypedAnswer(text: String, keep: Set<String>, thorough: Boolean = false): Answer? =
         run(text, keep, TYPED_BUDGET_MILLIS, thorough)
 
-    private fun run(text: String, keep: Set<String>, budget: Long, thorough: Boolean = false): String? {
+    /** The model's text, and whether it is the model's whole answer. */
+    data class Answer(val text: String, val complete: Boolean)
+
+    private fun run(text: String, keep: Set<String>, budget: Long, thorough: Boolean = false): Answer? {
         val current = synchronized(lock) { loaded }
         if (current == null) {
             // Not downloaded, not loaded yet, or failed to load: leave it.
@@ -114,20 +126,23 @@ class GrammarCorrector internal constructor(
         return try {
             val bias = bias(sureOnly, thorough)
             val corrected = synchronized(current) { current.tagger.correct(text, keep, deadline, bias = bias) }
+            // Past the deadline the tagger stops between chunks and passes,
+            // so what it gave back may be only part of its answer.
+            val complete = System.nanoTime() <= deadline
             when {
                 System.nanoTime() > deadline + budget * 1_000_000 -> {
                     // One sentence ran far past the budget (the tagger only
                     // checks between sentences and passes). Its result is still
                     // correct; the log says the phone is slower than assumed.
                     log("grammar_slow")
-                    corrected
+                    Answer(corrected, complete)
                 }
-                corrected.none(Char::isLetter) -> text
-                else -> corrected
+                corrected.none(Char::isLetter) -> Answer(text, complete)
+                else -> Answer(corrected, complete)
             }
         } catch (error: Throwable) {
             log("grammar_failed")
-            text
+            Answer(text, complete = false)
         }
     }
 

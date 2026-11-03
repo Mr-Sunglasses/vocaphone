@@ -63,11 +63,16 @@ dismisses, so a few more wrong ones are worth the many more right ones.
 
 | Set | Without the model (iOS keyboard without the app, F-Droid) | Rules and model, balanced | Rules and model, thorough |
 |---|---|---|---|
-| everyday (70) | 74.3% | 84.3% | 85.7% |
-| heldout (200) | 68.5% | 76.5% | 80.5% |
+| everyday (70) | 75.7% | 84.3% | 85.7% |
+| heldout (200) | 71.0% | 78.0% | 82.0% |
 | typed (193) | 67.4% | 79.8% | 82.4% |
 | dictation errors (163) | 65.0% | 85.3% | 86.5% |
 | correct lines flagged: heldout_clean (150), clean (300) | 0.0%, 0.0% | 0.7%, 0.3% | 0.7%, 0.7% |
+
+These score `check()` itself. Every surface first asks whether the text is
+English, so `everyLineGetsPastTheEnglishGate` also requires every line in every
+set to pass the gate the keyboards and the Writing check screen use: a line it
+refuses is one no user ever sees checked, whatever the table says.
 
 ## Typed text (Writing check)
 

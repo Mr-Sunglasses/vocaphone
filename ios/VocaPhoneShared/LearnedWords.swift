@@ -26,24 +26,37 @@ struct LearnedWords: Codable, Equatable, Sendable {
     /// Enough for a vocabulary, small enough that reading the file is never
     /// something the user waits for.
     static let capacity = 2_000
+    /// Words seen fewer than ``repetitionsBeforeLearning`` times, kept apart
+    /// from ``capacity`` so they never crowd out a learned word.
+    static let sightingCapacity = 500
     /// How many times an unknown word has to survive being typed before the
     /// keyboard concludes the user meant it.
     static let repetitionsBeforeLearning = 3
 
+    /// Every word seen, learned or not. A sighting is not a learned word: the
+    /// keyboard notes each word its list does not know, which is mostly typos,
+    /// so everything below reads only the entries that reached
+    /// ``repetitionsBeforeLearning``.
     private(set) var entries: [String: Entry] = [:]
 
-    var count: Int { entries.count }
+    private var learned: some Collection<Entry> {
+        entries.values.lazy.filter { $0.count >= Self.repetitionsBeforeLearning }
+    }
 
-    var words: [String] { entries.values.map(\.word) }
+    var count: Int { learned.count }
 
-    func contains(_ word: String) -> Bool { entries[Self.key(word)] != nil }
+    var words: [String] { learned.map(\.word) }
+
+    func contains(_ word: String) -> Bool {
+        (entries[Self.key(word)]?.count ?? 0) >= Self.repetitionsBeforeLearning
+    }
 
     /// Words starting with `prefix`, most used first — someone who has typed a
     /// name forty times should see it before one they typed twice.
     func completions(for prefix: String, limit: Int) -> [String] {
         guard !prefix.isEmpty, limit > 0 else { return [] }
         let lowered = Self.key(prefix)
-        return entries.values
+        return learned
             .filter { Self.key($0.word).hasPrefix(lowered) && $0.word.count > prefix.count }
             .sorted {
                 $0.count == $1.count ? $0.lastUsedAt > $1.lastUsedAt : $0.count > $1.count
@@ -80,13 +93,20 @@ struct LearnedWords: Codable, Equatable, Sendable {
 
     mutating func removeAll() { entries.removeAll() }
 
-    /// Least-recently-used eviction. Capacity is a memory bound, not a
-    /// judgement about which words matter.
+    /// Least-recently-used eviction, learned words and sightings each within
+    /// their own bound: a run of typos never pushes out a name the user typed
+    /// three times, and a store full of learned words still has room for a
+    /// new word to be seen three times.
     private mutating func evictIfNeeded() {
-        guard entries.count > Self.capacity else { return }
-        let doomed = entries.values
-            .sorted { $0.lastUsedAt < $1.lastUsedAt }
-            .prefix(entries.count - Self.capacity)
+        let threshold = Self.repetitionsBeforeLearning
+        let learnedCount = entries.values.count { $0.count >= threshold }
+        let sightings = entries.count - learnedCount
+        if learnedCount > Self.capacity { evictOldest(learnedCount - Self.capacity) { $0.count >= threshold } }
+        if sightings > Self.sightingCapacity { evictOldest(sightings - Self.sightingCapacity) { $0.count < threshold } }
+    }
+
+    private mutating func evictOldest(_ n: Int, where matches: (Entry) -> Bool) {
+        let doomed = entries.values.filter(matches).sorted { $0.lastUsedAt < $1.lastUsedAt }.prefix(n)
         for entry in doomed { entries.removeValue(forKey: Self.key(entry.word)) }
     }
 

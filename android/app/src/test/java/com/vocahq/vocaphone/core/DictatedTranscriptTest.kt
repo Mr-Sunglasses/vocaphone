@@ -382,7 +382,17 @@ class DictatedTranscriptTest {
         )
         DictatedTranscript.finished("he don't know", style = WritingStyle.FORMAL, language = "en", repairSpeech = false, grammar = grammar)
         assertEquals(2, grammar.seen.size)
+        // A snippet trigger keeps every word, so grammar cannot break its match.
         assertEquals(setOf("vocagate", "kube", "ctl", "my", "addy"), grammar.seen[0].second)
+    }
+
+    @Test
+    fun `a phrase keeps its own words, not its function words`() {
+        assertEquals(setOf("bank", "america"), DictatedTranscript.grammarKeeps(listOf("Bank of America"), emptyList()))
+        // A snippet trigger keeps all of them: grammar runs before it expands.
+        assertEquals(setOf("we", "was"), DictatedTranscript.grammarKeeps(emptyList(), listOf(Snippet("1", "we was", "x"))))
+        // A one-word term is kept whatever it is: the user asked for it.
+        assertEquals(setOf("will"), DictatedTranscript.grammarKeeps(listOf("Will"), emptyList()))
     }
 
     @Test
