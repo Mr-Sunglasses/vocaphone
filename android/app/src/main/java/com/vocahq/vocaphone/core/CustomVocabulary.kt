@@ -21,8 +21,8 @@ object CustomVocabulary {
     /**
      * What a model that cannot take a hint still does with the list: every
      * route spells close matches the user's way ([VocabularyCorrection]), but
-     * only Whisper's and Qwen3-ASR's decoders can be nudged toward the words
-     * while they listen
+     * only Whisper's, Qwen3-ASR's and Parakeet Unified's decoders can be nudged
+     * toward the words while they listen
      * ([com.vocahq.vocaphone.local.LocalModelDescriptor.supportsCustomVocabulary]).
      */
     fun spellingOnlyNote(modelName: String?): String? {

@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.core
 
+import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.SherpaFamily
 import java.util.Locale
 
@@ -27,9 +28,13 @@ import java.util.Locale
  * - Whisper (whisper.cpp here, WhisperKit on iOS): a comma-separated prompt
  *   that conditions the decoder, [whisperPrompt].
  * - Qwen3-ASR: comma-separated hotwords in its chat prompt, [qwen3Hotwords].
- * - Every other sherpa-onnx family: nothing. sherpa-onnx 1.13.8 biases only
- *   transducers, and only with a hotwords file and beam search, neither of
- *   which the app uses.
+ * - Parakeet Unified: hotwords its transducer's beam search boosts while it
+ *   decodes, [transducerHotwords]. sherpa-onnx 1.13.8 biases a transducer only
+ *   through beam search and a BPE vocabulary, which the app bundles for this
+ *   one model ([LocalModelDescriptor.hotwordVocabularyFile]).
+ * - Every other sherpa-onnx family: nothing. The other Parakeets are TDT
+ *   models, whose beam search on 1.13.8 can drop whole sentences, and the CTC
+ *   and non-autoregressive families condition on audio alone.
  *
  * Every engine still gets [VocabularyCorrection] afterwards, which spells close
  * misses the user's way from the whole vocabulary, whatever was cut here.
@@ -179,13 +184,63 @@ object RecognitionHints {
     }
 
     /**
-     * The hotwords a sherpa-onnx recognizer of [family] decodes with, or null
-     * for a family that takes none.
+     * Most hotwords a transducer is given.
      *
-     * Set as a stream option, never through `OfflineRecognizer.createStream(hotwords)`:
-     * that is the transducer contextual-biasing path, and every other family
-     * answers it by exiting the process.
+     * sherpa-onnx builds them into a small prefix tree once per decode, so the
+     * count costs next to nothing; what grows with it is the chance that some
+     * boosted spelling fits a stretch of ordinary speech. `vocab-en` clips
+     * carry six or so terms, and LibriSpeech was measured with all 56 of its
+     * terms boosted at once (docs/local-model-review.md); this leaves a user a
+     * little more than that.
      */
-    fun sherpaHotwords(family: SherpaFamily?, terms: List<String>): String? =
-        if (family == SherpaFamily.QWEN3_ASR) qwen3Hotwords(terms) else null
+    const val MAX_TRANSDUCER_HOTWORDS = 64
+
+    /**
+     * How strongly each word piece of a hotword is boosted, in log
+     * probability, and how many hypotheses the beam search keeps. Tuned on
+     * `tools/asr-bench`'s `vocab-en` set with LibriSpeech as the check that
+     * ordinary speech is not respelled; see docs/local-model-review.md.
+     */
+    const val TRANSDUCER_HOTWORD_SCORE = 2.0f
+    const val TRANSDUCER_BEAM_WIDTH = 4
+
+    /**
+     * A transducer's hotwords: the terms at the end of [terms], most important
+     * first, one phrase each, separated by "/" as sherpa-onnx's per-stream
+     * hotwords take them. Null when there are none.
+     *
+     * sherpa-onnx reads "/" as the phrase separator and a word that starts with
+     * ":" as a score, and its token lookup reads a word piece starting with "#"
+     * or "@" as a threshold or a label. Measured on 1.13.8, the term
+     * "foo :bar" throws inside sherpa-onnx, which through JNI is a crash, and
+     * "Kanishk #x" cut most of a sentence out of the transcript. None of the
+     * four can be part of a hotword, so each becomes a space, which splits the
+     * term into words the way the speaker would say them.
+     */
+    fun transducerHotwords(terms: List<String>): String? {
+        val kept = mutableListOf<String>()
+        for (term in terms.asReversed()) {
+            val cleaned = term.map { if (it in "/:#@" || it.isWhitespace()) ' ' else it }.joinToString("")
+            val phrase = cleaned.split(' ').filter { it.isNotEmpty() }.joinToString(" ")
+            if (phrase.isEmpty()) continue
+            if (kept.size >= MAX_TRANSDUCER_HOTWORDS) break
+            kept.add(phrase)
+        }
+        return if (kept.isEmpty()) null else kept.joinToString("/")
+    }
+
+    /**
+     * The hotwords a sherpa-onnx recognizer for [model] decodes with, or null
+     * for a model that takes none.
+     *
+     * Qwen3-ASR's are set as a stream option. A transducer's go through
+     * `OfflineRecognizer.createStream(hotwords)`, and only on a recognizer
+     * built for them (see [com.vocahq.vocaphone.local.SherpaSearch]): every
+     * other family answers that call by exiting the process.
+     */
+    fun sherpaHotwords(model: LocalModelDescriptor, terms: List<String>): String? = when {
+        model.hotwordVocabularyFile != null -> transducerHotwords(terms)
+        model.sherpaFamily == SherpaFamily.QWEN3_ASR -> qwen3Hotwords(terms)
+        else -> null
+    }
 }

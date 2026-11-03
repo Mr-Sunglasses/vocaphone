@@ -17,7 +17,9 @@ This reads:
 
 and asserts that every sherpa id exists in all three with the same repository,
 revision, per-file size and SHA-256, and that each entry's `sizeBytes` is the
-sum of the files it pins. The grammar model is checked the same way between
+sum of the files it pins. Each bundled hotword vocabulary,
+`assets/speech/<model id>.bpe.vocab` (see `bpe_vocab.py`), has to rebuild its
+model's pinned `tokens.txt` byte for byte: the same pieces in the same order. The grammar model is checked the same way between
 its two files: it is not a speech model, so it is in neither catalog. Offline and fast, so it is safe in CI -- use
 `pin_models.py` when you need to check the pins against Hugging Face itself.
 
@@ -28,6 +30,7 @@ Exits non-zero and prints every disagreement it finds.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -39,6 +42,7 @@ SHERPA_PINS = Path("ios/VocaPhoneApp/Models/sherpa_model_pins.json")
 WHISPER_PINS = Path("ios/VocaPhoneApp/Models/local_model_pins.json")
 KOTLIN_GRAMMAR = Path("android/app/src/main/java/com/vocahq/vocaphone/local/GrammarModelCatalog.kt")
 GRAMMAR_PINS = Path("ios/VocaPhoneApp/Models/grammar_model_pins.json")
+BPE_VOCABULARIES = Path("assets/speech")
 
 
 def _int(text: str) -> int:
@@ -108,6 +112,46 @@ def check_grammar(kotlin_source: str, pins: dict) -> list[str]:
     return problems
 
 
+def check_bpe_vocab(model_id: str, text: str, pin: dict | None) -> list[str]:
+    """A bundled `bpe_vocab` against its model's pinned `tokens.txt`.
+
+    sherpa-onnx turns each hotword into word pieces with the vocabulary and
+    then looks every piece up in `tokens.txt` by name, so the two have to list
+    the same pieces, and the ids it boosts only mean the right pieces if they
+    are in the same order. The NeMo token table is exactly the vocabulary's
+    pieces, `piece id` per line, followed by the transducer's blank; rebuilding
+    it from the vocabulary and comparing the digest pinned for the download
+    checks both without the model on disk.
+    """
+    if pin is None:
+        return [f"{model_id}: has a bundled bpe.vocab but is not in sherpa_model_pins"]
+    tokens = next((f for f in pin["files"] if f["path"] == "tokens.txt"), None)
+    if tokens is None:
+        return [f"{model_id}: has a bundled bpe.vocab but pins no tokens.txt"]
+    lines = text.split("\n")
+    if lines[-1] != "":
+        return [f"{model_id}: bpe.vocab does not end in a newline"]
+    pieces = []
+    for number, line in enumerate(lines[:-1], 1):
+        piece, tab, score = line.partition("\t")
+        try:
+            float(score)
+        except ValueError:
+            tab = ""
+        if not piece or not tab:
+            return [f"{model_id}: bpe.vocab line {number} is not piece<TAB>score: {line!r}"]
+        pieces.append(piece)
+    rebuilt = "".join(f"{piece} {index}\n" for index, piece in enumerate(pieces))
+    rebuilt += f"<blk> {len(pieces)}\n"
+    data = rebuilt.encode("utf-8")
+    if (len(data), hashlib.sha256(data).hexdigest()) != (tokens["size"], tokens["sha256"]):
+        return [
+            f"{model_id}: bpe.vocab's {len(pieces)} pieces do not rebuild the pinned tokens.txt "
+            "(different pieces, or a different order)"
+        ]
+    return []
+
+
 def read_ios() -> tuple[dict[str, dict], dict[str, dict]]:
     source = SWIFT_CATALOG.read_text()
     sherpa, whisper = {}, {}
@@ -170,6 +214,11 @@ def main() -> int:
         if pinned != a["files"]:
             problems.append(f"{model_id}: sherpa_model_pins files disagree with the Android PinnedFile set")
 
+    vocabularies = sorted(BPE_VOCABULARIES.glob("*.bpe.vocab"))
+    for path in vocabularies:
+        model_id = path.name.removesuffix(".bpe.vocab")
+        problems += check_bpe_vocab(model_id, path.read_text(encoding="utf-8"), sherpa_pins.get(model_id))
+
     grammar_problems = check_grammar(KOTLIN_GRAMMAR.read_text(), json.loads(GRAMMAR_PINS.read_text()))
     problems += grammar_problems
 
@@ -180,7 +229,8 @@ def main() -> int:
 
     print(
         f"OK: {len(android)} sherpa models agree across Android, iOS and the pin manifests; "
-        f"{len(ios_whisper)} WhisperKit models pinned; the grammar model agrees on both"
+        f"{len(ios_whisper)} WhisperKit models pinned; {len(vocabularies)} hotword vocabularies "
+        "match their models' tokens; the grammar model agrees on both"
     )
     return 0
 

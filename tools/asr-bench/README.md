@@ -14,6 +14,10 @@ just android accuracy small-q8_0 crop-off "librispeech-clean librispeech-other" 
 just ios accuracy qwen3-asr-0.6b vocab "vocab-en"
 just android accuracy small-q8_0 vocab "vocab-en"
 
+# Ordinary speech from a user with a long vocabulary: every LibriSpeech clip
+# decoded with all 56 vocab-en terms (the last argument; iOS only)
+just ios accuracy parakeet-unified-0.6b-en all56 "librispeech-clean librispeech-other" "file streamed" "" balanced vocab-en
+
 # Score again, compare two runs, or read the worst clips
 uv run --with-requirements tools/asr-bench/requirements.txt python tools/asr-bench/score.py --tag baseline --compare mytag
 uv run --with-requirements tools/asr-bench/requirements.txt python tools/asr-bench/score.py --tag baseline \
@@ -42,15 +46,19 @@ AGENTS.md keeps recordings and transcripts out of the repository.
 
 `vocab-en` is the one set that exercises custom vocabulary: LibriSpeech and
 FLEURS have almost no names or jargon, so they cannot show a vocabulary change
-helping or hurting. Each sentence ("Ask Siddharth to rotate the PostgreSQL
+helping. They can show one hurting: the iOS recipe's last argument,
+`background`, set to `vocab-en`, decodes every clip that has no vocabulary of
+its own with all 56 terms, which is what a user with a long list meets when
+they dictate something unrelated to it. Results record it, so a run cannot be
+resumed under the other setting. Each sentence ("Ask Siddharth to rotate the PostgreSQL
 password and update Tailscale") is spoken by one of six stock English voices
 (US, UK, Australian, Irish, Indian, South African), the way a person would say
 it: "postgres Q L", "cube control" for `kubectl`. Each clip carries the
 vocabulary a user would have entered: the terms it uses and four others from
 the same 56-term list, in an order fixed by the clip id. The runners pass that
 list to the app as its custom vocabulary, so it reaches the decoder (Whisper's
-prompt, Qwen3-ASR's hotwords) and the finishing funnel exactly as Settings
-would. Synthetic speech is cleaner than a person; read the set for the
+prompt, Qwen3-ASR's and Parakeet Unified's hotwords) and the finishing funnel
+exactly as Settings would. Synthetic speech is cleaner than a person; read the set for the
 difference a change makes, not as a phone's accuracy on names.
 
 `prepare.py` checks `vocab_en.json` against a pinned SHA-256 and records the

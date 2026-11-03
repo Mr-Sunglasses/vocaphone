@@ -26,7 +26,7 @@ def select(paths):
         if path in ("tools/android-sbom.init.gradle", "tools/complete_android_sbom.py",
                     "tools/native-dependencies.json", ".github/workflows/android-release.yml"):
             selected["android"] = True
-        if path.startswith("assets/keyboard/"):
+        if path.startswith(("assets/keyboard/", "assets/speech/")):
             selected.update(android=True, ios=True, assets=True)
         if path.startswith(("assets/", "tools/")) or path == ".github/workflows/quality-assets.yml":
             selected["assets"] = True

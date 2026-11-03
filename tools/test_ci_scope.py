@@ -14,6 +14,10 @@ class ScopeTests(unittest.TestCase):
         scope = select(["assets/keyboard/emoji.json"])
         self.assertTrue(all(scope[key] for key in ("android", "ios", "assets")))
 
+    def test_shared_speech_assets_require_both_platforms(self):
+        scope = select(["assets/speech/parakeet-unified-0.6b-en.bpe.vocab"])
+        self.assertTrue(all(scope[key] for key in ("android", "ios", "assets")))
+
     def test_scope_changes_exercise_every_check(self):
         self.assertTrue(all(select(["tools/ci_scope.py"]).values()))
 

@@ -738,6 +738,7 @@ class DictationController(
                         language,
                         configuration.transcriptionQuality,
                         configuration.translationTarget,
+                        configuration.whisperVocabulary,
                     )
                 }
                 try {
@@ -898,6 +899,7 @@ class DictationController(
                     configuration.effectiveLanguage.wireValue,
                     configuration.transcriptionQuality,
                     configuration.translationTarget,
+                    configuration.whisperVocabulary,
                 )
             }
         }

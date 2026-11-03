@@ -136,13 +136,39 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
     /// Whether a custom word list can reach this model while it decodes.
     ///
     /// Whisper's decoder reads previous text tokens, which is the slot a
-    /// vocabulary prompt goes into, and Qwen3-ASR is a language model whose
-    /// chat prompt takes hotwords (see `RecognitionHints`). The other sherpa
-    /// families have no equivalent: the CTC and non-autoregressive ones
-    /// condition on audio alone, and the ones that could be biased — the
-    /// transducers — need beam search and a BPE vocabulary file their upstream
-    /// repositories do not publish.
-    var supportsCustomVocabulary: Bool { engine == .whisperKit || sherpaFamily == .qwen3Asr }
+    /// vocabulary prompt goes into, Qwen3-ASR is a language model whose chat
+    /// prompt takes hotwords, and Parakeet Unified's transducer boosts them in
+    /// its beam search (see `RecognitionHints`). The other sherpa families
+    /// have no equivalent: the CTC and non-autoregressive ones condition on
+    /// audio alone, and the other transducers are left out for the reasons
+    /// under `hotwordVocabularyFile`.
+    var supportsCustomVocabulary: Bool {
+        engine == .whisperKit || sherpaFamily == .qwen3Asr || hotwordVocabularyFile != nil
+    }
+
+    /// The app-bundled BPE vocabulary that lets this model's transducer take
+    /// the user's words as hotwords, or nil for a model that does not.
+    ///
+    /// sherpa-onnx 1.13.8 biases a NeMo transducer only in
+    /// `modified_beam_search`, and only with a vocabulary to split each
+    /// hotword into the model's word pieces. The pinned exports carry the
+    /// token table but not the vocabulary, so the app ships one per model,
+    /// derived from NVIDIA's checkpoint by `tools/model-pins/bpe_vocab.py`
+    /// and checked against the pinned `tokens.txt` by `check_catalogs.py`.
+    ///
+    /// Parakeet Unified only. It is an RNN-T, and its beam search on the
+    /// pinned runtime dropped no speech where greedy kept it. Parakeet v2 and
+    /// v3 are TDT models, whose beam search on 1.13.8 can drop whole sentences
+    /// (sherpa-onnx #3267, fixed by #4084, which no release carries yet), so
+    /// they stay greedy until the runtime is bumped and each is measured
+    /// again; no other transducer has been measured with hotwords. Opting one
+    /// in is a vocabulary file and an entry here. The file is named
+    /// `<model id>.bpe.vocab`, the same on both platforms.
+    var hotwordVocabularyFile: String? {
+        Self.modelsWithHotwordVocabulary.contains(id) ? "\(id).bpe.vocab" : nil
+    }
+
+    static let modelsWithHotwordVocabulary: Set<String> = ["parakeet-unified-0.6b-en"]
 
     init(
         id: String,

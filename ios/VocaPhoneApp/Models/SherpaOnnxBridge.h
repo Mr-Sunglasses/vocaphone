@@ -26,6 +26,13 @@ enum VocaPhoneSherpaFamily {
 /// `decoding_method` is one of sherpa-onnx's literals — "greedy_search" or
 /// "modified_beam_search" — and `max_active_paths` is the beam width the latter
 /// searches. Only the transducer families act on either.
+///
+/// `bpe_vocab` is the path of a NeMo transducer's BPE vocabulary, or NULL or
+/// empty for none. With one, and only together with "modified_beam_search",
+/// the recognizer takes per-decode hotwords, each word piece of which is
+/// boosted by `hotwords_score`; see `VocaPhoneSherpaDecode`. Ignored for every
+/// other family and method, which is what keeps it from reaching a decoder
+/// that would answer it by exiting the process.
 VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     int family,
     const char *model1,
@@ -37,7 +44,9 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     const char *target_language,
     int32_t threads,
     const char *decoding_method,
-    int32_t max_active_paths
+    int32_t max_active_paths,
+    const char *bpe_vocab,
+    float hotwords_score
 );
 
 /// What a decode did, for the negative half of `VocaPhoneSherpaDecode`.
@@ -67,9 +76,15 @@ enum VocaPhoneSherpaDecodeStatus {
 /// the families VocaPhone ships, only SenseVoice does, as a `<|en|>`-style tag.
 /// It is set to an empty string otherwise, and may be NULL if not wanted.
 ///
-/// `hotwords` is a comma-separated list set as this decode's `hotwords` stream
-/// option, or NULL or empty for none. Only Qwen3-ASR reads the option; see
-/// `RecognitionHints.qwen3Hotwords`.
+/// `hotwords` is NULL or empty for none. A recognizer created with a
+/// `bpe_vocab` takes it as "/"-separated transducer hotwords for this decode
+/// (`RecognitionHints.transducerHotwords`). Any other recognizer sets it as
+/// the stream's `hotwords` option, which only Qwen3-ASR reads, as a
+/// comma-separated list (`RecognitionHints.qwen3Hotwords`).
+///
+/// `last_token_seconds`, which may be NULL, receives when the last token
+/// began, in seconds from the start of `samples`, or -1 when there was no
+/// token or the model reports no timestamps.
 int VocaPhoneSherpaDecode(
     VocaPhoneSherpaRecognizer recognizer,
     const float *samples,
@@ -78,7 +93,8 @@ int VocaPhoneSherpaDecode(
     char *output,
     int32_t output_capacity,
     char *language,
-    int32_t language_capacity
+    int32_t language_capacity,
+    float *last_token_seconds
 );
 
 /// Joins decoded tokens into a transcript, without the first word's leading

@@ -1,7 +1,7 @@
 package com.vocahq.vocaphone.core
 
 import com.vocahq.vocaphone.local.LocalModelCatalog
-import com.vocahq.vocaphone.local.SherpaFamily
+import com.vocahq.vocaphone.local.LocalModelEngine
 import com.vocahq.vocaphone.local.whisperPrompt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -171,20 +171,50 @@ class RecognitionHintsTest {
     }
 
     @Test
-    fun `only qwen3 takes hotwords`() {
-        val terms = listOf("Kanishk")
-        assertEquals("Kanishk", RecognitionHints.sherpaHotwords(SherpaFamily.QWEN3_ASR, terms))
-        SherpaFamily.entries.filter { it != SherpaFamily.QWEN3_ASR }.forEach { family ->
-            assertNull(family.name, RecognitionHints.sherpaHotwords(family, terms))
-        }
-        assertNull(RecognitionHints.sherpaHotwords(null, terms))
-        assertNull(RecognitionHints.sherpaHotwords(SherpaFamily.QWEN3_ASR, emptyList()))
+    fun `transducer hotwords are slash separated most important first`() {
+        val terms = RecognitionHints.terms(listOf("Kanishk", "Claude Code", "Tailscale"))
+        assertEquals("Kanishk/Claude Code/Tailscale", RecognitionHints.transducerHotwords(terms))
+        assertNull(RecognitionHints.transducerHotwords(emptyList()))
+        assertNull(RecognitionHints.transducerHotwords(listOf("  ", "/", ":#@")))
     }
 
     @Test
-    fun `whisper and qwen3 are the models a vocabulary reaches while decoding`() {
-        assertTrue(LocalModelCatalog.find("qwen3-asr-0.6b")!!.supportsCustomVocabulary)
-        assertTrue(LocalModelCatalog.find("small-q8_0")!!.supportsCustomVocabulary)
+    fun `transducer hotwords drop what sherpa would parse as syntax`() {
+        assertEquals("TCP IP", RecognitionHints.transducerHotwords(listOf("TCP/IP")))
+        assertEquals("Kanishk 2.0", RecognitionHints.transducerHotwords(listOf(":Kanishk:2.0")))
+        assertEquals("a b.com/C", RecognitionHints.transducerHotwords(listOf("C#", "a@b.com")))
+        assertEquals("Claude Code CLI", RecognitionHints.transducerHotwords(listOf("Claude\tCode\nCLI")))
+    }
+
+    @Test
+    fun `transducer hotwords keep the end of the list within their cap`() {
+        val terms = RecognitionHints.terms((1..100).map { "Name$it" })
+        val kept = RecognitionHints.transducerHotwords(terms)!!.split("/")
+        assertEquals(RecognitionHints.MAX_TRANSDUCER_HOTWORDS, kept.size)
+        assertEquals("Name1", kept.first())
+        assertEquals("Name${RecognitionHints.MAX_TRANSDUCER_HOTWORDS}", kept.last())
+    }
+
+    @Test
+    fun `each model takes its own hotwords`() {
+        val terms = RecognitionHints.terms(listOf("Kanishk", "Tailscale"))
+        val qwen = LocalModelCatalog.find("qwen3-asr-0.6b")!!
+        val unified = LocalModelCatalog.find("parakeet-unified-0.6b-en")!!
+        assertEquals("Kanishk,Tailscale", RecognitionHints.sherpaHotwords(qwen, terms))
+        assertEquals("Kanishk/Tailscale", RecognitionHints.sherpaHotwords(unified, terms))
+        assertNull(RecognitionHints.sherpaHotwords(unified, emptyList()))
+        val others = LocalModelCatalog.all.filter {
+            it.engine == LocalModelEngine.SHERPA_ONNX && it.id != qwen.id && it.id != unified.id
+        }
+        assertTrue(others.size > 5)
+        others.forEach { assertNull(it.id, RecognitionHints.sherpaHotwords(it, terms)) }
+    }
+
+    @Test
+    fun `whisper qwen3 and unified are the models a vocabulary reaches while decoding`() {
+        val reached = LocalModelCatalog.all.filter { it.supportsCustomVocabulary }.map { it.id }.toSet()
+        val whisper = LocalModelCatalog.all.filter { it.engine == LocalModelEngine.WHISPER }.map { it.id }.toSet()
+        assertEquals(whisper + setOf("qwen3-asr-0.6b", "parakeet-unified-0.6b-en"), reached)
         assertFalse(LocalModelCatalog.find("parakeet-tdt-0.6b-v2-en")!!.supportsCustomVocabulary)
     }
 }

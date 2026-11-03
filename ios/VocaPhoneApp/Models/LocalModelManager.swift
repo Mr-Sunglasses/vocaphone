@@ -147,6 +147,9 @@ final class LocalModelManager {
     /// Sherpa only: WhisperKit takes its decoding options per call, so quality
     /// never invalidates a loaded Whisper model.
     private var loadedQuality: TranscriptionQuality?
+    /// Sherpa only: whether the loaded recognizer was built to take the user's
+    /// words as transducer hotwords. See `SherpaSearch`.
+    private var loadedHotwordSearch = false
     /// The sherpa load currently running, so a second request waits for it
     /// instead of building a second ONNX graph beside the first.
     private var sherpaLoad: Task<SherpaRecognizer, Error>?
@@ -1315,15 +1318,27 @@ final class LocalModelManager {
         )
     }
 
-    /// What a sherpa-onnx model of `descriptor`'s family is told to listen
-    /// for: the user's custom vocabulary as Qwen3-ASR hotwords, and nothing
-    /// for a family that takes none. Read per dictation, like Whisper's
+    /// What a sherpa-onnx `descriptor` is told to listen for: the user's
+    /// custom vocabulary as Qwen3-ASR's or Parakeet Unified's hotwords, and
+    /// nothing for a model that takes none. Read per dictation, like Whisper's
     /// prompt, so a list saved between two dictations applies to the second.
     static func sherpaHotwords(for descriptor: LocalModelDescriptor) -> String? {
         let terms = RecognitionHints.terms(
             vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
         )
-        return RecognitionHints.sherpaHotwords(family: descriptor.sherpaFamily, terms: terms)
+        return RecognitionHints.sherpaHotwords(for: descriptor, terms: terms)
+    }
+
+    /// The bundled BPE vocabulary `descriptor`'s recognizer is built with, so
+    /// that it takes this dictation's hotwords: nil for a model without one,
+    /// and nil while the user has no words, so they keep greedy search.
+    /// Missing from the bundle is nil too, and greedy search, rather than a
+    /// recognizer sherpa-onnx would refuse to build.
+    static func hotwordVocabulary(for descriptor: LocalModelDescriptor) -> URL? {
+        guard let name = descriptor.hotwordVocabularyFile,
+              sherpaHotwords(for: descriptor) != nil
+        else { return nil }
+        return Bundle.main.url(forResource: name, withExtension: nil)
     }
 
     /// Starts loading the selected Whisper model while the user is still
@@ -2143,6 +2158,7 @@ final class LocalModelManager {
         loadedLanguage = nil
         loadedTranslateTo = ""
         loadedQuality = nil
+        loadedHotwordSearch = false
         return true
     }
 
@@ -2161,6 +2177,7 @@ final class LocalModelManager {
             loadedLanguage = nil
             loadedTranslateTo = ""
             loadedQuality = nil
+            loadedHotwordSearch = false
         }
         // Removing a large model can take time. Keep the UI responsive and do
         // not clear the installed/selected state until the folder is gone.
@@ -2237,6 +2254,7 @@ final class LocalModelManager {
             needsLoad = loadedModelID != id
                 || (languageIsBakedIn && identityChanged)
                 || loadedQuality != LocalTranscriptionPreferences.quality
+                || loadedHotwordSearch != (Self.hotwordVocabulary(for: descriptor) != nil)
                 || sherpaRecognizer == nil
         }
         if needsLoad {
@@ -2441,6 +2459,7 @@ final class LocalModelManager {
         loadedModelID = nil
         loadedLanguage = nil
         loadedQuality = nil
+        loadedHotwordSearch = false
         // Prewarming loads every Core ML model twice — once to specialize it
         // for this device's Neural Engine, then again for real — which keeps
         // peak memory down while that compile runs but doubles the time of
@@ -2627,6 +2646,11 @@ final class LocalModelManager {
         // target picked under Canary and still stored after a switch to
         // Parakeet can never reach an engine that would misread it.
         let translateTo = descriptor.resolvedTranslationTarget
+        // Read with the vocabulary as it is now. Should the list change before
+        // this dictation decodes, the bridge still only hands hotwords to a
+        // recognizer built for them, and the next dictation rebuilds.
+        let hotwordVocabulary = Self.hotwordVocabulary(for: descriptor)
+        let hotwordSearch = hotwordVocabulary != nil
 
         // Never two loads at once. Building an ONNX graph while another is
         // still being built puts both models' weights in memory at the same
@@ -2643,7 +2667,8 @@ final class LocalModelManager {
            loadedModelID == descriptor.id,
            descriptor.sherpaFamily?.acceptsLanguage != true
                || (loadedLanguage == resolvedLanguage && loadedTranslateTo == translateTo),
-           loadedQuality == quality
+           loadedQuality == quality,
+           loadedHotwordSearch == hotwordSearch
         {
             return sherpaRecognizer
         }
@@ -2660,6 +2685,7 @@ final class LocalModelManager {
         loadedLanguage = nil
         loadedTranslateTo = ""
         loadedQuality = nil
+        loadedHotwordSearch = false
 
         // Off the main actor: `SherpaRecognizer.create` is synchronous and
         // reads hundreds of megabytes from disk, so running it here froze the
@@ -2678,7 +2704,8 @@ final class LocalModelManager {
                     // One worker per performance core. See `SherpaThreads`.
                     threads: threads,
                     quality: quality,
-                    translateTo: translateTo
+                    translateTo: translateTo,
+                    hotwordVocabulary: hotwordVocabulary
                 )
             }.value
             sherpaRecognizer = recognizer
@@ -2686,6 +2713,7 @@ final class LocalModelManager {
             loadedLanguage = resolvedLanguage
             loadedTranslateTo = translateTo
             loadedQuality = quality
+            loadedHotwordSearch = hotwordSearch
             return recognizer
         }
         sherpaLoad = task

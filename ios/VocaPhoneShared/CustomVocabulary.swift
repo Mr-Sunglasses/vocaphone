@@ -3,10 +3,10 @@ import Foundation
 /// Words a speech model is unlikely to know: names, places, project code names,
 /// the jargon of whatever the user actually does.
 ///
-/// Whisper takes a prompt that conditions the decoder, and Qwen3-ASR takes
-/// hotwords, which is where a user can teach a model a spelling without
-/// retraining anything (`RecognitionHints` builds both). Either is a bias and
-/// not a rule — the model may still write "Kanishk" as "Kanish" — so this
+/// Whisper takes a prompt that conditions the decoder, and Qwen3-ASR and
+/// Parakeet Unified take hotwords, which is where a user can teach a model a
+/// spelling without retraining anything (`RecognitionHints` builds all three).
+/// Each is a bias and not a rule — the model may still write "Kanishk" as "Kanish" — so this
 /// exists to improve the odds, not to guarantee a spelling.
 ///
 /// The stored text is shared with the Android client's `CustomVocabulary`, so

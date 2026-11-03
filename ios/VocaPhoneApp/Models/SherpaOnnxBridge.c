@@ -23,6 +23,10 @@ struct VocaPhoneSherpaContext {
     /// mark has it taken away: see `VocaPhoneSherpaJoinTokens`.
     int join_tokens;
     int close_up_punctuation;
+    /// Built for beam search with a BPE vocabulary, so a decode's hotwords go
+    /// to sherpa-onnx's per-stream transducer biasing. Only ever set for a
+    /// NeMo transducer: every other family answers that call by exiting.
+    int transducer_hotwords;
 };
 
 static int copy_text(
@@ -111,7 +115,9 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     const char *target_language,
     int32_t threads,
     const char *decoding_method,
-    int32_t max_active_paths
+    int32_t max_active_paths,
+    const char *bpe_vocab,
+    float hotwords_score
 ) {
     SherpaOnnxOfflineRecognizerConfig config;
     memset(&config, 0, sizeof(config));
@@ -124,8 +130,18 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
         ? "greedy_search"
         : decoding_method;
     config.max_active_paths = max_active_paths > 0 ? max_active_paths : 4;
-    // No hotwords file is configured, so no hotwords score either: one on its
-    // own boosts nothing, and only suggested that biasing was in effect.
+    // Hotwords arrive per decode (see `VocaPhoneSherpaDecode`), never as a
+    // file: the user's list changes between dictations and the recognizer is
+    // several hundred megabytes. sherpa-onnx turns them into word pieces with
+    // the BPE vocabulary, which it reads only for beam search.
+    int transducer_hotwords = family == VocaPhoneSherpaNemoTransducer
+        && bpe_vocab != NULL && bpe_vocab[0] != '\0'
+        && strcmp(config.decoding_method, "modified_beam_search") == 0;
+    if (transducer_hotwords) {
+        config.model_config.modeling_unit = "bpe";
+        config.model_config.bpe_vocab = bpe_vocab;
+        config.hotwords_score = hotwords_score;
+    }
 
     switch (family) {
         case VocaPhoneSherpaNemoTransducer:
@@ -218,6 +234,7 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     result->join_tokens = family == VocaPhoneSherpaZipformerTransducer
         || family == VocaPhoneSherpaNemoTransducer;
     result->close_up_punctuation = family == VocaPhoneSherpaNemoTransducer;
+    result->transducer_hotwords = transducer_hotwords;
     return (VocaPhoneSherpaRecognizer)result;
 }
 
@@ -229,11 +246,13 @@ int VocaPhoneSherpaDecode(
     char *output,
     int32_t output_capacity,
     char *language,
-    int32_t language_capacity
+    int32_t language_capacity,
+    float *last_token_seconds
 ) {
     // Emptied up front so a caller never reads a stale or uninitialised buffer
     // on any of the paths below that return without decoding.
     if (language != NULL && language_capacity > 0) language[0] = '\0';
+    if (last_token_seconds != NULL) *last_token_seconds = -1.0f;
 
     struct VocaPhoneSherpaContext *context =
         (struct VocaPhoneSherpaContext *)recognizer;
@@ -241,13 +260,17 @@ int VocaPhoneSherpaDecode(
         samples == NULL || sample_count <= 0) {
         return VocaPhoneSherpaDecodeInvalidArgument;
     }
-    const SherpaOnnxOfflineStream *stream =
-        SherpaOnnxCreateOfflineStream(context->recognizer);
+    int has_hotwords = hotwords != NULL && hotwords[0] != '\0';
+    // The hotwords-aware constructor is the transducer contextual-biasing
+    // path, and only a recognizer built for it may be given it: every other
+    // family answers it by exiting the process, and a greedy transducer would
+    // split the words with no vocabulary. Anything else gets the stream
+    // option, which Qwen3-ASR reads into its prompt and the rest ignore.
+    const SherpaOnnxOfflineStream *stream = has_hotwords && context->transducer_hotwords
+        ? SherpaOnnxCreateOfflineStreamWithHotwords(context->recognizer, hotwords)
+        : SherpaOnnxCreateOfflineStream(context->recognizer);
     if (stream == NULL) return VocaPhoneSherpaDecodeStreamUnavailable;
-    // Per stream, never through a hotwords-aware stream constructor: that is
-    // the transducer contextual-biasing path, and every other family answers
-    // it by exiting the process. Qwen3-ASR reads this option into its prompt.
-    if (hotwords != NULL && hotwords[0] != '\0') {
+    if (has_hotwords && !context->transducer_hotwords) {
         SherpaOnnxOfflineStreamSetOption(stream, "hotwords", hotwords);
     }
 
@@ -263,6 +286,9 @@ int VocaPhoneSherpaDecode(
                 result, context->close_up_punctuation, output, output_capacity)
             : copy_text(result->text, output, output_capacity);
     if (result != NULL) {
+        if (last_token_seconds != NULL && result->timestamps != NULL && result->count > 0) {
+            *last_token_seconds = result->timestamps[result->count - 1];
+        }
         // Optional in the struct and left null by every family except
         // SenseVoice, so it is never dereferenced without checking.
         if (language != NULL && language_capacity > 0 && result->lang != NULL) {

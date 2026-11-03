@@ -98,6 +98,12 @@ targets:
         # to the system emoji keyboard and reads only `suggestions.tsv`.
         excludes:
           - emoji/catalog.tsv
+      # Parakeet Unified's word pieces, 12 KB, so its beam search can take the
+      # user's custom words as hotwords. Derived from NVIDIA's checkpoint by
+      # tools/model-pins/bpe_vocab.py, one copy shared with Android. App only:
+      # the keyboard never decodes. See `LocalModelDescriptor.hotwordVocabularyFile`.
+      - path: ../assets/speech/parakeet-unified-0.6b-en.bpe.vocab
+        buildPhase: resources
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json

@@ -20,17 +20,21 @@ final class SherpaRecognizer: @unchecked Sendable {
     /// Whether an all-capitals answer is the model's training casing rather than
     /// the speaker's. See `SherpaFamily.transcribesInCapitals`.
     private let lowercasesCapitals: Bool
+    /// Built for transducer hotwords; see `SherpaSearch`.
+    private let takesHotwords: Bool
 
     private init(
         native: UnsafeMutableRawPointer,
         translating: Bool = false,
         featureDither: Float = 0,
-        lowercasesCapitals: Bool = false
+        lowercasesCapitals: Bool = false,
+        takesHotwords: Bool = false
     ) {
         self.native = native
         self.translating = translating
         self.featureDither = featureDither
         self.lowercasesCapitals = lowercasesCapitals
+        self.takesHotwords = takesHotwords
     }
 
     deinit {
@@ -43,7 +47,8 @@ final class SherpaRecognizer: @unchecked Sendable {
         language: String,
         threads: Int,
         quality: TranscriptionQuality,
-        translateTo: String = ""
+        translateTo: String = "",
+        hotwordVocabulary: URL? = nil
     ) throws -> SherpaRecognizer {
         guard let family = model.sherpaFamily else {
             throw LocalModelManagerError.unsupportedModel(model.id)
@@ -140,7 +145,11 @@ final class SherpaRecognizer: @unchecked Sendable {
 
         // Never `quality.sherpaDecodingMethod` on its own: a family that does
         // not support beam search answers it by killing the process.
-        let decodingMethod = family.decodingMethod(for: quality)
+        let search = SherpaSearch(
+            family: family, quality: quality, vocabulary: hotwordVocabulary?.path
+        )
+        let decodingMethod = search.decodingMethod
+        let bpeVocabulary = search.bpeVocabulary
         let native: UnsafeMutableRawPointer? = models[0].withCString { model1 in
             models[1].withCString { model2 in
                 models[2].withCString { model3 in
@@ -149,13 +158,16 @@ final class SherpaRecognizer: @unchecked Sendable {
                             languageHint.withCString { languagePointer in
                                 targetHint.withCString { targetPointer in
                                     decodingMethod.withCString { decodingMethodPointer in
-                                        VocaPhoneSherpaCreate(
-                                            Int32(family.bridgeValue),
-                                            model1, model2, model3, model4,
-                                            tokensPointer, languagePointer, targetPointer,
-                                            Int32(threads), decodingMethodPointer,
-                                            quality.sherpaMaxActivePaths
-                                        )
+                                        bpeVocabulary.withCString { bpePointer in
+                                            VocaPhoneSherpaCreate(
+                                                Int32(family.bridgeValue),
+                                                model1, model2, model3, model4,
+                                                tokensPointer, languagePointer, targetPointer,
+                                                Int32(threads), decodingMethodPointer,
+                                                search.maxActivePaths,
+                                                bpePointer, search.hotwordScore
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -173,7 +185,8 @@ final class SherpaRecognizer: @unchecked Sendable {
             native: native,
             translating: family.acceptsLanguage && !translateTo.isEmpty,
             featureDither: family.featureDither,
-            lowercasesCapitals: family.transcribesInCapitals
+            lowercasesCapitals: family.transcribesInCapitals,
+            takesHotwords: search.takesHotwords
         )
     }
 
@@ -247,14 +260,33 @@ final class SherpaRecognizer: @unchecked Sendable {
         )
     }
 
+    /// One decode, and for a transducer given hotwords, one more without them
+    /// when the first stopped before the speech did or looped on a hotword
+    /// (`SherpaHotwordCheck`): the user's spelling is never worth a lost or a
+    /// garbled sentence.
     private func decode(_ samples: [Float], hotwords: String?) -> SherpaDecodeOutcome {
-        guard !samples.isEmpty else { return .failed(.invalidArgument) }
+        guard takesHotwords, let hotwords, !hotwords.isEmpty else {
+            return decodeOnce(samples, hotwords: hotwords).outcome
+        }
+        let (outcome, lastTokenSeconds) = decodeOnce(samples, hotwords: hotwords)
+        guard case let .decoded(transcript) = outcome else { return outcome }
+        let stoppedEarly = SherpaHotwordCheck.stoppedEarly(samples, lastTokenSeconds: lastTokenSeconds)
+        let repeats = SherpaHotwordCheck.repeatsAHotword(transcript.text, hotwords: hotwords)
+        guard stoppedEarly || repeats else { return outcome }
+        return decodeOnce(samples, hotwords: nil).outcome
+    }
+
+    private func decodeOnce(
+        _ samples: [Float], hotwords: String?
+    ) -> (outcome: SherpaDecodeOutcome, lastTokenSeconds: Double?) {
+        guard !samples.isEmpty else { return (.failed(.invalidArgument), nil) }
         let samples = SherpaFeatureDither.applied(to: samples, dither: featureDither)
         decodeLock.lock()
         defer { decodeLock.unlock() }
         var output = [CChar](repeating: 0, count: 131_072)
         // Only ever holds a short tag such as "<|en|>".
         var languageOutput = [CChar](repeating: 0, count: 32)
+        var lastToken: Float = -1
         let result = samples.withUnsafeBufferPointer { sampleBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
                 languageOutput.withUnsafeMutableBufferPointer { languageBuffer in
@@ -266,22 +298,22 @@ final class SherpaRecognizer: @unchecked Sendable {
                         outputBuffer.baseAddress,
                         Int32(outputBuffer.count),
                         languageBuffer.baseAddress,
-                        Int32(languageBuffer.count)
+                        Int32(languageBuffer.count),
+                        &lastToken
                     )
                 }
             }
         }
         // A negative status is the engine failing to answer, and it must never
         // reach the caller looking like a model that answered nothing.
-        guard result >= 0 else { return .failed(.forStatus(result)) }
-        return .decoded(
-            SherpaTranscript(
-                text: lowercasesCapitals
-                    ? SherpaFamily.lowercasingCapitals(Self.string(from: output))
-                    : Self.string(from: output),
-                language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
-            )
+        guard result >= 0 else { return (.failed(.forStatus(result)), nil) }
+        let transcript = SherpaTranscript(
+            text: lowercasesCapitals
+                ? SherpaFamily.lowercasingCapitals(Self.string(from: output))
+                : Self.string(from: output),
+            language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
         )
+        return (.decoded(transcript), lastToken >= 0 ? Double(lastToken) : nil)
     }
 
     private static func string(from buffer: [CChar]) -> String {

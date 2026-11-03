@@ -23,9 +23,13 @@ import Foundation
 /// - Whisper (WhisperKit here, whisper.cpp on Android): a comma-separated
 ///   prompt that conditions the decoder, `whisperPrompt(_:maximumTokens:tokenCount:)`.
 /// - Qwen3-ASR: comma-separated hotwords in its chat prompt, `qwen3Hotwords(_:)`.
-/// - Every other sherpa-onnx family: nothing. sherpa-onnx 1.13.8 biases only
-///   transducers, and only with a hotwords file and beam search, neither of
-///   which the app uses.
+/// - Parakeet Unified: hotwords its transducer's beam search boosts while it
+///   decodes, `transducerHotwords(_:)`. sherpa-onnx 1.13.8 biases a transducer
+///   only through beam search and a BPE vocabulary, which the app bundles for
+///   this one model (`LocalModelDescriptor.hotwordVocabularyFile`).
+/// - Every other sherpa-onnx family: nothing. The other Parakeets are TDT
+///   models, whose beam search on 1.13.8 can drop whole sentences, and the
+///   CTC and non-autoregressive families condition on audio alone.
 ///
 /// Every engine still gets `VocabularyCorrection` afterwards, which spells
 /// close misses the user's way from the whole vocabulary, whatever was cut here.
@@ -195,10 +199,55 @@ enum RecognitionHints {
         return kept.isEmpty ? nil : kept.joined(separator: ",")
     }
 
-    /// The hotwords a sherpa-onnx recognizer of `family` decodes with, or nil
-    /// for a family that takes none.
-    static func sherpaHotwords(family: SherpaFamily?, terms: [String]) -> String? {
-        guard family == .qwen3Asr else { return nil }
+    // MARK: - Transducers
+
+    /// Most hotwords a transducer is given.
+    ///
+    /// sherpa-onnx builds them into a small prefix tree once per decode, so
+    /// the count costs next to nothing; what grows with it is the chance that
+    /// some boosted spelling fits a stretch of ordinary speech. `vocab-en`
+    /// clips carry six or so terms, and LibriSpeech was measured with all 56
+    /// of its terms boosted at once (docs/local-model-review.md); this leaves
+    /// a user a little more than that.
+    static let maximumTransducerHotwords = 64
+
+    /// How strongly each word piece of a hotword is boosted, in log
+    /// probability, and how many hypotheses the beam search keeps. Tuned on
+    /// `tools/asr-bench`'s `vocab-en` set with LibriSpeech as the check that
+    /// ordinary speech is not respelled; see docs/local-model-review.md.
+    static let transducerHotwordScore: Float = 2.0
+    static let transducerBeamWidth: Int32 = 4
+
+    /// A transducer's hotwords: the terms at the end of `terms`, most important
+    /// first, one phrase each, separated by "/" as sherpa-onnx's per-stream
+    /// hotwords take them. Nil when there are none.
+    ///
+    /// sherpa-onnx reads "/" as the phrase separator and a word that starts
+    /// with ":" as a score, and its token lookup reads a word piece starting
+    /// with "#" or "@" as a threshold or a label. Measured on 1.13.8, the term
+    /// "foo :bar" throws inside sherpa-onnx, which through the C API is a
+    /// crash, and "Kanishk #x" cut most of a sentence out of the transcript.
+    /// None of the four can be part of a hotword, so each becomes a space,
+    /// which splits the term into words the way the speaker would say them.
+    static func transducerHotwords(_ terms: [String]) -> String? {
+        var kept: [String] = []
+        for term in terms.reversed() {
+            let cleaned = String(term.map { (character: Character) -> Character in
+                "/:#@".contains(character) ? " " : character
+            })
+            let phrase = cleaned.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            guard !phrase.isEmpty else { continue }
+            guard kept.count < maximumTransducerHotwords else { break }
+            kept.append(phrase)
+        }
+        return kept.isEmpty ? nil : kept.joined(separator: "/")
+    }
+
+    /// The hotwords a sherpa-onnx recognizer for `model` decodes with, or nil
+    /// for a model that takes none.
+    static func sherpaHotwords(for model: LocalModelDescriptor, terms: [String]) -> String? {
+        if model.hotwordVocabularyFile != nil { return transducerHotwords(terms) }
+        guard model.sherpaFamily == .qwen3Asr else { return nil }
         return qwen3Hotwords(terms)
     }
 }

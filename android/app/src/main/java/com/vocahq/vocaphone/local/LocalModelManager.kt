@@ -50,6 +50,9 @@ import okhttp3.OkHttpClient
 /** App-private folder that holds downloaded on-device models. */
 const val LOCAL_MODELS_DIR = "local-models"
 
+/** Under `noBackupFilesDir`: the bundled hotword vocabularies, copied out of the APK. */
+private const val HOTWORD_VOCABULARY_DIR = "hotword-vocabularies"
+
 data class LocalTranscription(val text: String, val language: String = "")
 
 data class LocalModelState(
@@ -253,6 +256,13 @@ class LocalModelManager(
      * does not care.
      */
     private var loadedQuality: TranscriptionQuality? = null
+
+    /**
+     * Sherpa only: whether the loaded recognizer was built to take the user's
+     * words as transducer hotwords. See [SherpaSearch].
+     */
+    private var loadedHotwordSearch = false
+
     /** The coroutine cannot interrupt a blocking OkHttp execute by itself. */
     private val activeDownloadCall = AtomicReference<Call?>(null)
     private val downloads = DownloadJobs()
@@ -404,6 +414,34 @@ class LocalModelManager(
     fun directoryFor(model: LocalModelDescriptor): File = File(modelRoot, model.id)
 
     /**
+     * [model]'s [LocalModelDescriptor.hotwordVocabularyFile] as a file
+     * sherpa-onnx can open by path, or null when it has none or the copy
+     * failed. The recognizer is built from files rather than the asset
+     * manager, so the bundled asset (12 KB) is copied out once per process,
+     * whole or not at all, beside nothing a model download verifies.
+     */
+    private fun bundledHotwordVocabulary(model: LocalModelDescriptor): File? {
+        val name = model.hotwordVocabularyFile ?: return null
+        return synchronized(hotwordVocabularies) {
+            hotwordVocabularies.getOrPut(name) {
+                runCatching {
+                    val directory = File(appContext.noBackupFilesDir, HOTWORD_VOCABULARY_DIR).apply { mkdirs() }
+                    val target = File(directory, name)
+                    val partial = File(directory, "$name.partial")
+                    appContext.assets.open(name).use { input ->
+                        partial.outputStream().use { input.copyTo(it) }
+                    }
+                    check(partial.renameTo(target)) { "could not move $name into place" }
+                    target
+                }.getOrElse { return null }
+            }
+        }
+    }
+
+    /** Copied at most once per process; see [bundledHotwordVocabulary]. */
+    private val hotwordVocabularies = mutableMapOf<String, File>()
+
+    /**
      * Starts the bounded Sherpa latency path. Whisper keeps its finish-time
      * decoder because its native context has a different streaming contract.
      */
@@ -420,11 +458,12 @@ class LocalModelManager(
         val target = model.resolveTranslationTarget(translateTo, resolved)
         if (!canStreamIncrementally(model.engine, target)) return null
         val hotwords = sherpaHotwords(model, vocabulary)
+        val hotwordSearch = takesHotwordSearch(model, hotwords)
         return SherpaIncrementalSession(
             scope = scope,
-            prepare = { prepareEngine(model, resolved, quality, target) },
+            prepare = { prepareEngine(model, resolved, quality, target, hotwordSearch) },
             decode = { samples ->
-                decodePreparedSherpa(samples, model, resolved, quality, target, hotwords)
+                decodePreparedSherpa(samples, model, resolved, quality, target, hotwords, hotwordSearch)
             },
         )
     }
@@ -659,6 +698,7 @@ class LocalModelManager(
         loadedLanguage = null
         loadedTranslateTo = ""
         loadedQuality = null
+        loadedHotwordSearch = false
     }
 
     /**
@@ -686,10 +726,15 @@ class LocalModelManager(
         language: String,
         quality: TranscriptionQuality,
         translateTo: String,
+        // Required, not defaulted: Parakeet Unified builds a different
+        // recognizer when the user has custom words (beam search with
+        // hotwords), and a warm-up that asked for the other one would replace
+        // the loaded model just before the dictation loads it back.
+        vocabulary: String,
     ) {
         cancelIdleUnload()
         engineScope.launch {
-            runCatching { prepare(modelID, language, quality, translateTo) }
+            runCatching { prepare(modelID, language, quality, translateTo, vocabulary) }
         }
     }
 
@@ -704,6 +749,8 @@ class LocalModelManager(
         language: String,
         quality: TranscriptionQuality,
         translateTo: String,
+        /** As in [warm]: the search the dictation will ask for. */
+        vocabulary: String,
         unloadAfterMs: Long = LOCAL_ENGINE_WARM_UNLOAD_MS,
     ) {
         val model = LocalModelCatalog.find(modelID) ?: return
@@ -721,7 +768,7 @@ class LocalModelManager(
         if (!room) return
         cancelIdleUnload()
         engineScope.launch {
-            runCatching { prepare(modelID, language, quality, translateTo) }
+            runCatching { prepare(modelID, language, quality, translateTo, vocabulary) }
             unloadWhenIdle(unloadAfterMs)
         }
     }
@@ -791,6 +838,7 @@ class LocalModelManager(
         language: String,
         quality: TranscriptionQuality,
         translateTo: String,
+        vocabulary: String = "",
     ) {
         val model = LocalModelCatalog.find(modelID) ?: return
         if (!isDownloaded(model.id)) return
@@ -800,6 +848,7 @@ class LocalModelManager(
             spoken,
             quality,
             model.resolveTranslationTarget(translateTo, spoken),
+            takesHotwordSearch(model, sherpaHotwords(model, vocabulary)),
         )
     }
 
@@ -815,7 +864,8 @@ class LocalModelManager(
         val model = LocalModelCatalog.find(modelID) ?: error("Unknown local model: $modelID")
         val resolved = if (model.englishOnly) "en" else language
         val target = model.resolveTranslationTarget(translateTo, resolved)
-        prepareEngine(model, resolved, quality, target)
+        val hotwordSearch = takesHotwordSearch(model, sherpaHotwords(model, vocabulary))
+        prepareEngine(model, resolved, quality, target, hotwordSearch)
         // One gain and one DC-offset correction cover the complete recording.
         // Sherpa used to have a separate during-recording path that could apply
         // different conditioning and silently omit a window; the complete WAV
@@ -835,6 +885,7 @@ class LocalModelManager(
         resolvedLanguage: String,
         requestedQuality: TranscriptionQuality,
         resolvedTranslateTo: String,
+        requestedHotwordSearch: Boolean = false,
     ) {
         // Normalised to what the recognizer is actually built at. Every bundled
         // sherpa family is on greedy search, which reads neither field quality
@@ -845,6 +896,15 @@ class LocalModelManager(
         val directory = directoryFor(model)
         // Stat-only: cheap enough to run per dictation, unlike a digest pass.
         withContext(Dispatchers.IO) { LocalModelIntegrity.verifySizes(model, directory) }
+
+        // A copy the native side can open by path. Missing is greedy search,
+        // not a recognizer sherpa-onnx would refuse to build.
+        val hotwordVocabulary = if (requestedHotwordSearch) {
+            withContext(Dispatchers.IO) { bundledHotwordVocabulary(model) }
+        } else {
+            null
+        }
+        val hotwordSearch = hotwordVocabulary != null
 
         cancelIdleUnload()
         engineMutex.withLock {
@@ -860,6 +920,8 @@ class LocalModelManager(
                     languageIsBakedIn = model.sherpaFamily?.acceptsLanguage ?: true,
                     loadedTranslateTo = loadedTranslateTo,
                     requestedTranslateTo = resolvedTranslateTo,
+                    loadedHotwordSearch = loadedHotwordSearch,
+                    requestedHotwordSearch = hotwordSearch,
                 )
             ) {
                 releaseEngines()
@@ -877,6 +939,7 @@ class LocalModelManager(
                                 threads = WhisperCpuConfig.preferredSherpaThreadCount,
                                 quality = quality,
                                 translateTo = resolvedTranslateTo,
+                                hotwordVocabulary = hotwordVocabulary,
                             )
                         } else {
                             whisperContext = WhisperContext.create(
@@ -891,6 +954,7 @@ class LocalModelManager(
                 loadedLanguage = resolvedLanguage
                 loadedTranslateTo = resolvedTranslateTo
                 loadedQuality = quality
+                loadedHotwordSearch = hotwordSearch
             }
         }
     }
@@ -948,6 +1012,7 @@ class LocalModelManager(
         requestedQuality: TranscriptionQuality,
         resolvedTranslateTo: String,
         hotwords: String?,
+        requestedHotwordSearch: Boolean,
     ): SherpaTranscript = engineMutex.withLock {
         check(
             sherpaEngineStillLoaded(
@@ -959,6 +1024,12 @@ class LocalModelManager(
                 loadedLanguage = loadedLanguage,
                 loadedQuality = loadedQuality,
                 loadedTranslateTo = loadedTranslateTo,
+                // A window prepared for hotwords may decode on greedy search:
+                // that is what a failed copy of the vocabulary loads. One
+                // prepared without them must not meet a recognizer rebuilt
+                // for another dictation's words.
+                requestedHotwordSearch = requestedHotwordSearch && loadedHotwordSearch,
+                loadedHotwordSearch = loadedHotwordSearch,
             ),
         ) {
             "On-device model changed during transcription"
@@ -997,15 +1068,24 @@ internal fun whisperPrompt(vocabulary: String): String =
 
 /**
  * What a sherpa-onnx [model] is told to listen for: the user's [vocabulary] as
- * Qwen3-ASR hotwords, and nothing for a family that takes none. Read per
- * dictation, like Whisper's prompt, so a list saved between two dictations
- * applies to the second.
+ * Qwen3-ASR's or Parakeet Unified's hotwords, and nothing for a model that
+ * takes none. Read per dictation, like Whisper's prompt, so a list saved
+ * between two dictations applies to the second.
  */
 internal fun sherpaHotwords(model: LocalModelDescriptor, vocabulary: String): String? =
     RecognitionHints.sherpaHotwords(
-        model.sherpaFamily,
+        model,
         RecognitionHints.terms(CustomVocabulary.terms(vocabulary)),
     )
+
+/**
+ * Whether [model]'s recognizer is built to take [hotwords] in its search: only
+ * for a model with a [LocalModelDescriptor.hotwordVocabularyFile], and only
+ * while there are hotwords, so a user without custom words keeps greedy
+ * search. See [SherpaSearch].
+ */
+internal fun takesHotwordSearch(model: LocalModelDescriptor, hotwords: String?): Boolean =
+    model.hotwordVocabularyFile != null && !hotwords.isNullOrEmpty()
 
 /** The capture WAV's 16-bit PCM as floats, skipping its 44-byte header. */
 internal fun readPcm16WavSamples(file: File): FloatArray {
@@ -1065,10 +1145,14 @@ internal fun shouldReloadLocalEngine(
     languageIsBakedIn: Boolean = true,
     loadedTranslateTo: String = "",
     requestedTranslateTo: String = "",
+    loadedHotwordSearch: Boolean = false,
+    requestedHotwordSearch: Boolean = false,
 ): Boolean {
     if (loadedModelID != requestedModelID) return true
     if (engine != LocalModelEngine.SHERPA_ONNX) return false
     if (loadedQuality != requestedQuality) return true
+    // Beam search with hotwords and greedy search are different recognizers.
+    if (loadedHotwordSearch != requestedHotwordSearch) return true
     if (!languageIsBakedIn) return false
     return loadedLanguage != requestedLanguage || loadedTranslateTo != requestedTranslateTo
 }
@@ -1105,8 +1189,11 @@ internal fun sherpaEngineStillLoaded(
     loadedLanguage: String?,
     loadedQuality: TranscriptionQuality?,
     loadedTranslateTo: String,
+    requestedHotwordSearch: Boolean = false,
+    loadedHotwordSearch: Boolean = false,
 ): Boolean = loadedModelID == model.id &&
     loadedQuality == model.loadedQuality(requestedQuality) &&
+    loadedHotwordSearch == requestedHotwordSearch &&
     (
         model.sherpaFamily?.acceptsLanguage != true ||
             (loadedLanguage == requestedLanguage && loadedTranslateTo == requestedTranslateTo)

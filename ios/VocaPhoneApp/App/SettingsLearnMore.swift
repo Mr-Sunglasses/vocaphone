@@ -215,9 +215,10 @@ enum SettingsHelp {
                 "Names, places and jargon a speech model is unlikely to know. One "
                     + "per line, or separated by commas.",
                 "Each word is spelled your way when the transcript comes close — "
-                    + "\"whisper kit\" becomes \"WhisperKit\". Whisper and Qwen3-ASR "
-                    + "models are also nudged toward them while decoding. They have room "
-                    + "for only part of a long list, so put the words that matter most first.",
+                    + "\"whisper kit\" becomes \"WhisperKit\". Whisper, Qwen3-ASR and "
+                    + "Parakeet Unified models are also nudged toward them while decoding. "
+                    + "They have room for only part of a long list, so put the words that "
+                    + "matter most first.",
                 "Other models cannot be nudged while they decode, so only close "
                     + "matches are corrected. A word such a model hears as something "
                     + "else entirely stays as it heard it.",

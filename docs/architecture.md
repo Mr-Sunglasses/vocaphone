@@ -316,9 +316,9 @@ runtime, and the F-Droid flavor builds neither.
 
 ## Custom vocabulary while decoding
 
-Step 6 above spells close misses the user's way on every route. Two on-device
-engines can also be steered toward the words while they decode, and both get
-them from one builder, `RecognitionHints` on both platforms
+Step 6 above spells close misses the user's way on every route. Three kinds of
+on-device model can also be steered toward the words while they decode, and all
+get them from one builder, `RecognitionHints` on both platforms
 (`android/.../core/RecognitionHints.kt`, `ios/VocaPhoneShared/RecognitionHints.swift`):
 
 - **The list.** `RecognitionHints.terms` orders the hints least important
@@ -339,9 +339,29 @@ them from one builder, `RecognitionHints` on both platforms
   into the system turn of Qwen3-ASR's chat prompt. They are set per stream:
   the recognizer's `createStream(hotwords)` is the transducer contextual-biasing
   path, and every other family answers it by exiting the process.
-- **Every other sherpa family** (Parakeet, Canary, SenseVoice, Moonshine and
-  the rest) takes no hint. Settings says so under Custom words when one of
-  them is selected.
+- **Parakeet Unified** gets the last 64 terms as transducer hotwords, one
+  phrase each, "/"-separated, on each sherpa-onnx stream. Its beam search
+  (`modified_beam_search`, beam 4) boosts each word piece of a hotword by
+  2.0 while it searches. sherpa-onnx 1.13.8 needs a BPE vocabulary to split
+  the words into the model's pieces; the pinned export has none, so the app
+  bundles one, `assets/speech/parakeet-unified-0.6b-en.bpe.vocab` (12 KB),
+  derived from NVIDIA's checkpoint by `tools/model-pins/bpe_vocab.py` and
+  checked against the pinned `tokens.txt` by `check_catalogs.py`. A user with
+  no custom words keeps greedy search, so the beam costs them nothing; adding
+  or clearing the list rebuilds the recognizer once, releasing the old one
+  first, so two are never resident. Only the copy of the vocabulary leaves
+  the APK on Android, to app-private storage, because sherpa-onnx opens it by
+  path. "/", ":", "#" and "@" are removed from the terms, because sherpa-onnx
+  reads them as syntax. A window whose hotword decode left audible speech
+  after its last token, or typed a hotword twice in a row, is decoded once
+  more without hotwords (`SherpaHotwordCheck`): sherpa-onnx 1.13.8's beam
+  search can hold on to a half-finished hotword and drop the rest of the
+  window, and can loop on a finished one.
+- **Every other sherpa family** (Parakeet v2 and v3, Canary, SenseVoice,
+  Moonshine and the rest) takes no hint. Parakeet v2 and v3 are TDT models,
+  whose beam search on 1.13.8 can drop whole sentences, so they stay greedy
+  until the runtime is bumped. Settings says so under Custom words when one
+  of them is selected.
 
 A gateway decodes with whatever its engine does; the vocabulary is not sent to
 it.

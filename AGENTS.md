@@ -225,12 +225,14 @@ every model is pinned per file by size and SHA-256:
 | Android sherpa | `android/.../local/SherpaModelCatalog.kt` |
 | iOS both | `ios/VocaPhoneShared/LocalModelCatalog.swift` |
 | iOS pins | `ios/VocaPhoneApp/Models/{local,sherpa}_model_pins.json` |
+| Hotword vocabularies (both) | `assets/speech/<model id>.bpe.vocab`, written by `tools/model-pins/bpe_vocab.py`; never edit by hand |
 
 Do not hand-write a pin. `tools/model-pins/pin_models.py <repo>` resolves a
 Hugging Face repository to per-file size and SHA-256 and prints it as Kotlin or
 JSON; `tools/model-pins/check_catalogs.py` then asserts the three files agree on
-every id, repository, revision and digest. The checker is offline and belongs in
-any change that touches the catalog.
+every id, repository, revision and digest, and that each bundled hotword
+vocabulary rebuilds its model's pinned `tokens.txt`. The checker is offline and
+belongs in any change that touches the catalog.
 
 Two rules the catalog encodes, both easy to undo by accident:
 
@@ -276,8 +278,8 @@ why (docs-only, Linux host, no submodule, …).
 
 | Change | Local | Workflow (path-filtered; drafts skipped until ready) |
 | --- | --- | --- |
-| `android/**`, `assets/keyboard/**` | `just android ci` | Quality (Android) — JDK 21, recursive submodules, Room schema, 16 KB alignment |
-| `ios/**`, `assets/keyboard/**` | `just ios ci` | Quality (iOS) — macOS, stale `xcodeproj`, preview isolation, unit tests |
+| `android/**`, `assets/keyboard/**`, `assets/speech/**` | `just android ci` | Quality (Android) — JDK 21, recursive submodules, Room schema, 16 KB alignment |
+| `ios/**`, `assets/keyboard/**`, `assets/speech/**` | `just ios ci` | Quality (iOS) — macOS, stale `xcodeproj`, preview isolation, unit tests |
 | WhisperKit or sherpa-onnx version, `ios/VocaPhoneApp/Models/**`, `Sherpa*`, transcript finishing | `just ios model-test` (downloads the pinned Whisper and Parakeet models) | Quality (iOS) runs it on those paths: real models on synthesized speech. Unit tests stub both engines, so only this catches a decoder regression |
 | `web/**` | `cd web && npm run check` | Quality (web); CodeQL (web) |
 | `assets/keyboard/**`, `tools/**` | `python3 tools/generate-emoji-catalog.py --check` | Quality (shared assets) |

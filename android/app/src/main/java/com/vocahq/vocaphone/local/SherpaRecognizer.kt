@@ -31,6 +31,8 @@ internal class SherpaRecognizer private constructor(
      */
     private val translating: Boolean = false,
     private val family: SherpaFamily? = null,
+    /** Built for transducer hotwords; see [SherpaSearch]. */
+    private val takesTransducerHotwords: Boolean = false,
 ) {
     /**
      * Decodes the whole recording, in windows if it is longer than one decode
@@ -101,13 +103,36 @@ internal class SherpaRecognizer private constructor(
             deduplicateOverlap = !translating,
         )
 
+    /**
+     * One decode, and for a transducer given hotwords, one more without them
+     * when the first stopped before the speech did or looped on a hotword
+     * ([SherpaHotwordCheck]): the user's spelling is never worth a lost or a
+     * garbled sentence.
+     */
     private fun decode(samples: FloatArray, hotwords: String?): SherpaTranscript {
-        // A stream option, never `createStream(hotwords)`: that is the
-        // transducer contextual-biasing path, and every other family answers it
-        // by exiting the process. Qwen3-ASR reads this option into its prompt.
-        val stream = recognizer.createStream()
+        if (!takesTransducerHotwords || hotwords.isNullOrEmpty()) return decodeOnce(samples, hotwords).first
+        val (transcript, lastTokenSeconds) = decodeOnce(samples, hotwords)
+        val stoppedEarly = SherpaHotwordCheck.stoppedEarly(samples, lastTokenSeconds)
+        if (!stoppedEarly && !SherpaHotwordCheck.repeatsAHotword(transcript.text, hotwords)) return transcript
+        return decodeOnce(samples, null).first
+    }
+
+    /** The transcript, and when its last token began, if the model said. */
+    private fun decodeOnce(samples: FloatArray, hotwords: String?): Pair<SherpaTranscript, Double?> {
+        // `createStream(hotwords)` is the transducer contextual-biasing path,
+        // and only a recognizer built for it may be given it: every other
+        // family answers it by exiting the process, and a greedy transducer
+        // would split the words with no vocabulary. Qwen3-ASR reads them from a
+        // stream option into its prompt.
+        val stream = if (takesTransducerHotwords && !hotwords.isNullOrEmpty()) {
+            recognizer.createStream(hotwords)
+        } else {
+            recognizer.createStream()
+        }
         return try {
-            if (!hotwords.isNullOrEmpty()) stream.setOption("hotwords", hotwords)
+            if (family == SherpaFamily.QWEN3_ASR && !hotwords.isNullOrEmpty()) {
+                stream.setOption("hotwords", hotwords)
+            }
             stream.acceptWaveform(samples, SherpaLongAudio.SAMPLE_RATE)
             recognizer.decode(stream)
             val result = recognizer.getResult(stream)
@@ -124,7 +149,7 @@ internal class SherpaRecognizer private constructor(
             SherpaTranscript(
                 text = text.trim(),
                 language = SherpaTranscript.languageCode(result.lang),
-            )
+            ) to result.timestamps.lastOrNull()?.toDouble()
         } finally {
             stream.release()
         }
@@ -139,6 +164,9 @@ internal class SherpaRecognizer private constructor(
          * @param translateTo the language to translate into, or empty to
          *   transcribe. Canary is the only family that can honour it; see
          *   [com.vocahq.vocaphone.core.ModelTranslationSupport].
+         * @param hotwordVocabulary the model's bundled hotword vocabulary, to
+         *   build a recognizer that takes this dictation's hotwords, or null
+         *   for the family's own search. See [SherpaSearch].
          */
         fun create(
             model: LocalModelDescriptor,
@@ -147,6 +175,7 @@ internal class SherpaRecognizer private constructor(
             threads: Int,
             quality: TranscriptionQuality,
             translateTo: String = "",
+            hotwordVocabulary: File? = null,
         ): SherpaRecognizer {
             val family = requireNotNull(model.sherpaFamily) {
                 "${model.displayName} has no sherpa-onnx family"
@@ -271,16 +300,11 @@ internal class SherpaRecognizer private constructor(
                         maxNewTokens = 256,
                     ),
                 )
-            }.copy(
-                tokens = tokens,
-                numThreads = threads,
-                provider = "cpu",
-                modelType = family.sherpaModelType,
-            )
+            }
 
             // Never `quality.sherpaDecodingMethod` on its own: a family that
             // does not support beam search answers it by killing the process.
-            val decodingMethod = family.decodingMethod(quality)
+            val search = SherpaSearch.of(family, quality, hotwordVocabulary?.absolutePath)
             return SherpaRecognizer(
                 OfflineRecognizer(
                     assetManager = null,
@@ -289,15 +313,27 @@ internal class SherpaRecognizer private constructor(
                             featureDim = if (family == SherpaFamily.QWEN3_ASR) 128 else 80,
                             dither = family.featureDither,
                         ),
-                        modelConfig = modelConfig,
-                        decodingMethod = decodingMethod,
-                        maxActivePaths = quality.sherpaMaxActivePaths,
+                        modelConfig = modelConfig.copy(
+                            tokens = tokens,
+                            numThreads = threads,
+                            provider = "cpu",
+                            modelType = family.sherpaModelType,
+                            modelingUnit = search.modelingUnit,
+                            bpeVocab = search.bpeVocabulary,
+                        ),
+                        decodingMethod = search.decodingMethod,
+                        maxActivePaths = search.maxActivePaths,
+                        // Hotwords arrive per decode, never as a file: the
+                        // list changes between dictations and the recognizer
+                        // is several hundred megabytes.
+                        hotwordsScore = if (search.takesHotwords) search.hotwordScore else 1.5f,
                     ),
                 ),
                 // Only the families that can honour a target are translating,
                 // whatever the caller asked for.
                 translating = family.acceptsLanguage && translateTo.isNotEmpty(),
                 family = family,
+                takesTransducerHotwords = search.takesHotwords,
             )
         }
     }

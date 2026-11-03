@@ -32,9 +32,14 @@ android {
     // the iOS keyboard from the repository root. Two hand-maintained copies of
     // a 10 000-word list drift, and nothing would notice until the two
     // platforms started suggesting different words.
+    //
+    // assets/speech holds what the speech models need beside their downloads:
+    // Parakeet Unified's BPE vocabulary, so it can take custom words as
+    // hotwords. One copy, shared with iOS; see tools/model-pins/bpe_vocab.py.
     sourceSets {
         getByName("main") {
             assets.srcDir("${rootDir}/../assets/keyboard")
+            assets.srcDir("${rootDir}/../assets/speech")
         }
     }
 

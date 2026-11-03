@@ -177,8 +177,8 @@ What it showed:
   terms.
 - Whisper's prompt is unchanged in what it says, so the two runs are
   identical. The prompt-less retry of an empty decode never fired on this set.
-- Parakeet takes no hint, and its two runs differ only by its feature dither,
-  which is drawn fresh on every decode. ±3 points of term accuracy is that
+- Parakeet v2 takes no hint, and its two runs differ only by its feature
+  dither, which is drawn fresh on every decode. ±3 points of term accuracy is that
   noise; read anything smaller as nothing.
 - The order of the terms matters about as much as their framing. On Android,
   writing the same terms reversed cost 1.7 to 3.3 points of term
@@ -193,6 +193,111 @@ What it showed:
 
 Synthetic speech from six voices is cleaner and more uniform than a person, so
 the absolute numbers flatter every model; the differences are what carry over.
+
+## Parakeet Unified hears custom words while it decodes (2026-11-04)
+
+sherpa-onnx 1.13.8 can bias a NeMo transducer toward hotwords, but only in
+`modified_beam_search`, with `modeling_unit = "bpe"` and a BPE vocabulary to
+split each hotword into the model's word pieces. The pinned export ships the
+token table and not the vocabulary, so the apps bundle one:
+`assets/speech/parakeet-unified-0.6b-en.bpe.vocab`, 12,009 bytes, 1,024
+pieces. `tools/model-pins/bpe_vocab.py` derives it from the SentencePiece
+tokenizer inside `nvidia/parakeet-unified-en-0.6b@fe53cd88`'s `.nemo`
+(fetching only that member, digest pinned) and refuses to write it unless it
+rebuilds the pinned `tokens.txt` byte for byte; `check_catalogs.py` repeats
+that check offline in CI. It carries the model's license, the NVIDIA Open
+Model License.
+
+Only Parakeet Unified, an RNN-T. Parakeet v2 and v3 are TDT models, whose
+beam search on 1.13.8 can drop whole sentences (sherpa-onnx #3267, fixed by
+#4084, which no release carries); they stay greedy until the runtime moves.
+
+**Tuning.** The sherpa-onnx 1.13.8 Python wheel, the same C++ path, on the 50
+`vocab-en` clips (120 term uses) with each clip's own vocabulary as per-stream
+hotwords, the same dither noise for every configuration. Raw term accuracy;
+"unspoken" counts vocabulary terms typed that the speaker never said:
+
+| Search | Score | Terms | WER | Unspoken |
+| --- | --- | --- | --- | --- |
+| greedy | — | 42.5 | 20.78 | 0 |
+| beam 4 | none | 43.3 | 20.78 | 0 |
+| beam 2 | 2.0 / 3.0 | 66.7 / 75.8 | 13.73 / 13.73 | 0 / 0 |
+| beam 4 | 1.0 / 1.5 | 66.7 / 71.7 | 13.92 / 13.14 | 0 / 0 |
+| **beam 4** | **2.0** | **76.7** | **11.18** | **0** |
+| beam 4 | 2.5 / 3.0 | 79.2 / 83.3 | 12.55 / 17.06 | 1 / 3 |
+| beam 4 | 4.0 | 90.0 | 301.18 | 835 |
+| beam 8 | 1.5 / 2.0 | 77.5 / 79.2 | 11.18 / 10.78 | 0 / 0 |
+| beam 8 | 2.5 / 3.0 | 83.3 / 90.8 | 12.94 / 31.18 | 2 / 36 |
+
+From 2.5 up the boost starts to loop ("a Jira Jira Jira Jira bug", "Siddharth
+Siddharth Siddharth"), and at 4.0 it runs away. Across three dither seeds (150
+decodes each) beam 4 at 2.0 spelled 77.2% with no repeated word, and beam 8 at
+2.0 78.6% with three ("a new CUDA CUDA toolkit"), at about twice beam 4's
+decode time on the same (loaded) Mac. Beam 4, score 2.0: the most terms before the boost
+starts looping, half a step below where it does, and the cheaper beam. The
+NeMo beam search runs the decoder and joiner once per hypothesis per step,
+unbatched, so its cost grows with the beam.
+
+**Two failures the boost causes, and the guard.** sherpa-onnx's NeMo beam
+search adds the score to a hotword's pieces and takes it back only when a
+later piece leaves the hotword. A hypothesis that has typed part of a hotword
+keeps the bonus by emitting nothing more, and can outscore every hypothesis
+that goes on transcribing: with all 56 terms boosted, LibriSpeech's "add a
+quart of strong consom and let all continue boiling" came back as "add a
+quart of strong Conflue". It also loops on a finished hotword: "tell Aoife on
+Slack Slack Slack". So a window whose hotword decode leaves audible speech
+after its last token (at least 1 s, starting 0.5 s after the last token
+began, with a frame at least a quarter as loud as the window's loudest), or
+types a hotword twice in a row, is decoded again without hotwords
+(`SherpaHotwordCheck`). On the Python run of 450 clips it fired once, on a
+correct one-word clip.
+
+**Results.** `just ios accuracy` in the simulator. `unified-greedy` is the
+base branch (custom words in finishing only); `unified-hotwords` this branch.
+LibriSpeech clips carry no vocabulary, so both decode them greedily and the
+LibriSpeech rows differ only by Parakeet's per-decode dither:
+
+| Set | Path | WER before | WER after | Terms raw before | after | Terms finished before | after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| vocab-en | file | 13.53 | **8.43** | 41.7 | **76.7** | 68.3 | **82.5** |
+| vocab-en | streamed | 13.73 | **8.82** | 43.3 | **77.5** | 67.5 | **81.7** |
+| LibriSpeech clean | file | 1.48 | 1.50 | | | | |
+| LibriSpeech clean | streamed | 1.57 | 1.50 | | | | |
+| LibriSpeech other | file | 3.66 | 3.71 | | | | |
+| LibriSpeech other | streamed | 3.63 | 3.80 | | | | |
+
+No `vocab-en` clip typed one of its unspoken terms, none lost a term greedy
+spelled, and none came back empty. What it still misses are names whose sound
+and spelling part company (Aoife as "AoFA", Saoirse, Tadhg, Nguyen spoken
+"Win", Oluwaseun), Namrata heard as "Namita", and `getUserById`.
+
+The cost to ordinary speech is the other half. With the whole 56-term list
+boosted on every LibriSpeech clip (`background=vocab-en`, what a user with a
+long list meets when dictating something unrelated to it):
+
+| Set | Path | Greedy | All 56, no guard | All 56, with guard |
+| --- | --- | --- | --- | --- |
+| LibriSpeech clean | file | 1.48 | 1.62 | 1.81 |
+| LibriSpeech clean | streamed | 1.57 | 1.69 | 1.72 |
+| LibriSpeech other | file | 3.66 | 4.40 | 4.17 |
+| LibriSpeech other | streamed | 3.63 | 4.57 | 4.31 |
+
+The guard took back about a third of the loss on the harder set (deletions 43
+to 37 and 39 to 34). What remains is a handful of clips: a hotword spelled
+into ordinary speech ("Sixty Siddharth Night", "Lieutenant Cross Trees"),
+and a drop it cannot see, either too close to the end of the window ("thought
+Hugging", with less than a second after it) or in the middle ("strong
+Continue boiling"). Clean file got worse with the guard, by one 18-second
+clip losing seven words mid-window; Parakeet's dither alone moves single
+clips like that. Fewer terms boost fewer chances: `vocab-en` dictations with
+six or so terms showed none of this.
+
+Decode time: the beam roughly matched greedy on the short `vocab-en` clips on
+a quiet run (RTF 0.071 / 0.069 against greedy's 0.081 / 0.069, on a busier
+Mac); on LibriSpeech with all 56 terms, RTF 0.064 to 0.085 against greedy's
+0.049 to 0.060 on the same day. The simulator's RTF says little about a phone,
+and nothing here was measured on one. A user without custom words keeps
+greedy search and pays nothing.
 
 ## Added: Omnilingual ASR 300M CTC INT8
 

@@ -21,8 +21,11 @@ import Testing
 ///
 /// A clip that lists a `vocabulary` (the `vocab-en` set) is decoded with it as
 /// the user's custom vocabulary: into the decoder the way the app hands it
-/// over (Whisper's prompt, Qwen3-ASR's hotwords), and into the finishing
-/// funnel. Every other clip is decoded with none.
+/// over (Whisper's prompt, Qwen3-ASR's and Parakeet Unified's hotwords), and
+/// into the finishing funnel. Every other clip is decoded with none, unless
+/// `VOCA_ASR_BENCH_BACKGROUND` names `vocab-en`: then it is decoded with that
+/// set's whole term list, which is what ordinary speech meets when a user with
+/// a long vocabulary dictates something unrelated to it.
 ///
 /// A clip already in the results file is skipped, so an interrupted run picks
 /// up where it stopped.
@@ -58,6 +61,10 @@ enum AccuracyBenchmark {
         /// Balanced unless `VOCA_ASR_BENCH_QUALITY` says otherwise. Fast never
         /// re-samples a window, which makes two runs comparable clip by clip.
         let quality: TranscriptionQuality
+        /// The vocabulary a clip without its own is decoded with, as stored
+        /// text, or nil for none. See the type's documentation.
+        let background: String?
+        let backgroundName: String
     }
 
     struct Clip: Decodable {
@@ -100,9 +107,36 @@ enum AccuracyBenchmark {
             paths: words("VOCA_ASR_BENCH_PATHS", "file streamed"),
             limit: environment["VOCA_ASR_BENCH_LIMIT"].flatMap(Int.init),
             tag: environment["VOCA_ASR_BENCH_TAG"].flatMap { $0.isEmpty ? nil : $0 } ?? "current",
-            quality: environment["VOCA_ASR_BENCH_QUALITY"].flatMap(TranscriptionQuality.init(rawValue:)) ?? .default
+            quality: environment["VOCA_ASR_BENCH_QUALITY"].flatMap(TranscriptionQuality.init(rawValue:)) ?? .default,
+            background: backgroundVocabulary(environment["VOCA_ASR_BENCH_BACKGROUND"] ?? ""),
+            backgroundName: environment["VOCA_ASR_BENCH_BACKGROUND"] ?? ""
         )
     }()
+
+    /// `vocab_en.json`'s whole term list, in its own order, as the stored
+    /// Settings text, for `name` "vocab-en"; nil for an empty name.
+    nonisolated static func backgroundVocabulary(_ name: String) -> String? {
+        guard name == "vocab-en" else {
+            precondition(name.isEmpty, "VOCA_ASR_BENCH_BACKGROUND takes only vocab-en")
+            return nil
+        }
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("tools/asr-bench/vocab_en.json")
+        struct Source: Decodable {
+            struct Term: Decodable { let term: String }
+            let terms: [Term]
+        }
+        guard let data = try? Data(contentsOf: url),
+              let source = try? JSONDecoder().decode(Source.self, from: data)
+        else { preconditionFailure("cannot read \(url.path)") }
+        return source.terms.map(\.term).joined(separator: "\n")
+    }
+
+    /// The vocabulary `clip` is decoded and finished with, as stored text.
+    static func vocabularyText(_ clip: Clip) -> String? {
+        clip.vocabularyText ?? configuration?.background
+    }
 
     static func clips(in set: String, limit: Int?) throws -> [Clip] {
         let configuration = try #require(configuration)
@@ -126,7 +160,9 @@ enum AccuracyBenchmark {
         let output = configuration.root
             .appendingPathComponent("results/\(configuration.tag)/\(configuration.model)", isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        try checkSettings(in: output, ["quality": configuration.quality.rawValue])
+        var settings = ["quality": configuration.quality.rawValue]
+        if !configuration.backgroundName.isEmpty { settings["background"] = configuration.backgroundName }
+        try checkSettings(in: output, settings)
         let file = output.appendingPathComponent("\(set).\(path).jsonl")
         try trimIncompleteRecord(file)
         let done = Set(
@@ -160,7 +196,7 @@ enum AccuracyBenchmark {
                 numbersAsDigits: true,
                 spokenEmoji: true,
                 snippets: [],
-                vocabulary: CustomVocabulary.terms(clip.vocabularyText)
+                vocabulary: CustomVocabulary.terms(vocabularyText(clip))
             )
             let hypothesis = Hypothesis(
                 id: clip.id, raw: raw, finished: finished,
@@ -204,7 +240,7 @@ enum AccuracyBenchmark {
     ) async throws -> (String, Int) {
         let descriptor = try #require(LocalModelCatalog.descriptor(for: model))
         let language = clip.language
-        let vocabulary = clip.vocabularyText
+        let vocabulary = vocabularyText(clip)
         switch (descriptor.engine, path) {
         case (.whisperKit, "file"):
             return try await Whisper.file(samples, language: language, vocabulary: vocabulary)
@@ -339,37 +375,57 @@ enum AccuracyBenchmark {
 
     @MainActor
     enum Sherpa {
-        private static var loaded: (language: String, recognizer: SherpaRecognizer)?
+        private static var loaded: (language: String, hotwordSearch: Bool, recognizer: SherpaRecognizer)?
 
-        /// As `LocalModelManager.ensureSherpaRecognizer` builds it, one per
-        /// language, since a language hint is part of the native config.
-        static func recognizer(_ language: String) throws -> SherpaRecognizer {
-            if let loaded, loaded.language == language { return loaded.recognizer }
+        /// As `LocalModelManager.ensureSherpaRecognizer` builds it: one per
+        /// language, since a language hint is part of the native config, and
+        /// for a model with a hotword vocabulary, beam search while there are
+        /// hotwords and greedy search while there are none.
+        static func recognizer(_ language: String, hotwords: String?) throws -> SherpaRecognizer {
             let configuration = try #require(AccuracyBenchmark.configuration)
             let descriptor = try #require(LocalModelCatalog.descriptor(for: configuration.model))
+            let vocabulary = hotwords == nil ? nil : hotwordVocabulary(descriptor)
+            let hotwordSearch = vocabulary != nil
+            if let loaded, loaded.language == language, loaded.hotwordSearch == hotwordSearch {
+                return loaded.recognizer
+            }
             let family = try #require(descriptor.sherpaFamily)
+            // Released before the next is built, as the app does.
+            loaded = nil
             let recognizer = try SherpaRecognizer.create(
                 model: descriptor,
                 directory: configuration.modelRoot.appendingPathComponent(configuration.model),
                 language: language,
                 threads: SherpaThreads.count,
-                quality: family.effectiveQuality(configuration.quality)
+                quality: family.effectiveQuality(configuration.quality),
+                hotwordVocabulary: vocabulary
             )
-            loaded = (language, recognizer)
+            loaded = (language, hotwordSearch, recognizer)
             return recognizer
+        }
+
+        /// The repository's copy of what the app bundles; see
+        /// `LocalModelManager.hotwordVocabulary(for:)`.
+        static func hotwordVocabulary(_ descriptor: LocalModelDescriptor) -> URL? {
+            descriptor.hotwordVocabularyFile.map { name in
+                URL(fileURLWithPath: #filePath)
+                    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                    .appendingPathComponent("assets/speech/\(name)")
+            }
         }
 
         /// As `LocalModelManager.sherpaHotwords(for:)` makes them from the
         /// stored vocabulary.
         static func hotwords(_ vocabulary: String?) -> String? {
             let configuration = AccuracyBenchmark.configuration
-            let descriptor = configuration.flatMap { LocalModelCatalog.descriptor(for: $0.model) }
+            guard let descriptor = configuration.flatMap({ LocalModelCatalog.descriptor(for: $0.model) })
+            else { return nil }
             let terms = RecognitionHints.terms(vocabulary: CustomVocabulary.terms(vocabulary))
-            return RecognitionHints.sherpaHotwords(family: descriptor?.sherpaFamily, terms: terms)
+            return RecognitionHints.sherpaHotwords(for: descriptor, terms: terms)
         }
 
         static func file(_ samples: [Float], language: String, hotwords: String?) throws -> String {
-            let outcome = try recognizer(language).transcribe(
+            let outcome = try recognizer(language, hotwords: hotwords).transcribe(
                 SpeechAudioConditioning.condition(samples), hotwords: hotwords
             )
             if let failure = outcome.nativeFailure {
@@ -383,7 +439,7 @@ enum AccuracyBenchmark {
         static func streamed(_ captured: [Float], language: String, hotwords: String?) async throws -> String {
             let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
             let session = SherpaIncrementalSession(
-                chunks: chunks, recognizer: try recognizer(language), hotwords: hotwords
+                chunks: chunks, recognizer: try recognizer(language, hotwords: hotwords), hotwords: hotwords
             ) {
                 SileroSpeechDetector(model: SileroSpeechDetector.repositoryModel)
             }
