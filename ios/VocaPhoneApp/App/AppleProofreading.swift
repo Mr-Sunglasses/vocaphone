@@ -118,7 +118,9 @@ enum AppleProofreading {
         let checker = UITextChecker()
         let range = NSRange(location: 0, length: text.utf16Length)
         let issues: [SystemIssue] = await withCheckedContinuation { done in
-            checker.requestGrammarChecking(of: text, range: range, waitForAllResults: true) { results in
+            // `@Sendable` so the callback is not main-actor isolated: UIKit calls
+            // it on its XPC reply queue, and an inherited isolation traps there.
+            checker.requestGrammarChecking(of: text, range: range, waitForAllResults: true) { @Sendable results in
                 // Read here, so only plain values leave the callback.
                 var issues: [SystemIssue] = []
                 for result in results where result.resultType == .grammar {

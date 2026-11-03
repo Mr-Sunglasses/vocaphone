@@ -68,8 +68,11 @@ final class PairingScannerViewController: UIViewController, @preconcurrency AVCa
         case .authorized:
             installCamera()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
+            // `@Sendable` so the block is not main-actor isolated: the system
+            // answers on its own queue, and Swift 6 traps an isolated closure
+            // that runs off its actor.
+            AVCaptureDevice.requestAccess(for: .video) { @Sendable [weak self] granted in
+                Task { @MainActor in
                     guard let self else { return }
                     granted ? self.installCamera() : self.reportUnavailable(
                         "Camera access is required to scan the pairing QR code."

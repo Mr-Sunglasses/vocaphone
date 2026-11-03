@@ -119,7 +119,10 @@ final class AudioRecorder: NSObject {
     func requestPermission(
         _ completion: @escaping @MainActor @Sendable (Bool) -> Void
     ) {
-        AVAudioApplication.requestRecordPermission { granted in
+        // `@Sendable` so the block does not inherit this class's main-actor
+        // isolation: the system may answer on another queue, and Swift 6
+        // traps an isolated closure that runs off its actor.
+        AVAudioApplication.requestRecordPermission { @Sendable granted in
             Task { @MainActor in completion(granted) }
         }
     }
