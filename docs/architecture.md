@@ -621,6 +621,60 @@ it asks for the phone microphone when a Bluetooth headset is attached. Only an
 explicit Bluetooth headset selection enters call mode. Failed or cancelled
 capture startup releases audio focus and any communication route it acquired.
 
+## Learning from corrections
+
+VocaMac re-reads a field after it types a dictation and offers the words the
+user respelled as Dictionary entries. On a phone the fix is made with the
+VocaPhone keyboard, so the keyboard sees it directly:
+
+```
+keyboard inserts a dictation
+  └─ follows it (≤ 20 s; ends at the next dictation, keyboard hidden, other field)
+       each change: text around the cursor ─▶ CorrectionWatch (off the main thread)
+            DictatedSpan finds the dictation again by 24-character anchors
+            CorrectionLearner keeps spelling fixes only ─▶ pending pairs
+  └─ finish ─▶ "heard → corrected" pairs
+       Android: CorrectionLearningStore (same process)
+       iOS:     App Group learned-corrections/*.json ─▶ app on foreground
+                ─▶ CorrectionLearningPreferences
+  └─ CorrectionSuggestions: suggest; a name fixed the same way twice is added
+       Add ─▶ custom word (+ replacement when the letters differ and the heard
+              form is not one ordinary word)
+```
+
+- **The learner** (`CorrectionLearner`, `core/CorrectionLearner.kt` and
+  `ios/VocaPhoneShared/CorrectionLearner.swift`) is VocaMac's: one changed
+  region between the dictation as typed and as it reads now, widened to whole
+  words; word substitutions of one to three heard words for one or two
+  corrected ones; at most twelve edited words and three fixes. A fix counts when
+  it keeps the letters (casing, joining) or changes them a little (same first
+  sound, at most 40% edit distance), and not when it swaps ordinary words or
+  only capitalizes a sentence start. The phone adds one gate: the dictation must
+  be mostly words from the shipped English list, since that list is what tells
+  rewording from respelling.
+- **Finding the dictation again** (`CorrectionWatch` / `DictatedSpan`). The
+  first reading after the insertion is the baseline (on iOS it is built from
+  the context the insertion already read; on Android it is the keyboard's read
+  just after the commit). It keeps up to 24 characters either side as anchors,
+  or marks a side as the field's edge. A later reading must contain both
+  anchors, nearest each other, framing text that is still the dictation
+  edited (`isStillDictation`); otherwise it is ignored and the last result
+  stands, which is what keeps a fix made just before Send.
+- **Where the readings come from.** No new read per keystroke. iOS hands over
+  the snapshot `handleTextChange` already takes; Android widens the coalesced
+  `refreshEditorText` read while a dictation is followed. Both queue the work on
+  a background queue in order. Fields are filtered with the keyboards' existing
+  policies (`TypingFieldPolicy` on iOS; `CorrectionLearningPolicy` on Android,
+  which adds `IME_FLAG_NO_PERSONALIZED_LEARNING` and `FieldClassifier`'s secret
+  names to `ImeInputPolicy`).
+- **Storage.** Only pairs: Android `correction_learning` DataStore
+  (`learn_from_corrections`, `correction_suggestions`, `dismissed_corrections`);
+  iOS App Group defaults (`learnFromCorrections`, `correctionSuggestions`,
+  `dismissedCorrectionSuggestions`), fed by `LearnedCorrectionBatch` files
+  (schema 1). Added words go to the vocabulary dictation already uses: on
+  Android the personal dictionary while dictation shares it, else the custom
+  words; on iOS the custom words.
+
 ## Preview harness (iOS)
 
 Every user-visible state has a `#Preview`, and every preview is built from

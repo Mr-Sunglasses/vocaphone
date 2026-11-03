@@ -72,6 +72,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var sessionTargetConfirmed = false
     private var palette = KeyboardPalette(isDark: false)
     private lazy var typing = TypingEngine()
+    /// Learns the spellings the user fixes in a dictation this keyboard just
+    /// typed; only the pairs reach the app. See `followDictationForCorrections`.
+    private let corrections = DictationCorrectionObserver()
     /// Writing check's rules, parsed off the main thread when the keyboard loads.
     private var writingChecker: WritingCheck?
     /// The word list the language gate reads, once it has loaded.
@@ -448,6 +451,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         stopReadingWholeMessage(restoringCursor: true)
         writingCheck.reset()
         autoFixer.clear()
+        corrections.finish()
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -603,6 +607,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
+            corrections.finish()
             stopReadingWholeMessage()
             writingCheck.reset()
             autoFixer.clear()
@@ -617,6 +622,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // Same field, but something moved the cursor or edited the text
             // without going through this keyboard. The document wins.
             typing.reconcile(document: snapshot)
+            // Queued off the main thread, and only after a dictation.
+            corrections.fieldRead(before: snapshot.before, after: snapshot.after)
         }
         // A tap elsewhere in the field, or in another field, moves the cursor
         // without a keystroke. Undo is retired there rather than kept for a
@@ -1597,6 +1604,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         notice = nil
         discardParkedSession()
+        // The next dictation is the moment VocaMac compares too: the fixes to
+        // the last one are done by now.
+        corrections.finish()
         var record = SessionRecord(
             state: .idle,
             sourceDocumentID: currentDocumentID,
@@ -1658,6 +1668,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         render(nil)
     }
 
+    /// Starts following a dictation just typed, to learn the spellings the
+    /// user fixes in it (`DictationCorrectionObserver`). Only with "Learn from
+    /// my corrections" on, where typing intelligence may run at all — never a
+    /// secure, one-time-code, card-number or number-pad field — and once the
+    /// word list has loaded, since it tells a respelled name from a reworded
+    /// sentence. The baseline is what the insertion was given, so nothing is
+    /// read here; a transcript put after the word the cursor sat in is not
+    /// followed, as the text around it is not known exactly.
+    private func followDictationForCorrections(_ prepared: PreparedInsertion, before: String?, after: String?) {
+        corrections.finish()
+        guard CorrectionLearningPreferences.enabled,
+              prepared.cursorAdvance == 0,
+              let before, let after,
+              let wordList = typing.loadedWordList,
+              TypingFieldPolicy.resolve(for: textDocumentProxy).allowsTypingIntelligence
+        else { return }
+        corrections.dictationInserted(prepared.text, before: before, after: after, wordList: wordList)
+    }
+
     /// A transcript belongs to the field it was dictated for. The comparison
     /// uses the target this instance captured, never the identifier stored in
     /// the record: identifiers are regenerated across keyboard relaunches, so
@@ -1694,10 +1723,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         isPerformingInsertion = true
         defer { isPerformingInsertion = false }
+        let contextBefore = textDocumentProxy.documentContextBeforeInput
+        let contextAfter = textDocumentProxy.documentContextAfterInput
         let prepared = TextInsertion.prepare(
             transcript,
-            before: textDocumentProxy.documentContextBeforeInput,
-            after: textDocumentProxy.documentContextAfterInput,
+            before: contextBefore,
+            after: contextAfter,
             hasSelection: textDocumentProxy.selectedText?.isEmpty == false
         )
         do {
@@ -1710,6 +1741,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 textDocumentProxy.adjustTextPosition(byCharacterOffset: prepared.cursorAdvance)
             }
             textDocumentProxy.insertText(prepared.text)
+            followDictationForCorrections(prepared, before: contextBefore, after: contextAfter)
             lastInsertedText = prepared.text
             lastInsertedFollowing = prepared.following
             lastInsertedDocumentID = currentDocumentID

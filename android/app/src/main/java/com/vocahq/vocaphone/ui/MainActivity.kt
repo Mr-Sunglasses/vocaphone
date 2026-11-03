@@ -130,6 +130,7 @@ fun VocaPhoneApp(
     val deviceLanguages by viewModel.deviceLanguages.collectAsStateWithLifecycle()
     val usageStats by viewModel.usageStats.collectAsStateWithLifecycle()
     val tonePreviewListening by viewModel.tonePreviewListening.collectAsStateWithLifecycle()
+    val correctionLearning by viewModel.correctionLearning.collectAsStateWithLifecycle()
 
     // The selected keyboard is a system setting, so its state can change while
     // the app is in the background; re-read setup on every resume.
@@ -484,6 +485,13 @@ fun VocaPhoneApp(
                 onAddReplacement = { heard, written -> viewModel.addReplacement(heard, written) },
                 onUpdateReplacement = { id, heard, written -> viewModel.updateReplacement(id, heard, written) },
                 onDeleteReplacement = { viewModel.deleteReplacement(it) },
+                correctionLearning = correctionLearning,
+                correctionActions = CorrectionLearningActions(
+                    onEnabled = { viewModel.setLearnFromCorrections(it) },
+                    onAdd = { viewModel.acceptCorrection(it) },
+                    onDismiss = { viewModel.dismissCorrection(it) },
+                    onClear = { viewModel.clearCorrections() },
+                ),
                 onAsciiEmoji = { viewModel.setAsciiEmojiEnabled(it) },
                 onSwipeTyping = { viewModel.setSwipeTypingEnabled(it) },
                 onClipboardChip = { viewModel.setClipboardChipEnabled(it) },

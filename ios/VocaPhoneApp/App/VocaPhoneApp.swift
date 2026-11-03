@@ -127,6 +127,9 @@ struct VocaPhoneApp: App {
                     // Text the keyboard's "Open app" left behind and nobody
                     // took. A fresh one is this launch's, and is left for it.
                     SharedStore.shared.removeExpiredWritingDraft()
+                    // Spellings the keyboard learned from the user's fixes
+                    // while the app was away: pairs only.
+                    CorrectionLearningPreferences.collectFromKeyboard()
                     Telemetry.shared.appFirstOpen()
                     // Started once here rather than lazily from the setup card:
                     // the first path update has to have landed by the time that
@@ -167,6 +170,7 @@ struct VocaPhoneApp: App {
                         // so coming back is the one moment the model
                         // recommendations can legitimately change.
                         KeyboardInputLanguages.refresh()
+                        CorrectionLearningPreferences.collectFromKeyboard()
                     }
                     guard phase == .active else {
                         // The queue is in memory and does not survive the

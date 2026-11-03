@@ -39,6 +39,7 @@ import com.vocahq.vocaphone.local.LocalModelIntegrityException
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.BubbleBehavior
+import com.vocahq.vocaphone.settings.CorrectionLearningState
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import com.vocahq.vocaphone.settings.SplitKeyboard
@@ -644,6 +645,22 @@ class VocaPhoneViewModel @JvmOverloads constructor(
 
     fun deleteReplacement(id: String) =
         viewModelScope.launch { container.settings.deleteReplacement(id) }
+
+    /** Spellings learned from the user's fixes to dictated text, under Suggested. */
+    val correctionLearning: StateFlow<CorrectionLearningState> = container.correctionLearning.state
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CorrectionLearningState())
+
+    fun setLearnFromCorrections(enabled: Boolean) =
+        viewModelScope.launch { container.correctionLearning.setEnabled(enabled) }
+
+    fun acceptCorrection(key: String) =
+        viewModelScope.launch { container.correctionLearning.accept(key) }
+
+    fun dismissCorrection(key: String) =
+        viewModelScope.launch { container.correctionLearning.dismiss(key) }
+
+    fun clearCorrections() =
+        viewModelScope.launch { container.correctionLearning.clear() }
 
     fun setAsciiEmojiEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setAsciiEmojiEnabled(enabled) }

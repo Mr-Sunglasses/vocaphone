@@ -518,6 +518,14 @@ struct DictationSettingsView: View {
         LocalTranscriptionPreferences.replacementsKey,
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var replacementsData = Data()
+    @AppStorage(
+        CorrectionLearningPreferences.suggestionsKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var correctionSuggestionsData = Data()
+    @AppStorage(
+        CorrectionLearningPreferences.enabledKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var learnsFromCorrections = true
     /// A `List` row re-runs `onAppear` when it scrolls back into view, and
     /// reloading the draft there would throw away a half-typed word.
     @State private var hasLoadedVocabularyDraft = false
@@ -770,6 +778,11 @@ struct DictationSettingsView: View {
             } label: {
                 LabeledContent("Replacements", value: replacementCountDetail)
             }
+            NavigationLink {
+                CorrectionSuggestionsSettingsView()
+            } label: {
+                LabeledContent("Suggested", value: suggestionCountDetail)
+            }
         } header: {
             LearnMoreHeader(title: "Custom words", topic: SettingsHelp.customWords, presented: $learnMore)
         } footer: {
@@ -787,6 +800,17 @@ struct DictationSettingsView: View {
             customVocabularyDraft = savedCustomVocabulary
             hasLoadedVocabularyDraft = true
         }
+        // A word added from Suggested lands in the saved list; a draft with no
+        // edits of its own follows it, so "Save words" cannot write it away.
+        .onChange(of: savedCustomVocabulary) { old, new in
+            if customVocabularyDraft == old { customVocabularyDraft = new }
+        }
+    }
+
+    private var suggestionCountDetail: String {
+        guard learnsFromCorrections else { return "Off" }
+        let count = CorrectionSuggestion.decode(correctionSuggestionsData).count
+        return count == 0 ? "None" : "\(count)"
     }
 
     private var replacementCountDetail: String {

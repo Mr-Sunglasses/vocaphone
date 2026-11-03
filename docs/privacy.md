@@ -90,6 +90,54 @@ export. To decide whether ordinary words were a misheard custom word, the
 on-device engines' per-word confidence is read in memory for that one
 dictation and discarded with it.
 
+### Learning from corrections (Learn from my corrections)
+
+**Learn from my corrections** is on by default (iOS: Settings › Dictation ›
+Custom words › Suggested; Android: Settings › Words › Suggested). It applies
+only to a dictation the VocaPhone keyboard itself typed, and only while the
+user goes on editing with the VocaPhone keyboard; never to the floating mic,
+the voice shortcut on Android, or Shortcuts.
+
+- **What is read, and when.** For at most 20 seconds after a dictation is
+  inserted — ending sooner at the next dictation, when the keyboard is hidden,
+  or when the user moves to another field — the keyboard looks at the text
+  around the cursor after each change, to find the dictated span again and see
+  what the user changed in it. On iOS that is the `documentContextBeforeInput`
+  / `documentContextAfterInput` snapshot the keyboard already takes on every
+  change, which iOS may cut short. On Android it is the coalesced
+  `getTextBeforeCursor` / `getTextAfterCursor` read the keyboard already makes
+  after each change, widened while a dictation is followed to the dictation's
+  length plus about 110 characters each side (at most about 1,100). No extra
+  read is made per keystroke; the comparison runs off the main thread.
+- **What is kept.** Only the spelling fixes, as "heard → corrected" pairs
+  ("Namratha → Namrata", "git hub → GitHub"), at most three per dictation, with
+  two yes/no flags (whether the heard form is one ordinary English word, and
+  whether the fix names something). The text around them, and the dictation
+  itself, stay in memory and are dropped when the dictation stops being
+  followed. Rewording, swapping one ordinary word for another, and text that is
+  not mostly English words are not learned from.
+- **Where the pairs go.** On Android the keyboard runs in the app's process and
+  stores them in the app's own `correction_learning` DataStore. On iOS the
+  keyboard writes each batch of pairs as one small file in the App Group
+  container (`learned-corrections/`, at most 20 waiting, versioned); the app
+  reads and deletes them when it comes to the foreground or Suggested opens,
+  and keeps them in the App Group defaults. Up to 50 suggestions and 200
+  dismissals are kept. Nothing is sent to a gateway, logged, reported to usage
+  statistics, or included in a diagnostics export.
+- **Added for you.** A name or term (a fix with a capital or a word not in the
+  English list) that the user makes the same way twice is added to their custom
+  words, and to their replacements when the engine heard different letters,
+  without asking. Everything else waits under Suggested for Add or Dismiss.
+- **Where it never reads.** Password, PIN and one-time-code fields, number
+  pads, card-number fields (iOS: wherever typing intelligence is off;
+  Android: wherever dictation is not offered, fields whose hint or id names a
+  secret, and fields that set `IME_FLAG_NO_PERSONALIZED_LEARNING`, such as
+  incognito tabs).
+- **Clearing it.** Turning the switch off stops the reading and, on iOS,
+  deletes any batches still waiting. Clear suggestions forgets every suggestion
+  and dismissal. Words already added stay in Custom words and Replacements
+  until the user removes them there. Deleting the app removes everything.
+
 **Writing check (English)** is VocaPhone's Grammarly-style checker for typed
 text. It has four ways in, and every one of them checks on the phone:
 
@@ -326,7 +374,10 @@ The iOS keyboard completes, corrects and predicts entirely on the device.
   cursor moves. iOS gives a keyboard extension no composing region, so this is
   the only way to know which word to replace. Neither is logged or stored.
   With Check grammar on, the last sentence or two of that context goes to the
-  containing app after a pause, as described above.
+  containing app after a pause, as described above. After a dictation, the same
+  snapshot is compared off the main thread for up to 20 seconds to learn the
+  user's spelling fixes; only the pairs reach the app (Learning from
+  corrections, above).
 - **Sensitive fields.** Suggestions, correction, prediction and learning are all
   switched off — not merely hidden — in password, new-password, one-time-code,
   card-number and number-pad fields.
@@ -364,7 +415,11 @@ corrections have a token. That window stays in memory, is never logged, and is
 not sent to the gateway. With Check grammar on, the keyboard also reads up to
 600 characters before the cursor once the user pauses, and checks the last
 sentence or two of it with the on-device grammar model in the same process;
-that text is never logged, stored or sent anywhere. Swipe typing matches the
+that text is never logged, stored or sent anywhere. With Learn from my
+corrections on, the 32-character read is widened for up to 20 seconds after a
+keyboard dictation so the user's spelling fixes in it can be learned (see
+Learning from corrections above); only the "heard → corrected" pairs are kept.
+Swipe typing matches the
 finger path against the same on-phone English word list and does not read the
 field. Swipe and suggestions
 are English only; the app does not download other keyboard language packs. The clipboard chip and

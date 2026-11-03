@@ -99,7 +99,7 @@ object FieldClassifier {
         }
     }
 
-    private fun matchesSensitiveName(value: String?): Boolean {
+    internal fun matchesSensitiveName(value: String?): Boolean {
         if (value.isNullOrBlank()) return false
         val normalized = value.lowercase().filter { it.isLetterOrDigit() || it == '_' }
         return SENSITIVE_KEYWORDS.any { normalized.contains(it) }

@@ -306,6 +306,12 @@ final class TypingEngine {
         refreshCurrentCandidates()
     }
 
+    /// The shipped word list once it has loaded, nil before: a value, so work
+    /// off the main thread can ask it whether a word is ordinary.
+    var loadedWordList: TypingWordList? {
+        wordList.isEmpty ? nil : wordList
+    }
+
     /// Installs the user's replacements and contacts when UIKit delivers them.
     /// Delivery is asynchronous and often arrives after a word has already been
     /// typed, so it is itself a reason to rebuild the visible candidates.

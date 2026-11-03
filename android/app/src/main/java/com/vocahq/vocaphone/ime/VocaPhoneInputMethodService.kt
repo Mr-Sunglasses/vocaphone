@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.vocahq.vocaphone.VocaPhoneApplication
+import com.vocahq.vocaphone.core.CorrectionLearningPolicy
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.DictationPhase
@@ -198,6 +199,21 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (!lastState.phase.isBusy) container.grammar.release()
     }
 
+    /**
+     * Learns the spellings the user fixes in a dictation this keyboard just
+     * typed. Only the "heard → corrected" pairs reach storage, as suggestions
+     * under Dictionary; see [followDictationForCorrections].
+     */
+    private val correctionObserver by lazy {
+        DictationCorrectionObserver(scope, deliver = { found ->
+            container.workScope.launch { container.correctionLearning.receive(found) }
+        })
+    }
+    private val finishCorrections = Runnable { correctionObserver.finish() }
+
+    /** "Learn from my corrections", kept current from its store. */
+    private var learnsFromCorrections = false
+
     override fun onCreate() {
         super.onCreate()
         publishVoiceShortcutSubtypes()
@@ -232,6 +248,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         }
         scope.launch {
             writingCheck.report.collect { report -> if (report != null) maybeAutoFix(report) }
+        }
+        scope.launch {
+            container.correctionLearning.enabled.collect { enabled ->
+                learnsFromCorrections = enabled
+                if (!enabled) stopFollowingDictation()
+            }
         }
     }
 
@@ -404,6 +426,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 returnToPreviousIme()
             }
         }
+        stopFollowingDictation()
         stopClipboardWatch()
         visibleClipboard.value = null
         writingCheck.reset()
@@ -494,6 +517,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         voiceShortcutWindowWaits = 0
         voiceShortcutRejectGuidance = false
         releaseOwnedDictation("editor_finished")
+        stopFollowingDictation()
         if (VoiceShortcutIme.shouldReturnWhenViewFinishes(
                 voiceShortcutActive,
                 voiceShortcutReturned,
@@ -536,6 +560,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         voiceShortcutRejectGuidance = false
         stopClipboardWatch()
         releaseOwnedDictation("keyboard_destroyed")
+        correctionObserver.close()
         // The delayed release was just removed with everything else posted.
         if (!lastState.phase.isBusy) container.grammar.release()
         if (container.dictation.imeInserter === this) {
@@ -564,13 +589,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
-            val committed = commitDictation(
+            val committedText = commitDictationText(
                 connection,
                 cleaned,
                 composingRegionActive,
                 lastSelStart,
                 lastSelEnd,
             )
+            val committed = committedText != null
             // The composing region was finished before the commit, so the
             // half-typed word stays in the field and the keyboard has to drop
             // it. Cleared here rather than left to onUpdateSelection, whose
@@ -579,7 +605,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             // would then recompose the stale prefix after the transcript.
             composingRegionActive = false
             editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
-            if (committed) {
+            if (committedText != null) {
+                followDictationForCorrections(committedText)
                 syncShiftFromCursor()
                 refreshEditorText()
                 InsertionReport(InsertionOutcome.INSERTED)
@@ -905,20 +932,27 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         } else {
             ""
         }
+        // Wider while a dictation is followed for corrections, in the same
+        // two reads; the strip still sees its 32 characters.
+        val limit = maxOf(EDITOR_WINDOW_CHARS, correctionObserver.readLimit)
         if (!visibleSettings.value.suggestionsEnabled || editorConfig.sensitive) {
             visibleEditorText.value = EditorTextWindow(
                 selected = selected,
                 hasSelection = hasSelection,
             )
             writingCheck.textChanged("", enabled = false, options = ::writingOptions)
+            if (correctionObserver.isActive && !editorConfig.sensitive) readForCorrections(limit)
             return
         }
-        val before = runCatching {
-            currentInputConnection?.getTextBeforeCursor(32, 0)?.toString().orEmpty()
+        val beforeRead = runCatching {
+            currentInputConnection?.getTextBeforeCursor(limit, 0)?.toString().orEmpty()
         }.getOrDefault("")
-        val after = runCatching {
-            currentInputConnection?.getTextAfterCursor(32, 0)?.toString().orEmpty()
+        val afterRead = runCatching {
+            currentInputConnection?.getTextAfterCursor(limit, 0)?.toString().orEmpty()
         }.getOrDefault("")
+        correctionObserver.fieldRead(beforeRead, afterRead, limit)
+        val before = beforeRead.takeLast(EDITOR_WINDOW_CHARS)
+        val after = afterRead.take(EDITOR_WINDOW_CHARS)
         visibleEditorText.value = EditorTextWindow(before, after, selected, hasSelection)
         // An edit or a cursor move after an automatic fix ends its Undo: the
         // text before the cursor must still end with what the fix left.
@@ -933,6 +967,39 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             auto = visibleSettings.value.typingGrammar,
             options = ::writingOptions,
         )
+    }
+
+    /**
+     * Starts following a dictation just typed into this field, to learn the
+     * spellings the user fixes in it ([DictationCorrectionObserver]). Only
+     * with "Learn from my corrections" on, never for the voice shortcut —
+     * the user goes back to their own keyboard to edit — and never in a
+     * field [CorrectionLearningPolicy] rules out. Waits for the word list,
+     * which tells a respelled name from a reworded sentence.
+     */
+    private fun followDictationForCorrections(inserted: String) {
+        stopFollowingDictation()
+        if (!learnsFromCorrections || voiceShortcutActive) return
+        val info = currentInputEditorInfo ?: return
+        if (!CorrectionLearningPolicy.allowsLearning(info.inputType, info.imeOptions, info.hintText, info.fieldName)) {
+            return
+        }
+        val dictionary = suggestionDictionary.value ?: return
+        correctionObserver.dictationInserted(inserted, dictionary::isKnown)
+        mainHandler.postDelayed(finishCorrections, DictationCorrectionObserver.WATCH_MILLIS)
+    }
+
+    private fun stopFollowingDictation() {
+        mainHandler.removeCallbacks(finishCorrections)
+        correctionObserver.finish()
+    }
+
+    /** The read [refreshEditorText] makes for a followed dictation where the strip reads nothing. */
+    private fun readForCorrections(limit: Int) {
+        val connection = currentInputConnection ?: return
+        val before = runCatching { connection.getTextBeforeCursor(limit, 0)?.toString() }.getOrNull() ?: return
+        val after = runCatching { connection.getTextAfterCursor(limit, 0)?.toString() }.getOrNull() ?: return
+        correctionObserver.fieldRead(before, after, limit)
     }
 
     /**
@@ -1353,17 +1420,21 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val transcript = state.transcript?.let(TranscriptSanitizer::clean)?.takeIf { it.isNotBlank() } ?: return
         if (!ImeInputPolicy.acceptsDictation(currentInputType)) return
         val connection = currentInputConnection ?: return
-        val committed = commitDictation(connection, transcript, composingRegionActive, lastSelStart, lastSelEnd)
+        val committedText = commitDictationText(connection, transcript, composingRegionActive, lastSelStart, lastSelEnd)
         composingRegionActive = false
         editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
-        if (!committed) return
+        if (committedText == null) return
         container.diagnostics.recordAction("saved_inserted", DictationSource.IME.name)
+        followDictationForCorrections(committedText)
         syncShiftFromCursor()
         refreshEditorText()
         container.dictation.savedTranscriptInserted(currentInputEditorInfo?.packageName)
     }
 
     private fun startImeDictation() {
+        // The next dictation is the moment VocaMac compares too: the fixes to
+        // the last one are done by now.
+        stopFollowingDictation()
         if (lastState.phase == DictationPhase.FAILED ||
             lastState.phase == DictationPhase.READY_TO_INSERT ||
             lastState.phase == DictationPhase.INSERTED
@@ -1550,5 +1621,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
         /** How long the grammar session outlives the keyboard going away. */
         const val TYPED_GRAMMAR_RELEASE_DELAY_MS = 60_000L
+
+        /** Characters either side of the cursor the strip reads. */
+        const val EDITOR_WINDOW_CHARS = 32
     }
 }

@@ -71,6 +71,7 @@ import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.Snippet
 import com.vocahq.vocaphone.core.WordReplacement
+import com.vocahq.vocaphone.settings.CorrectionLearningState
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.UsageStats
@@ -169,6 +170,8 @@ fun SettingsScreen(
     onAddReplacement: (heard: String, written: String) -> Unit = { _, _ -> },
     onUpdateReplacement: (id: String, heard: String, written: String) -> Unit = { _, _, _ -> },
     onDeleteReplacement: (id: String) -> Unit = {},
+    correctionLearning: CorrectionLearningState = CorrectionLearningState(),
+    correctionActions: CorrectionLearningActions = CorrectionLearningActions(),
     onAsciiEmoji: (Boolean) -> Unit,
     onSwipeTyping: (Boolean) -> Unit,
     onClipboardChip: (Boolean) -> Unit,
@@ -548,6 +551,7 @@ fun SettingsScreen(
                         ?.takeIf { settings.localTranscriptionEnabled && !it.supportsCustomVocabulary }
                         ?.displayName,
                 )
+                SuggestedCorrectionsSection(correctionLearning, correctionActions)
                 ReplacementsSection(
                     replacements = settings.replacements,
                     onAdd = onAddReplacement,

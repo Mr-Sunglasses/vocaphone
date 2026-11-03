@@ -28,6 +28,7 @@ import com.vocahq.vocaphone.writing.WritingSpelling
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.local.RetiredModels
 import com.vocahq.vocaphone.local.catalogLanguageCode
+import com.vocahq.vocaphone.settings.CorrectionLearningStore
 import com.vocahq.vocaphone.settings.SettingsRepository
 import com.vocahq.vocaphone.telemetry.Telemetry
 import com.vocahq.vocaphone.telemetry.TelemetryFlushScheduler
@@ -54,6 +55,9 @@ class AppContainer(context: Context) {
     private val appContext = context.applicationContext
 
     val settings = SettingsRepository(context)
+
+    /** Spellings learned from the user's fixes to dictated text; pairs only. */
+    val correctionLearning = CorrectionLearningStore(context, settings)
 
     val dictationCues = DictationTonePlayer(context)
 

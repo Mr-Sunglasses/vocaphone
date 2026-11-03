@@ -24,8 +24,20 @@ internal fun commitDictation(
     composingActive: Boolean,
     selectionStart: Int = -1,
     selectionEnd: Int = -1,
-): Boolean {
-    if (transcript.isBlank()) return false
+): Boolean = commitDictationText(connection, transcript, composingActive, selectionStart, selectionEnd) != null
+
+/**
+ * [commitDictation], returning the text as committed — the transcript with
+ * the spacing added around it — or null when the editor refused it.
+ */
+internal fun commitDictationText(
+    connection: InputConnection,
+    transcript: String,
+    composingActive: Boolean,
+    selectionStart: Int = -1,
+    selectionEnd: Int = -1,
+): String? {
+    if (transcript.isBlank()) return null
     runCatching { connection.beginBatchEdit() }
     try {
         if (composingActive) {
@@ -39,7 +51,7 @@ internal fun commitDictation(
         val before = runCatching { connection.getTextBeforeCursor(1, 0)?.toString() }.getOrNull().orEmpty()
         val after = runCatching { connection.getTextAfterCursor(1, 0)?.toString() }.getOrNull().orEmpty()
         val prepared = TextInsertion.preparedTranscript(transcript, before, after)
-        return runCatching { connection.commitText(prepared, 1) }.getOrDefault(false)
+        return prepared.takeIf { runCatching { connection.commitText(prepared, 1) }.getOrDefault(false) }
     } finally {
         runCatching { connection.endBatchEdit() }
     }
