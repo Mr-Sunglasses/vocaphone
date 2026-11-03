@@ -120,7 +120,24 @@ struct TypingPrivacyTests {
             learned.note("typo\(index)", now: base.addingTimeInterval(Double(index + 1)))
         }
         #expect(learned.contains("Kanishk"))
-        #expect(learned.entries.count == LearnedWords.capacity)
+        #expect(learned.entries.count == 1 + LearnedWords.sightingCapacity)
+    }
+
+    /// A store full of learned words still learns: a new word's sightings
+    /// have their own room, so its third one makes it the user's.
+    @Test func aFullStoreStillLearnsANewWord() {
+        var learned = LearnedWords()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        for index in 0..<LearnedWords.capacity {
+            learned.learn("word\(index)", now: base.addingTimeInterval(Double(index)))
+        }
+        let later = base.addingTimeInterval(Double(LearnedWords.capacity))
+        learned.note("Vocaphone", now: later)
+        learned.note("Vocaphone", now: later)
+        let third = learned.note("Vocaphone", now: later)
+        #expect(third)
+        #expect(learned.contains("Vocaphone"))
+        #expect(learned.count == LearnedWords.capacity)
     }
 
     /// Without Full Access there is no App Group to write to. Learning still

@@ -686,8 +686,10 @@ RULES += [
   # A question's helper verb agrees with the pronoun after it: "Do she like
   # it?", "Why is they late?". The tagger's agreement looks for the subject
   # before the verb, so it never sees these. Only pronouns, whose number is
-  # certain, and only questions.
-  *[dict(r(f"^ {wh}{aux} {subj}", f"{lead}{fix} ${n}", "agreement", rid=f"q-{rid}{'-wh' if wh else ''}"), question=True)
+  # certain, only questions, and not a joined subject ("Are he and his wife
+  # coming?"). No "were he": "Were he to leave, would she follow?" is right.
+  *[dict(r(f"^ {wh}{aux} {subj}", f"{lead}{fix} ${n}", "agreement", rid=f"q-{rid}{'-wh' if wh else ''}"),
+         question=True, notBefore=JOINED)
     for wh, lead, n in (("", "", 2), ("what|where|when|why|how|who ", "$1 ", 3))
     for aux, subj, fix, rid in (
       ("do", "he|she|it", "does", "does"),
@@ -699,7 +701,6 @@ RULES += [
       ("isn't", "you|we|they", "aren't", "arent"),
       ("aren't", "he|she|it", "isn't", "isnt"),
       ("was", "you|we|they", "were", "were"),
-      ("were", "he|she|it", "was", "was"),
       ("has", "i|you|we|they", "have", "have"),
       ("have", "he|she|it", "has", "has"),
     )],

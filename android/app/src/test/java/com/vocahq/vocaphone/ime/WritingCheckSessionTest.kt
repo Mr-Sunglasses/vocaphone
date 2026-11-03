@@ -143,6 +143,22 @@ class WritingCheckSessionTest {
         assertEquals(listOf("She go home.", "She go home.", "The cars was late.", "Ok."), asked)
     }
 
+    /** And the check stays open: a pause with nothing changed asks the model again. */
+    @Test
+    fun `an answer cut short keeps the check open`() = scope.runTest {
+        complete = false
+        type("She go home. ")
+        pause()
+        complete = true
+        session.textChanged("She go home. ", true) { options }
+        pause()
+        assertEquals(listOf("She go home.", "She go home."), asked)
+        session.textChanged("She go home. ", true) { options }
+        pause()
+        // Answered in full now: settled.
+        assertEquals(listOf("She go home.", "She go home."), asked)
+    }
+
     /** "Only sure fixes" answers at another bias: a cached Balanced answer is not reused for it. */
     @Test
     fun `only sure fixes keeps its own answers`() = scope.runTest {

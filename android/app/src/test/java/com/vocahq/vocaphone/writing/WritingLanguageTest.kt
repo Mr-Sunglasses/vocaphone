@@ -132,6 +132,9 @@ class WritingLanguageTest {
             "Pls snd me teh invoce for Acme asap",
             "teh kids plays outsdie evry evening aftr school",
             "kal meeting hai, please send the deck to me",
+            // "per" is English too: the foreign-word veto must not count it.
+            "The rate is per hour, not per day, and not per week or per month",
+            "Are you going to Los Angeles or Las Vegas this year",
         )) assertTrue(text, typed(text))
     }
 

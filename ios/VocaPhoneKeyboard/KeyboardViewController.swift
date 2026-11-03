@@ -74,6 +74,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private lazy var typing = TypingEngine()
     /// Writing check's rules, parsed off the main thread when the keyboard loads.
     private var writingChecker: WritingCheck?
+    /// The word list the language gate reads, once it has loaded.
+    private var gateWordList = TypingWordList.empty
+
+    /// Writing check's language gate, from what has loaded so far: a value
+    /// copy of the word list and the spelling dictionary, so the check can
+    /// run it off the main thread.
+    private func refreshWritingGate() {
+        let words = gateWordList
+        let spelling = writingChecker?.spelling
+        writingCheck.isEnglish = { text in
+            WritingCheck.applies(to: text, isDictionaryWord: { words.contains($0) }, spelling: spelling)
+        }
+    }
     /// Writing check. The rules run here; the grammar model lives in the app,
     /// which answers only while it is running; see ``WritingCheckClient``.
     private lazy var writingCheck = WritingCheckClient(
@@ -182,13 +195,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // language on it. The same test dictation's grammar stage uses, past
         // the odd borrowed word like "café". As the Writing check screen: short
         // text is always checked, and typed text's typos do not vote it foreign.
-        writingCheck.isEnglish = { [weak self] text in
-            WritingCheck.applies(
-                to: text,
-                isDictionaryWord: { self?.typing.isListedWord($0) ?? false },
-                spelling: self?.writingChecker?.spelling
-            )
-        }
+        refreshWritingGate()
         configureWritingPanel()
         Task.detached(priority: .utility) {
             let rules = WritingRules.bundled()
@@ -196,11 +203,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             let tagger = PosTagger.bundled()
             await MainActor.run { [weak self] in
                 self?.writingChecker = rules.map { WritingCheck(rules: $0, spelling: spelling, tagger: tagger) }
+                self?.refreshWritingGate()
                 self?.writingCheck.rulesLoaded()
             }
         }
         typing.onWordListLoaded = { [weak self] list in
             self?.keyGrid.swipeWordList = list
+            self?.gateWordList = list
+            self?.refreshWritingGate()
         }
         typing.onMemoryPressure = { [weak self] in self?.reduceMemoryUsage() }
         // The language half of the touch model. Straight through to the grid,

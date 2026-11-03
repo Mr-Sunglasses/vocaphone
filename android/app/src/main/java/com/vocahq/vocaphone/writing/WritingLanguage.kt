@@ -79,10 +79,10 @@ object WritingLanguage {
         val markers = keys.mapNotNullTo(HashSet()) { key ->
             if (TranscriptRepair.isEnglishMarker(key)) key else markerSlip(key)
         }
-        // More of another language's commonest words than English ones:
+        // More distinct words of another language's commonest than English markers:
         // "kal milte hai, tu aa jana time pe" has "time", and "je ne sais pas"
         // is all words the English list happens to hold.
-        if (keys.count { it in FOREIGN_FUNCTION_WORDS }.let { it >= 2 && it > markers.size }) return false
+        if (keys.filterTo(HashSet()) { it in FOREIGN_FUNCTION_WORDS }.size.let { it >= 2 && it > markers.size }) return false
         if (TranscriptRepair.isEnglish(text, "auto", isDictionaryWord)) return true
         // As the transcript test: an accented letter is another alphabet.
         if (text.lowercase().any { it in FOREIGN_LETTERS }) return false
@@ -124,17 +124,18 @@ object WritingLanguage {
      * `foreignFunctionWords` in ios/VocaPhoneShared/Writing/WritingCheckInApp.swift.
      */
     internal val FOREIGN_FUNCTION_WORDS = setOf(
-        "je", "ne", "le", "cest", "pas", "que", "qui", "est", "et", "les", "des", "une", "il", "elle", "la", "nous",
-        "vous", "sont", "avec", "dans", "mais", "ce", "cette", "sur", "oui", "merci", "suis", "sais", "fait", "bien",
-        "moi", "toi", "au", "aux", "du", "el", "los", "las", "es", "y", "uno", "una", "por", "para",
-        "pero", "muy", "mi", "tu", "su", "yo", "esta", "este", "se", "del", "hola", "gracias", "bueno", "nada",
-        "todo", "tengo", "quiero", "hacer", "ahora", "der", "das", "und", "ist", "nicht", "ich", "wir", "sie", "mit",
-        "auf", "ein", "eine", "auch", "noch", "sehr", "aber", "wie", "wo", "ja", "nein", "danke", "non", "sono",
-        "che", "per", "della", "molto", "grazie", "ciao", "muito", "obrigado", "hai", "hain", "kya", "nahi", "nahin", "aur",
-        "mein", "tum", "kar", "karo", "raha", "rahe", "rahi", "ho", "hum", "aap", "bhi", "ko", "ka", "ki",
-        "ke", "ye", "yeh", "woh", "kal", "abhi", "acha", "accha", "bhai", "yaar", "kaise", "kaisa", "kab", "kahan",
-        "kyun", "kyu", "haan", "theek", "thik", "mujhe", "tujhe", "hoga", "hogi", "karna", "karenge", "jana", "jaana", "chal",
-        "chalo", "pe", "liye", "wala", "wali", "matlab", "bahut", "bohot",
+        "je", "ne", "le", "cest", "pas", "que", "qui", "est", "et", "les", "des", "une", "il", "elle",
+        "nous", "vous", "sont", "avec", "dans", "mais", "ce", "cette", "sur", "oui", "merci", "suis", "sais", "fait",
+        "bien", "toi", "aux", "du", "es", "uno", "una", "por", "pero", "muy", "mi", "tu", "su", "esta",
+        "este", "se", "hola", "gracias", "bueno", "nada", "todo", "tengo", "quiero", "hacer", "ahora", "der", "das", "und",
+        "ist", "nicht", "ich", "wir", "sie", "auf", "ein", "eine", "auch", "noch", "sehr", "aber", "wie", "wo",
+        "ja", "nein", "danke", "sono", "molto", "grazie", "muito", "obrigado", "hai", "hain", "kya", "nahi", "nahin", "aur",
+        "mein", "tum", "kar", "raha", "rahe", "rahi", "aap", "bhi", "ka", "ki", "ke", "yeh", "woh", "kal",
+        "abhi", "acha", "accha", "bhai", "yaar", "kaise", "kaisa", "kab", "kahan", "kyun", "kyu", "haan", "theek", "thik",
+        "mujhe", "tujhe", "hoga", "hogi", "karna", "karenge", "jaana", "chal", "chalo", "liye", "wala", "wali", "bahut", "bohot",
+        "voici", "parle", "souvent", "aussi", "toujours", "rien", "beaucoup", "comme", "peut", "veux", "vais", "avoir", "faire", "quoi",
+        "alors", "pourquoi", "como", "donde", "quien", "porque", "tambien", "siempre", "estoy", "eres", "bitte", "heute", "keine", "habe",
+        "zeit", "kaha", "kuch", "sab", "kyunki", "lekin", "toh", "aaj",
     )
 
     /** As `TranscriptRepair`'s veto: letters of another Latin alphabet. */

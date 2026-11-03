@@ -62,10 +62,10 @@ extension WritingCheck {
     ) -> Bool {
         let keys = TranscriptRepair.wordKeys(in: text)
         let markers = Set(keys.compactMap { TranscriptRepair.isEnglishMarker($0) ? $0 : markerSlip($0) })
-        // More of another language's commonest words than English ones:
+        // More distinct words of another language's commonest than English markers:
         // "kal milte hai, tu aa jana time pe" has "time", and "je ne sais pas"
         // is all words the English list happens to hold.
-        let foreign = keys.count { foreignFunctionWords.contains($0) }
+        let foreign = Set(keys.filter { foreignFunctionWords.contains($0) }).count
         if foreign >= 2, foreign > markers.count { return false }
         if TranscriptRepair.isEnglish(text, isDictionaryWord: isDictionaryWord) { return true }
         if TranscriptRepair.hasForeignLetter(text) { return false }
@@ -83,17 +83,18 @@ extension WritingCheck {
     /// Hindi as typed in chat), less any that are English words too. As
     /// `FOREIGN_FUNCTION_WORDS` in android/.../writing/WritingLanguage.kt.
     static let foreignFunctionWords: Set<String> = [
-        "je", "ne", "le", "cest", "pas", "que", "qui", "est", "et", "les", "des", "une", "il", "elle", "la", "nous",
-        "vous", "sont", "avec", "dans", "mais", "ce", "cette", "sur", "oui", "merci", "suis", "sais", "fait", "bien",
-        "moi", "toi", "au", "aux", "du", "el", "los", "las", "es", "y", "uno", "una", "por", "para",
-        "pero", "muy", "mi", "tu", "su", "yo", "esta", "este", "se", "del", "hola", "gracias", "bueno", "nada",
-        "todo", "tengo", "quiero", "hacer", "ahora", "der", "das", "und", "ist", "nicht", "ich", "wir", "sie", "mit",
-        "auf", "ein", "eine", "auch", "noch", "sehr", "aber", "wie", "wo", "ja", "nein", "danke", "non", "sono",
-        "che", "per", "della", "molto", "grazie", "ciao", "muito", "obrigado", "hai", "hain", "kya", "nahi", "nahin", "aur",
-        "mein", "tum", "kar", "karo", "raha", "rahe", "rahi", "ho", "hum", "aap", "bhi", "ko", "ka", "ki",
-        "ke", "ye", "yeh", "woh", "kal", "abhi", "acha", "accha", "bhai", "yaar", "kaise", "kaisa", "kab", "kahan",
-        "kyun", "kyu", "haan", "theek", "thik", "mujhe", "tujhe", "hoga", "hogi", "karna", "karenge", "jana", "jaana", "chal",
-        "chalo", "pe", "liye", "wala", "wali", "matlab", "bahut", "bohot",
+        "je", "ne", "le", "cest", "pas", "que", "qui", "est", "et", "les", "des", "une", "il", "elle",
+        "nous", "vous", "sont", "avec", "dans", "mais", "ce", "cette", "sur", "oui", "merci", "suis", "sais", "fait",
+        "bien", "toi", "aux", "du", "es", "uno", "una", "por", "pero", "muy", "mi", "tu", "su", "esta",
+        "este", "se", "hola", "gracias", "bueno", "nada", "todo", "tengo", "quiero", "hacer", "ahora", "der", "das", "und",
+        "ist", "nicht", "ich", "wir", "sie", "auf", "ein", "eine", "auch", "noch", "sehr", "aber", "wie", "wo",
+        "ja", "nein", "danke", "sono", "molto", "grazie", "muito", "obrigado", "hai", "hain", "kya", "nahi", "nahin", "aur",
+        "mein", "tum", "kar", "raha", "rahe", "rahi", "aap", "bhi", "ka", "ki", "ke", "yeh", "woh", "kal",
+        "abhi", "acha", "accha", "bhai", "yaar", "kaise", "kaisa", "kab", "kahan", "kyun", "kyu", "haan", "theek", "thik",
+        "mujhe", "tujhe", "hoga", "hogi", "karna", "karenge", "jaana", "chal", "chalo", "liye", "wala", "wali", "bahut", "bohot",
+        "voici", "parle", "souvent", "aussi", "toujours", "rien", "beaucoup", "comme", "peut", "veux", "vais", "avoir", "faire", "quoi",
+        "alors", "pourquoi", "como", "donde", "quien", "porque", "tambien", "siempre", "estoy", "eres", "bitte", "heute", "keine", "habe",
+        "zeit", "kaha", "kuch", "sab", "kyunki", "lekin", "toh", "aaj",
     ]
 
     /// The marker `key` is one slip of, if any: a swapped pair, or one letter doubled or undoubled.

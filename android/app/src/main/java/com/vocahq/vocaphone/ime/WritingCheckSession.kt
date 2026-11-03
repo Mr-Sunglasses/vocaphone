@@ -92,6 +92,8 @@ internal class WritingCheckSession(
         /** Suggestions the strip may offer as chips: between words, not under the cursor. */
         val chips: List<WritingSuggestion>,
         val modelPending: Boolean,
+        /** The model ran out of time or failed on a sentence: the check stays open, as for [modelPending]. */
+        val incomplete: Boolean = false,
     ) {
         val count: Int get() = suggestions.size
     }
@@ -198,7 +200,9 @@ internal class WritingCheckSession(
         val state = Settled(field.text, field.cursor, options, model() != null)
         if (state == settled) return
         val checker = checker() ?: return
-        if (field.text.isBlank() || !isEnglish(field.text)) {
+        // The language test may look words up in the spelling dictionary: on
+        // the worker, never on the thread that draws the keyboard.
+        if (field.text.isBlank() || !withContext(worker) { isEnglish(field.text) }) {
             settled = state
             current.value = null
             return
@@ -215,9 +219,9 @@ internal class WritingCheckSession(
                 delay(LOAD_RETRY_MILLIS)
                 report = ask(checker, field, options, model, thorough)
             }
-            // A sentence the model still has not answered keeps the check
-            // open: the next pause asks again, even if nothing changed.
-            settled = if (report.modelPending) null else state
+            // A sentence the model still has not answered, or did not finish,
+            // keeps the check open: the next pause asks again, even if nothing changed.
+            settled = if (report.modelPending || report.incomplete) null else state
             current.value = shown(report.field, report.suggestions, report)
         } finally {
             if (token == checks) busy.value = false
@@ -260,11 +264,12 @@ internal class WritingCheckSession(
         used: MutableMap<String, String>,
         shouldAbort: () -> Boolean,
     ): Report {
+        var incomplete = false
         val cached = model?.let { ask ->
             WritingCheck.Model { sentence ->
                 val key = answerKey(thorough, options.sureOnly, sentence)
                 known[key] ?: ask(sentence, options.keep, thorough)?.let { answer ->
-                    if (answer.complete) used[key] = answer.text
+                    if (answer.complete) used[key] = answer.text else incomplete = true
                     answer.text
                 }
             }
@@ -277,7 +282,7 @@ internal class WritingCheckSession(
             // Not the word being typed: it is not finished.
             word == null || s.markEnd < word.first || s.markStart > word.second
         }
-        return Report(field, suggestions, if (options.tone) result.tones else emptyList(), emptyList(), result.modelPending)
+        return Report(field, suggestions, if (options.tone) result.tones else emptyList(), emptyList(), result.modelPending, incomplete)
     }
 
     /** [report] with [field] and [suggestions], less the dismissed, and the chips nearest the cursor. */

@@ -6981,6 +6981,40 @@
    "suggestions": [],
    "modelPending": false,
    "text": "hey sam. we leave at 8. if you need anything let me know"
+  },
+  {
+   "stats": [
+    6,
+    27,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "question agreement leaves a joined subject",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Are he and his wife coming?"
+  },
+  {
+   "stats": [
+    7,
+    35,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "a conditional were is right",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Were he to leave, would she follow?"
   }
  ],
  "tokenize": [

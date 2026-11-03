@@ -26,6 +26,9 @@ struct LearnedWords: Codable, Equatable, Sendable {
     /// Enough for a vocabulary, small enough that reading the file is never
     /// something the user waits for.
     static let capacity = 2_000
+    /// Words seen fewer than ``repetitionsBeforeLearning`` times, kept apart
+    /// from ``capacity`` so they never crowd out a learned word.
+    static let sightingCapacity = 500
     /// How many times an unknown word has to survive being typed before the
     /// keyboard concludes the user meant it.
     static let repetitionsBeforeLearning = 3
@@ -90,17 +93,20 @@ struct LearnedWords: Codable, Equatable, Sendable {
 
     mutating func removeAll() { entries.removeAll() }
 
-    /// Least-recently-used eviction, sightings before learned words, so a run
-    /// of typos never pushes out a name the user typed three times.
+    /// Least-recently-used eviction, learned words and sightings each within
+    /// their own bound: a run of typos never pushes out a name the user typed
+    /// three times, and a store full of learned words still has room for a
+    /// new word to be seen three times.
     private mutating func evictIfNeeded() {
-        guard entries.count > Self.capacity else { return }
         let threshold = Self.repetitionsBeforeLearning
-        let doomed = entries.values
-            .sorted {
-                let (a, b) = ($0.count >= threshold, $1.count >= threshold)
-                return a == b ? $0.lastUsedAt < $1.lastUsedAt : !a
-            }
-            .prefix(entries.count - Self.capacity)
+        let learnedCount = entries.values.count { $0.count >= threshold }
+        let sightings = entries.count - learnedCount
+        if learnedCount > Self.capacity { evictOldest(learnedCount - Self.capacity) { $0.count >= threshold } }
+        if sightings > Self.sightingCapacity { evictOldest(sightings - Self.sightingCapacity) { $0.count < threshold } }
+    }
+
+    private mutating func evictOldest(_ n: Int, where matches: (Entry) -> Bool) {
+        let doomed = entries.values.filter(matches).sorted { $0.lastUsedAt < $1.lastUsedAt }.prefix(n)
         for entry in doomed { entries.removeValue(forKey: Self.key(entry.word)) }
     }
 
