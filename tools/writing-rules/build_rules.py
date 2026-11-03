@@ -339,6 +339,10 @@ WH = CLASSES["wh"] + ["whose", "whom"]
 # fix of its own, but the rules about the word must still see it: "he dont
 # know" needs "doesn't", not "don't". Only bare forms that are not words.
 BARE = {b.lower(): a for a, b in APOSTROPHES if a != b.lower()}
+# "cant" and "wont" are words too (cant is hypocritical talk, wont is habit), so
+# they are not in APOSTROPHES and are fixed only beside a subject or a verb
+# (CANT_WONT below). The rules about the word still see them: "he cant goes".
+BARE.update({"can't": "cant", "won't": "wont"})
 for _name in ("neg_aux", "neg_do_modal"):
     CLASSES[_name] = CLASSES[_name] + [BARE[w] for w in CLASSES[_name] if w in BARE]
 
@@ -679,6 +683,26 @@ RULES += [
   # matters" are statements.
   dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"),
        unlessLater=FINITE_BE, question=True),
+  # A question's helper verb agrees with the pronoun after it: "Do she like
+  # it?", "Why is they late?". The tagger's agreement looks for the subject
+  # before the verb, so it never sees these. Only pronouns, whose number is
+  # certain, and only questions.
+  *[dict(r(f"^ {wh}{aux} {subj}", f"{lead}{fix} ${n}", "agreement", rid=f"q-{rid}{'-wh' if wh else ''}"), question=True)
+    for wh, lead, n in (("", "", 2), ("what|where|when|why|how|who ", "$1 ", 3))
+    for aux, subj, fix, rid in (
+      ("do", "he|she|it", "does", "does"),
+      ("does", "i|you|we|they", "do", "do"),
+      ("don't", "he|she|it", "doesn't", "doesnt"),
+      ("doesn't", "i|you|we|they", "don't", "dont"),
+      ("is", "you|we|they", "are", "are"),
+      ("are", "he|she|it", "is", "is"),
+      ("isn't", "you|we|they", "aren't", "arent"),
+      ("aren't", "he|she|it", "isn't", "isnt"),
+      ("was", "you|we|they", "were", "were"),
+      ("were", "he|she|it", "was", "was"),
+      ("has", "i|you|we|they", "have", "have"),
+      ("have", "he|she|it", "has", "has"),
+    )],
   # A time in the past, said in the present: "Yesterday I go".
   r("^ yesterday {subject} {verb_base&!past_too}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past"),
   r("^ yesterday {subject} {verb_inflected}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past-inflected"),
@@ -759,6 +783,12 @@ RULES.append(r("he's|she's|they're|you're interesting in {!interesting_in}", "$1
 RULES += [dict(r(w, w[0].upper() + w[1:], "capitalization", "capitalization.proper", rid="cap-" + w, bare_forms=False), notAfter=["#", "@", "/"]) for w in PROPER]
 RULES += [r(a, b, "spelling", rid="spell-"+a) for a, b in SPELLING]
 RULES += [r(a, b, "apostrophe", rid="apos-"+a) for a, b in APOSTROPHES if a != b]
+# Both are in the spelling dictionary, so nothing else catches "I cant come".
+for _bare, _full in (("cant", "can't"), ("wont", "won't")):
+    RULES += [
+        r(f"{{subject}} {_bare}", f"$1 {_full}", "apostrophe", rid=f"apos-{_bare}-subject", bare_forms=False),
+        r(f"{_bare} {{verb_base}}", f"{_full} $2", "apostrophe", rid=f"apos-{_bare}-verb", bare_forms=False),
+    ]
 RULES += [r(w, w[0].upper() + w[1:], "capitalization", "capitalization.i", rid="cap-" + w.replace("'", ""), bare_forms=False) for w in ["i", "i'm", "i've", "i'll", "i'd"]]
 # Clarity
 RULES += [r(a, b, "wordiness", "wordiness.remove" if b == "" else None, rid="wordy-"+a.replace(" ","-")) for a, b in WORDY]

@@ -28,6 +28,17 @@ enum TranscriptRepair {
         Set(split(text).map(\.key).filter { englishMarkers.contains($0) })
     }
 
+    /// Whether `key`, a word key as `wordKeys(in:)` gives it, is an English marker word.
+    static func isEnglishMarker(_ key: String) -> Bool { englishMarkers.contains(key) }
+
+    /// The word keys `isEnglish` counts: lower case, apostrophes dropped, empty ones left out.
+    static func wordKeys(in text: String) -> [String] { split(text).map(\.key).filter { !$0.isEmpty } }
+
+    /// Letters of another Latin alphabet, the transcript test's hard veto.
+    static func hasForeignLetter(_ text: String) -> Bool {
+        text.lowercased().contains { foreignLetters.contains($0) }
+    }
+
     /// Whether `text` is English: an explicit or detected `en`, or, on
     /// Automatic, a sentence that says so itself — on the terms
     /// ``looksEnglish(_:words:)`` sets out, or, for a fragment too short to

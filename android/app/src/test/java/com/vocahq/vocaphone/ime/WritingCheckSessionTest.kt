@@ -27,6 +27,8 @@ class WritingCheckSessionTest {
     /** Whether each call in [asked] was the thorough tier. */
     private val tiers = mutableListOf<Boolean>()
     private var loaded = true
+    /** Whether the model gets through each sentence in its time budget. */
+    private var complete = true
     private var modelOn = true
     private var english = true
     /** Runs inside the model's call, as something on the main thread could while the worker is busy. */
@@ -51,7 +53,7 @@ class WritingCheckSessionTest {
                     asked.add(sentence)
                     tiers.add(thorough)
                     duringAsk?.also { duringAsk = null }?.invoke()
-                    if (!loaded) null else sentence.replace("She go ", "She goes ").replace(" was ", " were ")
+                    if (!loaded) null else WritingCheckSession.Answer(sentence.replace("She go ", "She goes ").replace(" was ", " were "), complete)
                 }
             }
         },
@@ -123,6 +125,44 @@ class WritingCheckSessionTest {
         pause()
         assertEquals(listOf("She go home.", "The cars was late."), asked)
         assertEquals(listOf("go → goes", "was → were"), labels())
+    }
+
+    /** A sentence the model ran out of time on is used once, not kept as clean for the field's life. */
+    @Test
+    fun `an answer cut short is asked for again`() = scope.runTest {
+        complete = false
+        type("She go home. ")
+        pause()
+        complete = true
+        type("She go home. The cars was late. ")
+        pause()
+        assertEquals(listOf("She go home.", "She go home.", "The cars was late."), asked)
+        type("She go home. The cars was late. Ok. ")
+        pause()
+        // Now complete, both are kept: only the new sentence is asked.
+        assertEquals(listOf("She go home.", "She go home.", "The cars was late.", "Ok."), asked)
+    }
+
+    /** "Only sure fixes" answers at another bias: a cached Balanced answer is not reused for it. */
+    @Test
+    fun `only sure fixes keeps its own answers`() = scope.runTest {
+        type("She go home. ")
+        pause()
+        val sure = options.copy(sureOnly = true)
+        session.textChanged("She go home. ", true) { sure }
+        pause()
+        assertEquals(listOf("She go home.", "She go home."), asked)
+    }
+
+    @Test
+    fun `a read that starts mid-document drops the sentence it cuts`() {
+        val field = WritingCheckSession.Field("rest of a sentence. Next one here. And", offset = 500, cursor = 37)
+        assertEquals(WritingCheckSession.Field("Next one here. And", offset = 520, cursor = 17), field.withoutCutSentence())
+        // From the start of the document, or with the cursor in the cut sentence, it is kept.
+        val whole = WritingCheckSession.Field("rest of a sentence. Next", offset = 0, cursor = 24)
+        assertEquals(whole, whole.withoutCutSentence())
+        val inside = WritingCheckSession.Field("rest of a sentence. Next", offset = 500, cursor = 5)
+        assertEquals(inside, inside.withoutCutSentence())
     }
 
     @Test

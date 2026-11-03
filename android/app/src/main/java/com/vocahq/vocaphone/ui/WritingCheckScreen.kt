@@ -61,13 +61,13 @@ import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
-import com.vocahq.vocaphone.core.TranscriptRepair
 import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.ime.WritingColors
 import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.writing.WritingCategory
 import com.vocahq.vocaphone.writing.WritingCheck
 import com.vocahq.vocaphone.writing.WritingLanguage
+import com.vocahq.vocaphone.writing.WritingSpelling
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.writing.writingCategories
 import com.vocahq.vocaphone.writing.writingOptIn
@@ -122,7 +122,7 @@ internal fun WritingCheckScreen(
         checking = true
         try {
             val english = withContext(Dispatchers.Default) {
-                writingCheckApplies(text) { it in container.englishWords }
+                writingCheckApplies(text, container.writingCheck?.spelling) { it in container.englishWords }
             }
             if (!english) {
                 report = null
@@ -278,7 +278,8 @@ internal fun WritingCheckScreen(
                     },
                 )
             }
-            if (report != null && text.isNotBlank() && visible.isEmpty() && !checking) {
+            // Only for this text: in the pause after an edit the last report is the old text's.
+            if (report?.text == text && text.isNotBlank() && visible.isEmpty() && !checking) {
                 Text("No issues found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.heightIn(min = 24.dp))
@@ -311,15 +312,20 @@ private suspend fun check(container: com.vocahq.vocaphone.AppContainer, text: St
  * Whether the Writing check screen checks [text] at all. Its rules are
  * English ones: on a French sentence, "dont" would be "corrected" to "don't".
  * So text is left alone only when it is clearly not English, by the test the
- * keyboards make, with the keyboard's word list as [isDictionaryWord].
+ * keyboards make, with the keyboard's word list as [isDictionaryWord] and
+ * Writing check's [spelling] dictionary for typed text's typos
+ * ([WritingLanguage.typedEnglish]).
  *
  * The rule itself, and why short text is always checked, is
  * [WritingLanguage.applies], shared with the system spell checker.
  *
  * Mirrors `WritingCheck.applies(to:)` in ios/VocaPhoneShared/Writing/WritingCheckInApp.swift.
  */
-internal fun writingCheckApplies(text: String, isDictionaryWord: (String) -> Boolean): Boolean =
-    WritingLanguage.applies(text) { TranscriptRepair.isEnglish(it, "auto", isDictionaryWord) }
+internal fun writingCheckApplies(
+    text: String,
+    spelling: WritingSpelling? = null,
+    isDictionaryWord: (String) -> Boolean,
+): Boolean = WritingLanguage.applies(text) { WritingLanguage.typedEnglish(it, isDictionaryWord, spelling) }
 
 /**
  * [checker] over [text], with a second pass after [retryMillis] if the model

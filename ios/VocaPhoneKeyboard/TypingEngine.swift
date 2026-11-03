@@ -348,9 +348,22 @@ final class TypingEngine {
     /// leave alone. Read after a pause, never per keystroke.
     var learnedWords: [String] { learned.snapshot().words }
 
-    /// The user's own text replacements and contact names, as they are
-    /// written in a document. The grammar check must leave them alone too.
-    var lexiconWords: [String] { lexiconEntries.map(\.documentText) }
+    /// What the grammar check must leave alone from the system lexicon: each
+    /// text replacement's shortcut, and the contact names the word list does
+    /// not already know.
+    ///
+    /// Not a replacement's expansion. Every iPhone ships "omw" → "On my way!",
+    /// and keeping the expansion made "on", "my" and "way" words no check
+    /// could touch, for every user: "interested on" was never fixed. Nor a
+    /// contact name that is an ordinary word: a contact called Will must not
+    /// stop "will" being checked, and the checker never flags a listed word
+    /// as a misspelling anyway.
+    var lexiconWords: [String] {
+        lexiconEntries.compactMap { entry in
+            if entry.userInput.caseInsensitiveCompare(entry.documentText) != .orderedSame { return entry.userInput }
+            return isListedWord(entry.documentText) ? nil : entry.documentText
+        }
+    }
 
     /// Whether `word` is in the shipped list, for telling English text apart.
     func isListedWord(_ word: String) -> Bool { wordList.rank(of: word) != nil }

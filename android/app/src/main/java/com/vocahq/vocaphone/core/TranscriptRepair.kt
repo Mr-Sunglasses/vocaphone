@@ -62,6 +62,12 @@ object TranscriptRepair {
     fun englishMarkers(text: String): Set<String> =
         split(text).map { it.key }.filter { it in ENGLISH_MARKERS }.toSet()
 
+    /** Whether [key], a word key as [wordKeys] gives it, is an English marker word. */
+    fun isEnglishMarker(key: String): Boolean = key in ENGLISH_MARKERS
+
+    /** The word keys [isEnglish] counts: lower case, apostrophes dropped, empty ones left out. */
+    fun wordKeys(text: String): List<String> = split(text).map { it.key }.filter { it.isNotEmpty() }
+
     /**
      * Whether [text] is English: an explicit or detected `en`, or, on
      * Automatic, a sentence that says so itself — on the terms

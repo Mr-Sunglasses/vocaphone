@@ -180,11 +180,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         // The English layout is not proof of English: someone may type another
         // language on it. The same test dictation's grammar stage uses, past
-        // the odd borrowed word like "café".
+        // the odd borrowed word like "café". As the Writing check screen: short
+        // text is always checked, and typed text's typos do not vote it foreign.
         writingCheck.isEnglish = { [weak self] text in
-            WritingCheck.isEnglish(text) { rest in
-                TranscriptRepair.isEnglish(rest) { self?.typing.isListedWord($0) ?? false }
-            }
+            WritingCheck.applies(
+                to: text,
+                isDictionaryWord: { self?.typing.isListedWord($0) ?? false },
+                spelling: self?.writingChecker?.spelling
+            )
         }
         configureWritingPanel()
         Task.detached(priority: .utility) {
@@ -193,6 +196,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             let tagger = PosTagger.bundled()
             await MainActor.run { [weak self] in
                 self?.writingChecker = rules.map { WritingCheck(rules: $0, spelling: spelling, tagger: tagger) }
+                self?.writingCheck.rulesLoaded()
             }
         }
         typing.onWordListLoaded = { [weak self] list in

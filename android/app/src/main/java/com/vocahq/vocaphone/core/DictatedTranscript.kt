@@ -104,10 +104,34 @@ object DictatedTranscript {
         return protected.restore(SpokenNumbers.digitsIn(protected.text))
     }
 
-    /** Every word of the user's vocabulary and snippet triggers, which grammar may not change. */
+    /**
+     * Every word of the user's vocabulary and snippet triggers, which grammar
+     * may not change, less the function words of a phrase. A keep is a word no
+     * check may touch, so "Bank of America" in the vocabulary used to keep
+     * "of", and "I should of known" was never fixed again. A one-word term is
+     * kept whatever it is: the user asked for that word.
+     */
     internal fun grammarKeeps(vocabulary: List<String>, snippets: List<Snippet>): Set<String> =
-        (vocabulary + snippets.map { it.trigger })
-            .flatMap { phrase -> phrase.split(Regex("[^\\p{L}\\p{N}'’]+")) }
-            .filter { it.isNotEmpty() }
-            .mapTo(HashSet()) { it.lowercase() }
+        (vocabulary + snippets.map { it.trigger }).flatMapTo(HashSet()) { phrase ->
+            val words = phrase.split(KEEP_SEPARATOR).filter { it.isNotEmpty() }.map { it.lowercase() }
+            if (words.size == 1) words else words.filterNot { it.replace('’', '\'') in PHRASE_FUNCTION_WORDS }
+        }
+
+    private val KEEP_SEPARATOR = Regex("[^\\p{L}\\p{N}'’]+")
+
+    /**
+     * Words a phrase in the vocabulary or a snippet trigger does not make the
+     * user's own: the small closed classes (articles, prepositions,
+     * pronouns, auxiliaries, conjunctions) the rules and the model exist to
+     * correct. As `phraseFunctionWords` in ios/VocaPhoneShared/DictatedTranscript.swift.
+     */
+    internal val PHRASE_FUNCTION_WORDS = setOf(
+        "a", "an", "the", "of", "to", "in", "on", "at", "by", "for", "with", "from", "into", "onto",
+        "about", "over", "under", "up", "down", "out", "off", "than", "then", "as", "and", "or", "but",
+        "nor", "so", "if", "that", "this", "these", "those", "there", "their", "they're", "its", "it's",
+        "i", "me", "my", "you", "your", "you're", "he", "him", "his", "she", "her", "it", "we", "us",
+        "our", "they", "them", "is", "are", "was", "were", "be", "been", "being", "am", "do", "does",
+        "did", "have", "has", "had", "will", "would", "can", "could", "shall", "should", "may", "might",
+        "must", "not", "no", "who", "whom", "whose", "which", "what", "when", "where", "how", "why",
+    )
 }

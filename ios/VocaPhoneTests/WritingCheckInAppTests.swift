@@ -15,6 +15,45 @@ struct WritingCheckInAppTests {
         WritingCheck.applies(to: text, isDictionaryWord: english.contains)
     }
 
+    static func typed(_ text: String) -> Bool {
+        WritingCheck.applies(to: text, isDictionaryWord: english.contains, spelling: WritingCheckTests.spelling)
+    }
+
+    /// The more typos, the surer the transcript test was that text was
+    /// foreign; the keyboards never checked it. As WritingLanguageTest.kt.
+    @Test(arguments: [
+        "Teh airport wil be busy",
+        "Teh aiport wil be busy tomorow",
+        "Recieved teh pacakge, thanks alot Sam",
+        "teh meeting wil be tommorow at noon",
+        "Pls snd me teh invoce for Acme asap",
+        "teh kids plays outsdie evry evening aftr school",
+        "kal meeting hai, please send the deck to me",
+    ])
+    func typedEnglishWithManyTyposIsStillEnglish(_ text: String) {
+        #expect(Self.typed(text))
+    }
+
+    @Test(arguments: [
+        "Je ne sais pas ce que tu veux dire",
+        "Voici la personne dont elle parle souvent.",
+        "kal milte hai bro tu aa jana time pe",
+        "no se que hacer con mi vida ahora",
+        "Ich habe keine Zeit heute abend fur dich",
+    ])
+    func otherLanguagesTypedInLatinLettersAreStillNotEnglish(_ text: String) {
+        #expect(!Self.typed(text))
+    }
+
+    @Test func aSlipOfAMarkerWordCountsAsTheMarker() {
+        #expect(WritingCheck.markerSlip("teh") == "the")
+        #expect(WritingCheck.markerSlip("becuase") == "because")
+        #expect(WritingCheck.markerSlip("thier") == "their")
+        #expect(WritingCheck.markerSlip("realy") == "really")
+        #expect(WritingCheck.markerSlip("the") == nil)
+        #expect(WritingCheck.markerSlip("hai") == nil)
+    }
+
     /// Counts model calls from inside a detached task.
     final class Counter: @unchecked Sendable {
         private let lock = NSLock()

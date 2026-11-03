@@ -89,6 +89,40 @@ struct TypingPrivacyTests {
         #expect(third)
     }
 
+    /// A sighting is not a learned word. The keyboard notes every word its list
+    /// does not know, so "teh" typed once used to read back as the user's own
+    /// word: Writing check and dictation left it alone, and the strip offered it.
+    @Test func aWordSeenOnceIsNotTheUsersYet() {
+        var learned = LearnedWords()
+        learned.note("teh")
+        learned.note("vocaphone")
+        learned.note("vocaphone")
+        #expect(!learned.contains("teh"))
+        #expect(!learned.contains("vocaphone"))
+        #expect(learned.words.isEmpty)
+        #expect(learned.count == 0)
+        #expect(learned.completions(for: "te", limit: 3).isEmpty)
+
+        learned.note("vocaphone")
+        #expect(learned.contains("vocaphone"))
+        #expect(learned.words == ["vocaphone"])
+        #expect(learned.count == 1)
+        #expect(learned.completions(for: "voca", limit: 3) == ["vocaphone"])
+    }
+
+    /// A run of typos fills the store with sightings; they go before a word
+    /// the user taught it, however long ago that was.
+    @Test func sightingsAreEvictedBeforeLearnedWords() {
+        var learned = LearnedWords()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        learned.learn("Kanishk", now: base)
+        for index in 0..<(LearnedWords.capacity + 10) {
+            learned.note("typo\(index)", now: base.addingTimeInterval(Double(index + 1)))
+        }
+        #expect(learned.contains("Kanishk"))
+        #expect(learned.entries.count == LearnedWords.capacity)
+    }
+
     /// Without Full Access there is no App Group to write to. Learning still
     /// works for the life of the keyboard, and the settings screen says so
     /// rather than pretending it persisted.

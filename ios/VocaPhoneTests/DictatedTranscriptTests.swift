@@ -407,7 +407,17 @@ struct DictatedTranscriptTests {
         )
         _ = finished("he don't know", language: "en", grammar: grammar)
         #expect(grammar.seen.count == 2)
-        #expect(grammar.seen.first?.1 == ["vocagate", "kube", "ctl", "biskit", "my", "addy"])
+        // A phrase's function words are not the user's: "my" stays checkable.
+        #expect(grammar.seen.first?.1 == ["vocagate", "kube", "ctl", "biskit", "addy"])
+    }
+
+    @Test func aPhraseKeepsItsOwnWordsNotItsFunctionWords() {
+        #expect(DictatedTranscript.grammarKeeps(vocabulary: ["Bank of America"], snippets: []) == ["bank", "america"])
+        #expect(DictatedTranscript.grammarKeeps(
+            vocabulary: [], snippets: [Snippet(trigger: "on my way", expansion: "omw")]
+        ) == ["way"])
+        // A one-word term is kept whatever it is: the user asked for it.
+        #expect(DictatedTranscript.grammarKeeps(vocabulary: ["Will"], snippets: []) == ["will"])
     }
 
     @Test func withoutAGrammarStageNothingChanges() {

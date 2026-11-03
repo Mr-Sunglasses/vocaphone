@@ -245,6 +245,15 @@ final class WritingCheckClient {
         await running?.value
     }
 
+    /// A check asked for before the rules had loaded; `rulesLoaded()` runs it.
+    private var waitingForRules: (field: Field, options: Options, retry: Bool)?
+
+    /// The checker has just become available: runs the check that came too early, if any.
+    func rulesLoaded() {
+        guard let waiting = waitingForRules else { return }
+        check(waiting.field, waiting.options, retry: waiting.retry)
+    }
+
     /// Starts a check of `field`. The rules (and the answers the model has
     /// already given) run off the main thread; the report is published only
     /// if nothing newer has started and the field is still the one checked.
@@ -252,7 +261,13 @@ final class WritingCheckClient {
     /// after a pause or a tap, false when an answer has just come in.
     private func check(_ field: Field, _ options: Options, retry: Bool) {
         self.options = options
-        guard let checker = checker() else { return }
+        guard let checker = checker() else {
+            // The rules are still parsing (a tap just after the keyboard
+            // appeared): run this check when they land instead of dropping it.
+            waitingForRules = (field, options, retry)
+            return
+        }
+        waitingForRules = nil
         guard field.text.contains(where: \.isLetter), isEnglish(field.text) else {
             stopChecking()
             publish(nil)
@@ -498,6 +513,7 @@ final class WritingCheckClient {
         dismissed = []
         thorough = false
         lastField = nil
+        waitingForRules = nil
         publish(nil)
     }
 

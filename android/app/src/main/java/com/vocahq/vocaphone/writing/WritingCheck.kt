@@ -80,12 +80,15 @@ class WritingCheck(
         val keep = options.keep.mapTo(HashSet(), WritingToken::normalize)
         val found = ArrayList<WritingSuggestion>()
         var pending = false
+        val startTokens = sentences.map { s ->
+            (s.first..s.last).first { WritingText.isSentenceStart(tokens, s, it) && tokens[it].isWord || it == s.last }
+        }
+        val casual = options.typed && typedInLowerCase(startTokens.map { tokens[it] })
 
         for (sentence in sentences) found += ruleSuggestions(text, tokens, sentence, protected, keep, options)
         agreement?.let { checks ->
             // Subjects and their verbs, where no rule has spoken for the verb.
             val fixed = found.filter { it.isActionable }
-            val casual = options.typed && text.firstOrNull { it.isLetter() }?.isLowerCase() == true
             for (sentence in sentences) found += checks.suggestions(text, tokens, sentence, protected, keep, fixed, casual)
         }
         spelling?.let { dictionary ->
@@ -114,13 +117,9 @@ class WritingCheck(
         found += longSentences(text, tokens, sentences)
         found += overusedWords(tokens, sentences, keep)
 
-        val lowercaseStyle = text.firstOrNull { it.isLetter() }?.isLowerCase() == true
-        val starts = sentences.mapTo(HashSet()) { s ->
-            (s.first..s.last).first { WritingText.isSentenceStart(tokens, s, it) && tokens[it].isWord || it == s.last }
-                .let { tokens[it].start }
-        }
+        val starts = startTokens.mapTo(HashSet()) { tokens[it].start }
         val kept = found.filter { it.category in options.categories }
-            .filter { !options.typed || offeredOnTypedText(it, text, lowercaseStyle, starts) }
+            .filter { !options.typed || offeredOnTypedText(it, text, casual, starts) }
         val merged = merge(kept, text)
         return Report(text, merged, tones(text, tokens), stats(text, tokens, sentences, merged), pending)
     }
@@ -300,7 +299,7 @@ class WritingCheck(
             if ('\'' in t.key) continue
             if (t.key !in guesses && shouldAbort()) break
             val guess = (if (t.key in guesses) guesses[t.key] else dictionary.suggest(t.key, shouldAbort).also { guesses[t.key] = it }) ?: continue
-            if (capitalised && (guess.edits > 1 || guess.score > CAPITALISED_MAX_SCORE)) continue
+            if (capitalised && (guess.edits > 1 || guess.score > capitalisedMaxScore(t.key, guess.word))) continue
             val replacement = if (capitalised) guess.word.replaceFirstChar(Char::uppercaseChar) else guess.word
             val edit = WritingEdits.build(text, tokens, sentence.first, i, i + 1, replacement)
             val values = mapOf("original" to t.text, "replacement" to replacement)
@@ -370,6 +369,21 @@ class WritingCheck(
     }
 
     // ── filters and merging ────────────────────────────────────────────────
+
+    /**
+     * Whether text was typed in lower case on purpose: no sentence in it
+     * starts with a capital ("I" aside, which says nothing). Then sentence
+     * capitals and clause commas are not pressed on it. It used to be read
+     * off the text's first letter alone, so "hey Sam. We leave at 8. if you
+     * need anything let me know" lost both for its last sentence, as did any
+     * keyboard read that began mid-sentence.
+     */
+    private fun typedInLowerCase(starts: List<WritingToken>): Boolean {
+        val firsts = starts.filter { it.isWord }
+            .filterNot { WritingToken.normalize(it.text).let { w -> w == "i" || w.startsWith("i'") } }
+            .mapNotNull { it.text.firstOrNull(Char::isLetter) }
+        return firsts.isNotEmpty() && firsts.none(Char::isUpperCase)
+    }
 
     private fun offeredOnTypedText(
         s: WritingSuggestion,
@@ -501,8 +515,24 @@ class WritingCheck(
     companion object {
         private val HYPHENS = setOf("-", "‐", "‑")
 
-        /** The most a capitalised word opening a sentence may score to be offered: one slip from a common word. */
-        private const val CAPITALISED_MAX_SCORE = WritingSpelling.EDIT * WritingSpelling.DISTANCE_WEIGHT + 20
+        /**
+         * The most a capitalised word opening a sentence may score to be
+         * offered: one slip from a word in the keyboard's list (a frequency
+         * cost of 26 is rank 8192). It allowed only the top thousand words,
+         * so "Tommorow" and "Enviroment" opening a sentence went unflagged
+         * while the same typos in lower case were fixed.
+         */
+        private const val CAPITALISED_MAX_SCORE = WritingSpelling.EDIT * WritingSpelling.DISTANCE_WEIGHT + 26
+
+        /**
+         * A guess that changes the first letter keeps the old, stricter bar
+         * (the top thousand words): a slip seldom starts a word with the
+         * wrong letter, and a name often differs there ("Zhang", "hang").
+         */
+        private const val CAPITALISED_NEW_START_MAX_SCORE = WritingSpelling.EDIT * WritingSpelling.DISTANCE_WEIGHT + 20
+
+        private fun capitalisedMaxScore(typed: String, guess: String): Int =
+            if (typed.firstOrNull() == guess.firstOrNull()) CAPITALISED_MAX_SCORE else CAPITALISED_NEW_START_MAX_SCORE
 
         /** A letter three times in a row: "sooo", "yesss". */
         private fun stretched(word: String): Boolean =

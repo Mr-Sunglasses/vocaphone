@@ -26,7 +26,6 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.ImeInputPolicy
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
-import com.vocahq.vocaphone.core.TranscriptRepair
 import com.vocahq.vocaphone.core.TranscriptSanitizer
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.dictation.AppliedInsertion
@@ -176,9 +175,15 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             read = ::readWritingField,
             checker = { writingChecker.value },
             model = ::writingModel,
+            // The same test as the Writing check screen: short text is always
+            // checked, and typed text keeps its typos from voting it foreign.
             isEnglish = { text ->
-                WritingLanguage.isEnglish(text) { rest ->
-                    TranscriptRepair.isEnglish(rest, "auto") { suggestionDictionary.value?.isKnown(it) == true }
+                WritingLanguage.applies(text) { rest ->
+                    WritingLanguage.typedEnglish(
+                        rest,
+                        { suggestionDictionary.value?.isKnown(it) == true },
+                        writingChecker.value?.spelling,
+                    )
                 }
             },
         )
@@ -950,9 +955,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     /** The grammar model, when it is downloaded; the rules work without it. */
-    private fun writingModel(): ((String, Set<String>, Boolean) -> String?)? {
+    private fun writingModel(): ((String, Set<String>, Boolean) -> WritingCheckSession.Answer?)? {
         if (!GrammarModelCatalog.available || !container.grammarModel.state.value.ready) return null
-        return { text, keep, thorough -> container.grammar.correctTyped(text, keep, thorough) }
+        return { text, keep, thorough ->
+            container.grammar.correctTypedAnswer(text, keep, thorough)?.let { WritingCheckSession.Answer(it.text, it.complete) }
+        }
     }
 
     private fun writingOptions(): WritingCheckSession.Options {
@@ -962,6 +969,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             keep = typedGrammarKeeps(),
             tone = settings.writingTone,
             optIn = settings.writingOptIn(),
+            sureOnly = settings.grammarSureOnly,
         )
     }
 
@@ -981,7 +989,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val offset = surrounding.offset.takeIf { it >= 0 }
             ?: (lastSelStart - surrounding.selectionStart).takeIf { lastSelStart >= 0 && it >= 0 }
             ?: return null
-        return WritingCheckSession.Field(text, offset, surrounding.selectionStart)
+        return WritingCheckSession.Field(text, offset, surrounding.selectionStart).withoutCutSentence()
     }
 
     /** Words the grammar model may not change: the user's own, as for dictation. */

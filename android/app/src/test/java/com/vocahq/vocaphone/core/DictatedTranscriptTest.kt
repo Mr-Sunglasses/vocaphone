@@ -382,7 +382,16 @@ class DictatedTranscriptTest {
         )
         DictatedTranscript.finished("he don't know", style = WritingStyle.FORMAL, language = "en", repairSpeech = false, grammar = grammar)
         assertEquals(2, grammar.seen.size)
-        assertEquals(setOf("vocagate", "kube", "ctl", "my", "addy"), grammar.seen[0].second)
+        // A phrase's function words are not the user's: "my" stays checkable.
+        assertEquals(setOf("vocagate", "kube", "ctl", "addy"), grammar.seen[0].second)
+    }
+
+    @Test
+    fun `a phrase keeps its own words, not its function words`() {
+        assertEquals(setOf("bank", "america"), DictatedTranscript.grammarKeeps(listOf("Bank of America"), emptyList()))
+        assertEquals(setOf("way"), DictatedTranscript.grammarKeeps(emptyList(), listOf(Snippet("1", "on my way", "omw"))))
+        // A one-word term is kept whatever it is: the user asked for it.
+        assertEquals(setOf("will"), DictatedTranscript.grammarKeeps(listOf("Will"), emptyList()))
     }
 
     @Test

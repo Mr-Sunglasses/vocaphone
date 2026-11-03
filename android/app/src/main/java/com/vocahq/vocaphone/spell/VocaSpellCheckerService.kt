@@ -7,7 +7,6 @@ import android.view.textservice.TextInfo
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
-import com.vocahq.vocaphone.core.TranscriptRepair
 import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.writing.WritingCategory
@@ -36,7 +35,8 @@ class VocaSpellCheckerService : SpellCheckerService() {
 
     private val checker get() = container.writingCheck
 
-    private fun isEnglish(text: String): Boolean = TranscriptRepair.isEnglish(text, "auto") { it in container.englishWords }
+    private fun isEnglish(text: String): Boolean =
+        WritingLanguage.typedEnglish(text, { it in container.englishWords }, checker?.spelling)
 
     override fun createSession(): Session = WritingSession()
 

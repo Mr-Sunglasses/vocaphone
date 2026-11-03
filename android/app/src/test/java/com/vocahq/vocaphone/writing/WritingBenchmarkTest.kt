@@ -188,6 +188,27 @@ class WritingBenchmarkTest {
         return d[x.size][y.size]
     }
 
+    private val englishWords: Set<String> by lazy {
+        File(GrammarFixtures.root, "../keyboard/en.txt").readLines().map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
+    }
+
+    /**
+     * The scores above call `check()` directly, but every surface first asks
+     * whether the text is English, and a line that fails is never checked at
+     * all. That gate once refused most typo-heavy lines on the keyboards, and
+     * nothing here could see it. Every line in every set, error or clean,
+     * must get past the gate the keyboards and the Writing check screen use.
+     */
+    @Test
+    fun everyLineGetsPastTheEnglishGate() {
+        val refused = SETS.flatMap { set ->
+            cases(set).map { it.input }.filterNot { input ->
+                WritingLanguage.applies(input) { WritingLanguage.typedEnglish(it, { w -> w in englishWords }, WritingFixtures.spelling) }
+            }.map { "$set: $it" }
+        }
+        assertEquals("lines the English gate would never let Writing check see", emptyList<String>(), refused)
+    }
+
     private companion object {
         val OPTIONS = WritingCheck.Options(categories = setOf(WritingCategory.CORRECTNESS, WritingCategory.CLARITY), typed = true)
 
@@ -211,12 +232,12 @@ class WritingBenchmarkTest {
 
         /** Share of error lines that must come out exactly as meant: what each configuration reached. */
         val FLOORS = mapOf(
-            "everyday · rules" to 0.742,
+            "everyday · rules" to 0.757,
             "everyday · balanced" to 0.842,
             "everyday · thorough" to 0.857,
-            "heldout · rules" to 0.685,
-            "heldout · balanced" to 0.765,
-            "heldout · thorough" to 0.805,
+            "heldout · rules" to 0.710,
+            "heldout · balanced" to 0.780,
+            "heldout · thorough" to 0.820,
             "typed · rules" to 0.673,
             "typed · balanced" to 0.797,
             "typed · thorough" to 0.823,

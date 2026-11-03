@@ -6711,6 +6711,276 @@
    ],
    "modelPending": false,
    "text": "I need a SIM card and a RAM module for an MBA student and a FBI agent. Sales are up compared to yesterday. It is better than two days ago. I go to school yesterday. I see him two days ago."
+  },
+  {
+   "stats": [
+    4,
+    20,
+    1,
+    2,
+    2,
+    97,
+    92
+   ],
+   "tones": [],
+   "name": "cant after a subject",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [{
+    "original": "cant",
+    "kind": "apostrophe",
+    "start": 2,
+    "rule": "apos-cant-subject",
+    "mechanical": true,
+    "end": 6,
+    "label": "cant → can't",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201ccan't\u201d needs an apostrophe.",
+    "replacement": "can't",
+    "mark": [
+     2,
+     6
+    ]
+   }],
+   "modelPending": false,
+   "text": "I cant come tonight."
+  },
+  {
+   "stats": [
+    5,
+    23,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "wont before a verb",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [{
+    "original": "wont",
+    "kind": "apostrophe",
+    "start": 3,
+    "rule": "apos-wont-subject",
+    "mechanical": true,
+    "end": 7,
+    "label": "wont → won't",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cwon't\u201d needs an apostrophe.",
+    "replacement": "won't",
+    "mark": [
+     3,
+     7
+    ]
+   }],
+   "modelPending": false,
+   "text": "It wont work like that."
+  },
+  {
+   "stats": [
+    5,
+    26,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "cant the noun",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "That speech was pure cant."
+  },
+  {
+   "stats": [
+    4,
+    15,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "question agreement do",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [{
+    "original": "Do",
+    "kind": "agreement",
+    "start": 0,
+    "rule": "q-does",
+    "mechanical": false,
+    "end": 2,
+    "label": "Do → Does",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Make the verb agree with its subject: use \u201cDoes\u201d.",
+    "replacement": "Does",
+    "mark": [
+     0,
+     2
+    ]
+   }],
+   "modelPending": false,
+   "text": "Do she like it?"
+  },
+  {
+   "stats": [
+    4,
+    17,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "question agreement after a question word",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [{
+    "original": "is",
+    "kind": "agreement",
+    "start": 4,
+    "rule": "wh-is-you",
+    "mechanical": false,
+    "end": 6,
+    "label": "is → are",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201care\u201d with \u201cthey\u201d.",
+    "replacement": "are",
+    "mark": [
+     4,
+     6
+    ]
+   }],
+   "modelPending": false,
+   "text": "Why is they late?"
+  },
+  {
+   "stats": [
+    4,
+    15,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "question agreement leaves a right one",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Do you like it?"
+  },
+  {
+   "stats": [
+    4,
+    24,
+    1,
+    2,
+    2,
+    55,
+    92
+   ],
+   "tones": [],
+   "name": "sentence-start typo of a mid-frequency word",
+   "options": {"categories": ["correctness"]},
+   "suggestions": [{
+    "original": "Tommorow",
+    "kind": "spelling",
+    "start": 0,
+    "rule": "spell-tommorow",
+    "mechanical": true,
+    "end": 8,
+    "label": "Tommorow → Tomorrow",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cTommorow\u201d looks misspelled. Did you mean \u201cTomorrow\u201d?",
+    "replacement": "Tomorrow",
+    "mark": [
+     0,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "Tommorow we leave early."
+  },
+  {
+   "stats": [
+    13,
+    65,
+    3,
+    4,
+    6,
+    92,
+    84
+   ],
+   "tones": [],
+   "name": "one lower-case sentence is not casual text",
+   "options": {"categories": ["correctness"]},
+   "model": {"if you need anything let me know": "If you need anything let me know"},
+   "suggestions": [
+    {
+     "original": "if",
+     "kind": "capitalization",
+     "start": 33,
+     "rule": null,
+     "mechanical": true,
+     "end": 35,
+     "label": "if → If",
+     "source": "model",
+     "category": "correctness",
+     "message": "Start a sentence with a capital letter.",
+     "replacement": "If",
+     "mark": [
+      33,
+      35
+     ]
+    },
+    {
+     "original": "",
+     "kind": "comma",
+     "start": 53,
+     "rule": "comma-clause",
+     "mechanical": false,
+     "end": 53,
+     "label": "Add \u201c,\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Add a comma after the opening \u201cif \u2026\u201d part, before \u201clet\u201d.",
+     "replacement": ",",
+     "mark": [
+      45,
+      53
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "hey Sam. We leave at 8 tomorrow. if you need anything let me know"
+  },
+  {
+   "stats": [
+    12,
+    56,
+    3,
+    4,
+    5,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "all lower case stays casual",
+   "options": {"categories": ["correctness"]},
+   "model": {"if you need anything let me know": "If you need anything let me know"},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "hey sam. we leave at 8. if you need anything let me know"
   }
  ],
  "tokenize": [

@@ -297,8 +297,9 @@ where it does:
    sentence punctuation. Not for Raw.
 4. **Grammar** (Fix grammar (English), off by default): the on-device
    MindType tagger. On-device transcripts in English only, not for Raw, and
-   never a custom vocabulary word, a learned word (iOS) or a snippet trigger.
-   Fails safe to the text it was given. See
+   never a custom vocabulary word, a learned word (iOS: typed three times, or
+   added from Writing check) or a snippet trigger. A phrase's function words
+   ("of" in "Bank of America") are not kept. Fails safe to the text it was given. See
    [tools/grammar-eval](../tools/grammar-eval/README.md) for the recipe.
 5. **Style**, for on-device transcripts only: a gateway has already styled its
    own.

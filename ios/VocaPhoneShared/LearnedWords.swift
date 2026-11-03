@@ -30,20 +30,30 @@ struct LearnedWords: Codable, Equatable, Sendable {
     /// keyboard concludes the user meant it.
     static let repetitionsBeforeLearning = 3
 
+    /// Every word seen, learned or not. A sighting is not a learned word: the
+    /// keyboard notes each word its list does not know, which is mostly typos,
+    /// so everything below reads only the entries that reached
+    /// ``repetitionsBeforeLearning``.
     private(set) var entries: [String: Entry] = [:]
 
-    var count: Int { entries.count }
+    private var learned: some Collection<Entry> {
+        entries.values.lazy.filter { $0.count >= Self.repetitionsBeforeLearning }
+    }
 
-    var words: [String] { entries.values.map(\.word) }
+    var count: Int { learned.count }
 
-    func contains(_ word: String) -> Bool { entries[Self.key(word)] != nil }
+    var words: [String] { learned.map(\.word) }
+
+    func contains(_ word: String) -> Bool {
+        (entries[Self.key(word)]?.count ?? 0) >= Self.repetitionsBeforeLearning
+    }
 
     /// Words starting with `prefix`, most used first — someone who has typed a
     /// name forty times should see it before one they typed twice.
     func completions(for prefix: String, limit: Int) -> [String] {
         guard !prefix.isEmpty, limit > 0 else { return [] }
         let lowered = Self.key(prefix)
-        return entries.values
+        return learned
             .filter { Self.key($0.word).hasPrefix(lowered) && $0.word.count > prefix.count }
             .sorted {
                 $0.count == $1.count ? $0.lastUsedAt > $1.lastUsedAt : $0.count > $1.count
@@ -80,12 +90,16 @@ struct LearnedWords: Codable, Equatable, Sendable {
 
     mutating func removeAll() { entries.removeAll() }
 
-    /// Least-recently-used eviction. Capacity is a memory bound, not a
-    /// judgement about which words matter.
+    /// Least-recently-used eviction, sightings before learned words, so a run
+    /// of typos never pushes out a name the user typed three times.
     private mutating func evictIfNeeded() {
         guard entries.count > Self.capacity else { return }
+        let threshold = Self.repetitionsBeforeLearning
         let doomed = entries.values
-            .sorted { $0.lastUsedAt < $1.lastUsedAt }
+            .sorted {
+                let (a, b) = ($0.count >= threshold, $1.count >= threshold)
+                return a == b ? $0.lastUsedAt < $1.lastUsedAt : !a
+            }
             .prefix(entries.count - Self.capacity)
         for entry in doomed { entries.removeValue(forKey: Self.key(entry.word)) }
     }

@@ -69,6 +69,10 @@ struct WritingCheck: Sendable {
         let keep = Set(options.keep.map(WritingToken.normalize))
         var found: [WritingSuggestion] = []
         var pending = false
+        let startTokens = sentences.map { s in
+            (s.first...s.last).first { WritingText.isSentenceStart(tokens, s, $0) && tokens[$0].isWord } ?? s.last
+        }
+        let casual = options.typed && Self.typedInLowerCase(startTokens.map { tokens[$0] })
 
         for sentence in sentences {
             found += ruleSuggestions(text, tokens, sentence, protected, keep, options)
@@ -76,8 +80,6 @@ struct WritingCheck: Sendable {
         if let agreement {
             // Subjects and their verbs, where no rule has spoken for the verb.
             let fixed = found.filter(\.isActionable)
-            let casual = options.typed
-                && text.unicodeScalars.first(where: WritingText.isLetter)?.properties.isLowercase == true
             for sentence in sentences {
                 found += agreement.suggestions(text, tokens, sentence, protected, keep, fixed, casual: casual)
             }
@@ -113,19 +115,10 @@ struct WritingCheck: Sendable {
         found += longSentences(text, tokens, sentences)
         found += overusedWords(tokens, sentences, keep)
 
-        let lowercaseStyle = text.unicodeScalars.first(where: WritingText.isLetter)?.properties.isLowercase == true
-        var starts = Set<Int>()
-        for s in sentences {
-            var index = s.last
-            for i in s.first...s.last where WritingText.isSentenceStart(tokens, s, i) && tokens[i].isWord {
-                index = i
-                break
-            }
-            starts.insert(tokens[index].start)
-        }
+        let starts = Set(startTokens.map { tokens[$0].start })
         let kept = found
             .filter { options.categories.contains($0.category) }
-            .filter { !options.typed || offeredOnTypedText($0, text, lowercaseStyle: lowercaseStyle, sentenceStarts: starts) }
+            .filter { !options.typed || offeredOnTypedText($0, text, lowercaseStyle: casual, sentenceStarts: starts) }
         let merged = merge(kept, text)
         return Report(
             text: text, suggestions: merged, tones: tones(text, tokens),
@@ -311,7 +304,7 @@ struct WritingCheck: Sendable {
                 guesses[t.key] = .some(looked)
             }
             guard let guess = looked else { continue }
-            if capitalised, guess.edits > 1 || guess.score > Self.capitalisedMaxScore { continue }
+            if capitalised, guess.edits > 1 || guess.score > Self.capitalisedMaxScore(t.key, guess.word) { continue }
             let replacement = capitalised ? guess.word.prefix(1).uppercased() + guess.word.dropFirst() : guess.word
             let edit = WritingEdits.build(tokens, floor: sentence.first, from: i, to: i + 1, inserted: replacement)
             let values = ["original": t.text, "replacement": replacement]
@@ -335,8 +328,21 @@ struct WritingCheck: Sendable {
 
     private static let hyphens: Set<String> = ["-", "‐", "‑"]
 
-    /// The most a capitalised word opening a sentence may score to be offered: one slip from a common word.
-    private static let capitalisedMaxScore = WritingSpelling.edit * WritingSpelling.distanceWeight + 20
+    /// The most a capitalised word opening a sentence may score to be
+    /// offered: one slip from a word in the keyboard's list (a frequency cost
+    /// of 26 is rank 8192). It allowed only the top thousand words, so
+    /// "Tommorow" and "Enviroment" opening a sentence went unflagged while the
+    /// same typos in lower case were fixed. As on Android.
+    private static let capitalisedSameStartMaxScore = WritingSpelling.edit * WritingSpelling.distanceWeight + 26
+
+    /// A guess that changes the first letter keeps the old, stricter bar (the
+    /// top thousand words): a slip seldom starts a word with the wrong letter,
+    /// and a name often differs there ("Zhang", "hang"). As on Android.
+    private static let capitalisedNewStartMaxScore = WritingSpelling.edit * WritingSpelling.distanceWeight + 20
+
+    private static func capitalisedMaxScore(_ typed: String, _ guess: String) -> Int {
+        typed.first == guess.first ? capitalisedSameStartMaxScore : capitalisedNewStartMaxScore
+    }
 
     /// A letter three times in a row: "sooo", "yesss".
     private static func stretched(_ word: String) -> Bool {
@@ -405,6 +411,19 @@ struct WritingCheck: Sendable {
     }
 
     // MARK: - Filters and merging
+
+    /// Whether text was typed in lower case on purpose: no sentence in it
+    /// starts with a capital ("I" aside, which says nothing). Then sentence
+    /// capitals and clause commas are not pressed on it. It used to be read
+    /// off the text's first letter alone, so "hey Sam. We leave at 8. if you
+    /// need anything let me know" lost both for its last sentence, as did any
+    /// keyboard read that began mid-sentence. As `typedInLowerCase` on Android.
+    private static func typedInLowerCase(_ starts: [WritingToken]) -> Bool {
+        let firsts = starts
+            .filter { $0.isWord && $0.key != "i" && !$0.key.hasPrefix("i'") }
+            .compactMap { $0.text.unicodeScalars.first(where: WritingText.isLetter) }
+        return !firsts.isEmpty && !firsts.contains { $0.properties.isUppercase }
+    }
 
     private func offeredOnTypedText(
         _ s: WritingSuggestion, _ text: String, lowercaseStyle: Bool, sentenceStarts: Set<Int>

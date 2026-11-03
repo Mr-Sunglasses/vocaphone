@@ -45,19 +45,44 @@ internal class WritingCheckSession(
      * third argument is whether the user asked for this check (the thorough
      * tier, [com.vocahq.vocaphone.grammar.GrammarTagger.THOROUGH_KEEP_BIAS]).
      */
-    private val model: () -> ((String, Set<String>, Boolean) -> String?)?,
+    private val model: () -> ((String, Set<String>, Boolean) -> Answer?)?,
     private val isEnglish: (String) -> Boolean,
     private val pauseMillis: Long = PAUSE_MILLIS,
 ) {
     /** What one read of the editor saw: [text] starts at editor position [offset]; the cursor is at [cursor] in it. */
-    data class Field(val text: String, val offset: Int, val cursor: Int)
+    data class Field(val text: String, val offset: Int, val cursor: Int) {
+        /**
+         * This read without the sentence it opens with when it starts partway
+         * into the document ([offset] above 0): that sentence is cut, so its
+         * first word is no sentence start and its subject may be missing.
+         * Kept when the cursor is in it, and when no sentence ends before the
+         * cursor.
+         */
+        fun withoutCutSentence(): Field {
+            if (offset <= 0) return this
+            val end = SENTENCE_END.find(text)?.range?.last?.plus(1) ?: return this
+            if (end > cursor) return this
+            return Field(text.substring(end), offset + end, cursor - end)
+        }
+    }
 
     data class Options(
         val categories: Set<WritingCategory>,
         val keep: Set<String>,
         val tone: Boolean,
         val optIn: Set<String> = emptySet(),
+        /** "Only sure fixes": its answers are the model's at another bias, so they are kept apart. */
+        val sureOnly: Boolean = false,
     )
+
+    /**
+     * The model's text for one sentence, and whether the model got through
+     * it. A sentence cut short by the time budget, or one the model failed
+     * on, comes back as far as it got (or unchanged) and is not [complete]:
+     * it is used for this check and not kept, so the next check asks again
+     * instead of calling the sentence clean for the life of the field.
+     */
+    data class Answer(val text: String, val complete: Boolean = true)
 
     /** What the strip and the panel show. */
     data class Report(
@@ -94,8 +119,12 @@ internal class WritingCheckSession(
     /** The latest check started; only it may clear [checking]. */
     private var checks = 0
 
-    /** What a check reads: the field, where the cursor is in it, and the options. */
-    private data class Settled(val text: String, val cursor: Int, val options: Options)
+    /**
+     * What a check reads: the field, where the cursor is in it, the options,
+     * and whether the model was in use, so a model that finishes loading
+     * after a rules-only check is asked at the next pause.
+     */
+    private data class Settled(val text: String, val cursor: Int, val options: Options, val model: Boolean)
 
     /**
      * What the last finished check saw, so a pause that changed nothing does
@@ -166,7 +195,7 @@ internal class WritingCheckSession(
 
     private suspend fun check(options: Options) {
         val field = read() ?: return
-        val state = Settled(field.text, field.cursor, options)
+        val state = Settled(field.text, field.cursor, options, model() != null)
         if (state == settled) return
         val checker = checker() ?: return
         if (field.text.isBlank() || !isEnglish(field.text)) {
@@ -205,7 +234,7 @@ internal class WritingCheckSession(
         checker: WritingCheck,
         field: Field,
         options: Options,
-        model: ((String, Set<String>, Boolean) -> String?)?,
+        model: ((String, Set<String>, Boolean) -> Answer?)?,
         thorough: Boolean,
     ): Report {
         val known = HashMap(answers)
@@ -225,7 +254,7 @@ internal class WritingCheckSession(
         checker: WritingCheck,
         field: Field,
         options: Options,
-        model: ((String, Set<String>, Boolean) -> String?)?,
+        model: ((String, Set<String>, Boolean) -> Answer?)?,
         thorough: Boolean,
         known: Map<String, String>,
         used: MutableMap<String, String>,
@@ -233,8 +262,11 @@ internal class WritingCheckSession(
     ): Report {
         val cached = model?.let { ask ->
             WritingCheck.Model { sentence ->
-                val key = answerKey(thorough, sentence)
-                (known[key] ?: ask(sentence, options.keep, thorough))?.also { used[key] = it }
+                val key = answerKey(thorough, options.sureOnly, sentence)
+                known[key] ?: ask(sentence, options.keep, thorough)?.let { answer ->
+                    if (answer.complete) used[key] = answer.text
+                    answer.text
+                }
             }
         }
         val result = checker.check(
@@ -338,11 +370,15 @@ internal class WritingCheckSession(
         /** How much of the field one check reads on each side of the cursor. */
         const val READ_EACH_SIDE = 2_000
 
+        /** A sentence's end and the space after it, or a line break. */
+        private val SENTENCE_END = Regex("[.!?]+[\"')\\]”’]*\\s+|\n\\s*")
+
         const val MAX_CHIPS = 3
         private const val ANSWER_CACHE = 256
         private const val MATCH_TAIL = 24
 
         /** The model answers a sentence differently per tier, so each tier keeps its own. */
-        private fun answerKey(thorough: Boolean, sentence: String) = (if (thorough) "T\u0000" else "B\u0000") + sentence
+        private fun answerKey(thorough: Boolean, sureOnly: Boolean, sentence: String) =
+            (if (thorough) "T" else "B") + (if (sureOnly) "S" else "") + "\u0000" + sentence
     }
 }
