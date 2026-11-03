@@ -912,6 +912,7 @@ class DictationController(
                     scope = scope,
                     quality = configuration.transcriptionQuality,
                     translateTo = configuration.translationTarget,
+                    vocabulary = configuration.whisperVocabulary,
                 )
             }
         } else {

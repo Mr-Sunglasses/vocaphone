@@ -19,6 +19,11 @@ import Testing
 ///   incremental session the app runs while recording, then finished the way
 ///   `RecordingCoordinator.finalizeLocally` does.
 ///
+/// A clip that lists a `vocabulary` (the `vocab-en` set) is decoded with it as
+/// the user's custom vocabulary: into the decoder the way the app hands it
+/// over (Whisper's prompt, Qwen3-ASR's hotwords), and into the finishing
+/// funnel. Every other clip is decoded with none.
+///
 /// A clip already in the results file is skipped, so an interrupted run picks
 /// up where it stopped.
 @MainActor
@@ -60,6 +65,14 @@ enum AccuracyBenchmark {
         let file: String
         let seconds: Double
         let language: String
+        /// The custom vocabulary this dictation is decoded with, one term each,
+        /// as the user would have entered them.
+        let vocabulary: [String]?
+
+        /// The stored form of the Settings field, which is what the app reads.
+        var vocabularyText: String? {
+            vocabulary.map { $0.joined(separator: "\n") }
+        }
     }
 
     struct Hypothesis: Encodable {
@@ -137,7 +150,7 @@ enum AccuracyBenchmark {
         for clip in clips where !done.contains(clip.id) {
             let samples = try loadSamples(configuration.root.appendingPathComponent("sets/\(set)/\(clip.file)"))
             let started = Date()
-            let (raw, emptyWindows) = try await decode(samples, model: configuration.model, language: clip.language, path: path)
+            let (raw, emptyWindows) = try await decode(samples, clip: clip, model: configuration.model, path: path)
             let milliseconds = Int(Date().timeIntervalSince(started) * 1_000)
             let finished = DictatedTranscript.finished(
                 raw,
@@ -147,7 +160,7 @@ enum AccuracyBenchmark {
                 numbersAsDigits: true,
                 spokenEmoji: true,
                 snippets: [],
-                vocabulary: []
+                vocabulary: CustomVocabulary.terms(clip.vocabularyText)
             )
             let hypothesis = Hypothesis(
                 id: clip.id, raw: raw, finished: finished,
@@ -187,14 +200,20 @@ enum AccuracyBenchmark {
     }
 
     private static func decode(
-        _ samples: [Float], model: String, language: String, path: String
+        _ samples: [Float], clip: Clip, model: String, path: String
     ) async throws -> (String, Int) {
         let descriptor = try #require(LocalModelCatalog.descriptor(for: model))
+        let language = clip.language
+        let vocabulary = clip.vocabularyText
         switch (descriptor.engine, path) {
-        case (.whisperKit, "file"): return try await Whisper.file(samples, language: language)
-        case (.whisperKit, "streamed"): return try await Whisper.streamed(samples, language: language)
-        case (.sherpaOnnx, "file"): return (try Sherpa.file(samples, language: language), 0)
-        case (.sherpaOnnx, "streamed"): return (try await Sherpa.streamed(samples, language: language), 0)
+        case (.whisperKit, "file"):
+            return try await Whisper.file(samples, language: language, vocabulary: vocabulary)
+        case (.whisperKit, "streamed"):
+            return try await Whisper.streamed(samples, language: language, vocabulary: vocabulary)
+        case (.sherpaOnnx, "file"):
+            return (try Sherpa.file(samples, language: language, hotwords: Sherpa.hotwords(vocabulary)), 0)
+        case (.sherpaOnnx, "streamed"):
+            return (try await Sherpa.streamed(samples, language: language, hotwords: Sherpa.hotwords(vocabulary)), 0)
         default:
             Issue.record("unknown path \(path)")
             return ("", 0)
@@ -231,22 +250,28 @@ enum AccuracyBenchmark {
             AccuracyBenchmark.configuration?.quality ?? .default
         }
 
-        private static func options(_ language: String) -> DecodingOptions {
-            WhisperTranscription.decodingOptions(
-                language: language, translate: false, quality: quality, promptTokens: nil
+        /// As `LocalModelManager` builds them for a dictation: from
+        /// `WhisperDictationSettings`, with the vocabulary tokenized against
+        /// the loaded model.
+        private static func options(
+            _ language: String, vocabulary: String?, engine: WhisperKit
+        ) -> DecodingOptions {
+            let settings = WhisperDictationSettings(
+                language: language, translate: false, quality: quality, vocabulary: vocabulary
             )
+            return settings.decodingOptions(for: engine)
         }
 
         private static func text(_ results: [TranscriptionResult]) -> String {
             results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        static func file(_ samples: [Float], language: String) async throws -> (String, Int) {
+        static func file(_ samples: [Float], language: String, vocabulary: String?) async throws -> (String, Int) {
             nonisolated(unsafe) let engine = try await loaded()
             var empty = 0
             let results = try await WhisperTranscription.transcribe(
                 samples: SpeechAudioConditioning.condition(samples),
-                options: options(language),
+                options: options(language, vocabulary: vocabulary, engine: engine),
                 retries: quality.whisperRetryCount,
                 emptyWindow: { _ in empty += 1 }
             ) {
@@ -259,9 +284,9 @@ enum AccuracyBenchmark {
         /// into the dictation's cache, each levelled keeping the gain the last
         /// one settled on, then the trimmed recording at Finish, levelled the
         /// same way.
-        static func streamed(_ captured: [Float], language: String) async throws -> (String, Int) {
+        static func streamed(_ captured: [Float], language: String, vocabulary: String?) async throws -> (String, Int) {
             nonisolated(unsafe) let engine = try await loaded()
-            let options = options(language)
+            let options = options(language, vocabulary: vocabulary, engine: engine)
             let cache = WhisperWindowCache()
             let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
             let session = WhisperIncrementalSession(chunks: chunks) {
@@ -334,8 +359,19 @@ enum AccuracyBenchmark {
             return recognizer
         }
 
-        static func file(_ samples: [Float], language: String) throws -> String {
-            let outcome = try recognizer(language).transcribe(SpeechAudioConditioning.condition(samples))
+        /// As `LocalModelManager.sherpaHotwords(for:)` makes them from the
+        /// stored vocabulary.
+        static func hotwords(_ vocabulary: String?) -> String? {
+            let configuration = AccuracyBenchmark.configuration
+            let descriptor = configuration.flatMap { LocalModelCatalog.descriptor(for: $0.model) }
+            let terms = RecognitionHints.terms(vocabulary: CustomVocabulary.terms(vocabulary))
+            return RecognitionHints.sherpaHotwords(family: descriptor?.sherpaFamily, terms: terms)
+        }
+
+        static func file(_ samples: [Float], language: String, hotwords: String?) throws -> String {
+            let outcome = try recognizer(language).transcribe(
+                SpeechAudioConditioning.condition(samples), hotwords: hotwords
+            )
             if let failure = outcome.nativeFailure {
                 Issue.record("sherpa decode failed natively: \(failure)")
             }
@@ -344,9 +380,11 @@ enum AccuracyBenchmark {
 
         /// As `SherpaEndToEnd.dictation`: streamed while recording, then the
         /// whole file when the stream came back empty or lost a chunk.
-        static func streamed(_ captured: [Float], language: String) async throws -> String {
+        static func streamed(_ captured: [Float], language: String, hotwords: String?) async throws -> String {
             let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-            let session = SherpaIncrementalSession(chunks: chunks, recognizer: try recognizer(language)) {
+            let session = SherpaIncrementalSession(
+                chunks: chunks, recognizer: try recognizer(language), hotwords: hotwords
+            ) {
                 SileroSpeechDetector(model: SileroSpeechDetector.repositoryModel)
             }
             for start in stride(from: 0, to: captured.count, by: 1_600) {
@@ -357,7 +395,7 @@ enum AccuracyBenchmark {
             let streamed = await session.finish()
             var text = streamed.transcript.text
             if text.isEmpty || streamed.droppedAudibleChunk {
-                let wholeFile = try file(captured, language: language)
+                let wholeFile = try file(captured, language: language, hotwords: hotwords)
                 if streamed.supersededBy(wholeFile) { text = wholeFile }
             }
             return text

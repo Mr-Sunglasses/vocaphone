@@ -365,7 +365,18 @@ enum WhisperTranscription {
         retries: Int,
         decode: ([Float], DecodingOptions) async throws -> [TranscriptionResult]
     ) async throws -> [TranscriptionResult] {
+        var options = options
         var best = try await decode(samples, options)
+        if shouldRetryWithoutPrompt(best, options: options) {
+            // A vocabulary prompt can talk the decoder out of the speech
+            // altogether: it opens on end-of-text and the window is empty.
+            // The same audio unprompted is what the user would have had with
+            // no vocabulary, which beats nothing. Any further retry stays
+            // unprompted too.
+            try Task.checkCancellation()
+            options.promptTokens = nil
+            best = try await decode(samples, options)
+        }
         var bestQuality = WindowQuality(best, options: options)
         guard retries > 0, bestQuality.needsRetry else { return best }
 
@@ -387,6 +398,13 @@ enum WhisperTranscription {
             if !bestQuality.needsRetry { break }
         }
         return best
+    }
+
+    /// Whether a window decoded with a vocabulary prompt came back without a
+    /// word, and should be decoded again without the prompt.
+    static func shouldRetryWithoutPrompt(_ results: [TranscriptionResult], options: DecodingOptions) -> Bool {
+        guard let prompt = options.promptTokens, !prompt.isEmpty else { return false }
+        return !results.contains { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     /// How good a decoded window looks, by the tests Whisper itself uses to

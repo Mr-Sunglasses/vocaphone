@@ -174,22 +174,10 @@ enum ModelEndToEnd {
         ) {
             try await loadedEngine()
         } options: { engine in
-            // The budgeted prompt `WhisperDictationSettings` builds.
-            var promptTokens: [Int]?
-            if let tokenizer = engine.tokenizer {
-                let special = tokenizer.specialTokens.specialTokenBegin
-                let encode = { (text: String) in tokenizer.encode(text: text).filter { $0 < special } }
-                let prompt = CustomVocabulary.whisperPrompt(
-                    vocabulary, maximumTokens: CustomVocabulary.whisperKitPromptTokens
-                ) { encode($0).count }
-                promptTokens = prompt.isEmpty ? nil : encode(prompt)
-            }
-            return WhisperTranscription.decodingOptions(
-                language: nil,
-                translate: false,
-                quality: .balanced,
-                promptTokens: promptTokens
-            )
+            // The budgeted prompt a dictation decodes with.
+            WhisperDictationSettings(
+                language: nil, translate: false, quality: .balanced, vocabulary: vocabulary
+            ).decodingOptions(for: engine)
         } discard: { _ in
             engine = nil
         } emptyWindow: { window in

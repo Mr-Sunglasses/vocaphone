@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
+import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
@@ -28,6 +29,11 @@ import org.junit.Test
  * `vocaphone.asrBench.crop` (`on` / `off`, default the catalog's) and
  * `vocaphone.asrBench.quality` (default Balanced). A clip already in the
  * results file is skipped, so an interrupted run resumes.
+ *
+ * A clip that lists a `vocabulary` (the `vocab-en` set) is decoded with it as
+ * the user's custom vocabulary: into the decoder as `LocalModelManager` hands
+ * it over, and into the finishing funnel with the keyboard's word list, as
+ * `DictationController` finishes a dictation. Every other clip has none.
  */
 class WhisperAccuracyBenchmarkTest {
 
@@ -51,13 +57,14 @@ class WhisperAccuracyBenchmarkTest {
                 val id = clip.getString("id")
                 if (id in done) continue
                 val samples = readWav(File(root, "sets/$set/${clip.getString("file")}"))
+                val vocabulary = vocabulary(clip)
                 val started = System.nanoTime()
                 val transcription = requireNotNull(context).transcribe(
                     SpeechAudioConditioning.condition(samples),
                     language = language,
                     translateTo = "",
                     quality = quality,
-                    prompt = "",
+                    prompt = whisperPrompt(vocabulary),
                     cropAudioContext = crop,
                     threads = WhisperCpuConfig.preferredThreadCount(model.id),
                 )
@@ -69,6 +76,8 @@ class WhisperAccuracyBenchmarkTest {
                     repairSpeech = true,
                     numbersAsDigits = true,
                     spokenEmoji = true,
+                    vocabulary = CustomVocabulary.terms(vocabulary),
+                    isDictionaryWord = { it in englishWords },
                 )
                 val line = JSONObject()
                     .put("id", id)
@@ -119,6 +128,12 @@ class WhisperAccuracyBenchmarkTest {
         return (0 until count).map { all[it * all.size / count] }
     }
 
+    /** The Settings field's stored text: the clip's terms, one a line. */
+    private fun vocabulary(clip: JSONObject): String {
+        val terms = clip.optJSONArray("vocabulary") ?: return ""
+        return (0 until terms.length()).joinToString("\n") { terms.getString(it) }
+    }
+
     /** The prepared WAVs are 32-bit float, mono, 16 kHz. */
     private fun readWav(file: File): FloatArray {
         val bytes = file.readBytes()
@@ -157,6 +172,18 @@ class WhisperAccuracyBenchmarkTest {
             }
         }
         private var context: WhisperContext? = null
+
+        /** `DictationController.englishWords`, from the repository's copy of the asset. */
+        private val englishWords: Set<String> by lazy {
+            generateSequence(File("").absoluteFile) { it.parentFile }
+                .map { File(it, "assets/keyboard/en.txt") }
+                .firstOrNull(File::isFile)
+                ?.readLines()
+                ?.map { it.trim().lowercase() }
+                ?.filter { it.isNotEmpty() }
+                ?.toHashSet()
+                ?: emptySet()
+        }
 
         @BeforeClass
         @JvmStatic

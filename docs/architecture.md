@@ -314,6 +314,38 @@ The grammar model runs in the containing app only. Android reaches the
 sherpa-onnx links through `GrammarOnnxBridge.c`. Neither adds a second
 runtime, and the F-Droid flavor builds neither.
 
+## Custom vocabulary while decoding
+
+Step 6 above spells close misses the user's way on every route. Two on-device
+engines can also be steered toward the words while they decode, and both get
+them from one builder, `RecognitionHints` on both platforms
+(`android/.../core/RecognitionHints.kt`, `ios/VocaPhoneShared/RecognitionHints.swift`):
+
+- **The list.** `RecognitionHints.terms` orders the hints least important
+  first: terms from the text around the cursor, then replacement targets, then
+  the user's custom vocabulary, each source with its first-ranked term last.
+  Only the vocabulary is filled in today. Every engine that has to shorten the
+  list cuts from the front, so the user's own words, and among them the ones
+  written first, are the last to go. What an engine keeps it writes most
+  important first, which for the vocabulary alone is the order the user wrote. The list stays on the phone and in memory
+  for the one dictation; nothing about it is logged or sent anywhere.
+- **Whisper** (WhisperKit, whisper.cpp) gets a decoder prompt, the terms as a
+  comma-separated list, cut to 48 tokens on iOS (WhisperKit decodes each prompt
+  token on every window) and 640 characters on Android. A window or recording
+  that decodes to nothing with the prompt is decoded once more without it, so
+  a prompt can never turn speech into "no speech".
+- **Qwen3-ASR** gets the last 20 terms, at most 200 characters, as the
+  `hotwords` option on each sherpa-onnx stream. sherpa-onnx 1.13.8 writes them
+  into the system turn of Qwen3-ASR's chat prompt. They are set per stream:
+  the recognizer's `createStream(hotwords)` is the transducer contextual-biasing
+  path, and every other family answers it by exiting the process.
+- **Every other sherpa family** (Parakeet, Canary, SenseVoice, Moonshine and
+  the rest) takes no hint. Settings says so under Custom words when one of
+  them is selected.
+
+A gateway decodes with whatever its engine does; the vocabulary is not sent to
+it.
+
 ## Writing check
 
 A Grammarly-style checker for typed text, English only, entirely on the phone.

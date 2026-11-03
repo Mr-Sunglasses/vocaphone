@@ -571,6 +571,43 @@ struct WhisperTranscriptionTests {
         }
     }
 
+    // MARK: - A prompt that silenced the window
+
+    private static let prompted = WhisperTranscription.decodingOptions(
+        language: "en", translate: false, quality: .fast, promptTokens: [50, 51, 52]
+    )
+
+    @Test func aPromptedWindowThatCameBackEmptyIsDecodedAgainWithoutThePrompt() async throws {
+        var seen: [[Int]?] = []
+        let kept = try await WhisperTranscription.decodeBest([0], options: Self.prompted, retries: 0) { _, options in
+            seen.append(options.promptTokens)
+            return options.promptTokens == nil ? Self.attempt("what was said", logProb: -0.4) : []
+        }
+        #expect(seen == [[50, 51, 52], nil])
+        #expect(kept.first?.text == "what was said")
+    }
+
+    @Test func aPromptedWindowWithWordsIsNotDecodedAgain() async throws {
+        var calls = 0
+        _ = try await WhisperTranscription.decodeBest([0], options: Self.prompted, retries: 0) { _, _ in
+            calls += 1
+            return Self.attempt("Kanishk said hello", logProb: -0.3)
+        }
+        #expect(calls == 1)
+    }
+
+    /// Without a prompt there is nothing to take away: an empty window stays
+    /// one decode, as `aCleanOrSilentWindowIsNeverRetried` has it.
+    @Test func onlyAPromptedEmptyWindowQualifies() {
+        let blank = [TranscriptionResult(text: " ", segments: [], language: "en", timings: TranscriptionTimings())]
+        #expect(WhisperTranscription.shouldRetryWithoutPrompt(blank, options: Self.prompted))
+        #expect(WhisperTranscription.shouldRetryWithoutPrompt([], options: Self.prompted))
+        #expect(!WhisperTranscription.shouldRetryWithoutPrompt(blank, options: Self.options))
+        #expect(!WhisperTranscription.shouldRetryWithoutPrompt(
+            Self.attempt("words", logProb: -0.2), options: Self.prompted
+        ))
+    }
+
     @Test func fastNeverRetries() async throws {
         var calls = 0
         _ = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 0) { _, _ in

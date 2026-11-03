@@ -11,15 +11,21 @@ float32 WAV the app captures:
 | `librispeech-other` | LibriSpeech test-other | Read English, harder speakers |
 | `librispeech-long` | Consecutive test-clean and test-other utterances from one chapter, joined into 45-90 s clips | Windowing and chunk seams, where both September 2026 bugs were |
 | `fleurs-hi` | FLEURS Hindi test | Hindi in Devanagari |
+| `vocab-en` | `vocab_en.json`, spoken by macOS `say` in six English voices | Names, product names and jargon, with the Dictionary a user would have entered |
 
     tools/asr-bench/prepare.py                       # every set, default sizes
     tools/asr-bench/prepare.py --sets librispeech-long --long-limit 40
+    tools/asr-bench/prepare.py --sets vocab-en       # macOS only
 
 Writes `<out>/sets/<set>/manifest.jsonl`, one line per clip with its file,
-length, language and reference text. Nothing here is checked in: AGENTS.md
-keeps recordings and transcripts out of the repository.
+length, language and reference text; `vocab-en` clips also carry the
+`vocabulary` the runners hand the app and the `terms` the score expects to see
+spelled. Nothing here is checked in: AGENTS.md keeps recordings and transcripts
+out of the repository.
 
-Needs `ffmpeg` (LibriSpeech is FLAC). Standard library only otherwise.
+Needs `ffmpeg` (LibriSpeech is FLAC), and `say` and `afconvert` for `vocab-en`.
+Without those two (any host but a Mac), a bare run skips `vocab-en`.
+Standard library only otherwise.
 """
 
 from __future__ import annotations
@@ -30,12 +36,18 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
+import platform
+import re
 import tarfile
+import tempfile
 from collections import defaultdict
 from pathlib import Path
+
+import vocab
 
 RATE = 16_000
 DEFAULT_OUT = Path(os.environ.get("VOCA_ASR_BENCH_DIR") or Path.home() / ".cache/vocaphone/asr-bench")
@@ -67,7 +79,19 @@ ARCHIVES = {
     ),
 }
 
-SETS = ("librispeech-clean", "librispeech-other", "librispeech-long", "fleurs-hi")
+SETS = ("librispeech-clean", "librispeech-other", "librispeech-long", "fleurs-hi", "vocab-en")
+
+# The vocab-en script is checked in, so it is pinned like a download: an edit
+# changes what every earlier vocab-en result measured, and has to be a
+# deliberate one that updates this digest (and deletes the old set).
+VOCAB_SPEC = Path(__file__).resolve().with_name("vocab_en.json")
+VOCAB_SPEC_SHA256 = "537771ed468584d0cae443bc6aa4c7974c865a20664009e79b5a18f57857b881"
+# Stock macOS voices, one per English accent `say` ships, taken in turn.
+VOCAB_VOICES = ("Samantha", "Daniel", "Karen", "Moira", "Rishi", "Tessa")
+# Dictionary terms the sentence does not use, beside the ones it does.
+VOCAB_DISTRACTORS = 4
+# Room tone either side, as a dictation has between the tap and the first word.
+VOCAB_PADDING_SECONDS = 0.3
 
 # Long-form clips: consecutive utterances of one chapter, with a short breath
 # between them, until the clip is long enough to need several decode windows.
@@ -273,10 +297,82 @@ def fleurs_hindi(out: Path, downloads: Path, limit: int) -> None:
     write_set(out, "fleurs-hi", clips)
 
 
+def vocab_spec() -> dict:
+    data = VOCAB_SPEC.read_bytes()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != VOCAB_SPEC_SHA256:
+        sys.exit(
+            f"{VOCAB_SPEC.name}: SHA-256 {actual}, expected {VOCAB_SPEC_SHA256}. "
+            "If the edit is deliberate, update VOCAB_SPEC_SHA256 and delete sets/vocab-en."
+        )
+    return json.loads(data)
+
+
+def say_voices() -> set[str]:
+    listing = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, check=True).stdout
+    return {match.group(1) for match in re.finditer(r"^(\w+)", listing, re.MULTILINE)}
+
+
+def synthesize(text: str, voice: str, workdir: Path) -> list[float]:
+    """`text` in `voice`, as 16 kHz mono float32 samples."""
+    aiff, wav = workdir / "speech.aiff", workdir / "speech.wav"
+    subprocess.run(["say", "-v", voice, "-o", str(aiff), text], check=True)
+    subprocess.run(["afconvert", "-f", "WAVE", "-d", f"LEF32@{RATE}", "-c", "1", str(aiff), str(wav)], check=True)
+    return decode_flac(wav.read_bytes())
+
+
+def vocab_set(out: Path) -> None:
+    if not shutil.which("say") or not shutil.which("afconvert"):
+        sys.exit("vocab-en is spoken by macOS `say`; build it on a Mac.")
+    spec = vocab_spec()
+    missing = [voice for voice in VOCAB_VOICES if voice not in say_voices()]
+    if missing:
+        sys.exit(f"vocab-en: macOS has no {', '.join(missing)} voice; install it in System Settings > Accessibility > Spoken Content.")
+    dictionary = [entry["term"] for entry in spec["terms"]]
+    forms = {entry["term"]: entry["spoken"] for entry in spec["terms"] if "spoken" in entry}
+    padding = [0.0] * int(VOCAB_PADDING_SECONDS * RATE)
+    clips, digests = [], {}
+    with tempfile.TemporaryDirectory() as directory:
+        for index, sentence in enumerate(spec["sentences"]):
+            clip_id = f"vocab-{index + 1:03d}"
+            voice = VOCAB_VOICES[index % len(VOCAB_VOICES)]
+            terms = vocab.expected_terms(sentence, dictionary)
+            if not terms:
+                sys.exit(f"vocab-en: {sentence!r} uses no Dictionary term")
+            samples = padding + synthesize(vocab.spoken(sentence, forms), voice, Path(directory)) + padding
+            file = f"{clip_id}.wav"
+            path = out / "sets" / "vocab-en" / file
+            write_wav(path, samples)
+            digests[clip_id] = sha256(path)
+            clips.append({
+                "id": clip_id, "file": file, "seconds": round(len(samples) / RATE, 3), "language": "en",
+                "text": sentence, "voice": voice, "terms": terms,
+                "vocabulary": vocab.clip_vocabulary(clip_id, terms, dictionary, VOCAB_DISTRACTORS),
+            })
+    # `say` voices change between macOS releases, so two runs are only the
+    # same audio when this file is the same.
+    source = {
+        "spec_sha256": VOCAB_SPEC_SHA256,
+        "macos": f"{platform.mac_ver()[0]}",
+        "voices": list(VOCAB_VOICES),
+        "audio_sha256": digests,
+    }
+    (out / "sets" / "vocab-en" / "source.json").write_text(json.dumps(source, indent=2) + "\n")
+    write_set(out, "vocab-en", clips)
+
+
+def default_sets(has_tool=shutil.which) -> list[str]:
+    """Every set this host can build: `vocab-en` needs macOS `say` and
+    `afconvert`, so a bare run elsewhere prepares the others instead of
+    failing after them. Asking for `--sets vocab-en` still names the tools."""
+    speaks = bool(has_tool("say")) and bool(has_tool("afconvert"))
+    return [name for name in SETS if name != "vocab-en" or speaks]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--sets", nargs="+", choices=SETS, default=list(SETS))
+    parser.add_argument("--sets", nargs="+", choices=SETS, default=default_sets())
     parser.add_argument("--limit", type=int, default=200, help="clips per short set (default 200)")
     parser.add_argument("--long-limit", type=int, default=24, help="clips in librispeech-long (default 24)")
     args = parser.parse_args()
@@ -296,6 +392,8 @@ def main() -> None:
         long_set(args.out, [clean, other], args.long_limit)
     if "fleurs-hi" in args.sets:
         fleurs_hindi(args.out, downloads, args.limit)
+    if "vocab-en" in args.sets:
+        vocab_set(args.out)
 
 
 if __name__ == "__main__":

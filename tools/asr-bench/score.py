@@ -18,6 +18,11 @@ boundaries vary between transcribers.
 `raw` is the model's text; `finished` is what the keyboard types after the
 app's own repair, digits and styling. A gap between the two is the finishing
 stage gaining or losing words.
+
+A set whose clips list `terms` (`vocab-en`) also reports term accuracy: the
+share of those terms' uses in the reference that the text spells exactly,
+case included ("PostgreSQL", not "Postgres QL" or "postgresql"). WER cannot
+show this. Its normaliser lowercases, and a name is one word among many.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import jiwer
+import vocab
 from whisper_normalizer.english import EnglishTextNormalizer
 
 DEFAULT_DIR = Path(os.environ.get("VOCA_ASR_BENCH_DIR") or Path.home() / ".cache/vocaphone/asr-bench")
@@ -79,6 +85,13 @@ def score(results: Path, manifest: Path, only: set[str] | None = None) -> dict |
         row[f"{field}_ins"] = output.insertions
         if language != "en":
             row[f"{field}_cer"] = jiwer.cer([r for r, _ in pairs], [h for _, h in pairs]) * 100
+        if any("terms" in references[h["id"]] for h in hypotheses):
+            spelled = expected = 0
+            for h in hypotheses:
+                clip = references[h["id"]]
+                hit, total = vocab.term_hits(clip["text"], h[field], clip.get("terms", []))
+                spelled, expected = spelled + hit, expected + total
+            row[f"{field}_terms"] = spelled / expected * 100 if expected else 0.0
     row["empty"] = sum(1 for h in hypotheses if not h["raw"].strip())
     row["empty_windows"] = sum(h.get("emptyWindows", 0) for h in hypotheses)
     audio = sum(references[h["id"]]["seconds"] for h in hypotheses)
@@ -99,13 +112,14 @@ def collect(root: Path, tag: str) -> dict[tuple[str, str, str], dict]:
 
 def print_table(tag: str, table: dict) -> None:
     print(f"\n### {tag}\n")
-    print("| Model | Set | Path | Clips | WER raw | WER finished | CER finished | Sub / Del / Ins (finished) | Empty | RTF |")
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    print("| Model | Set | Path | Clips | WER raw | WER finished | CER finished | Terms raw | Terms finished | Sub / Del / Ins (finished) | Empty | RTF |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for (model, set_name, path), row in sorted(table.items()):
         cer = f"{row['finished_cer']:.2f}" if "finished_cer" in row else ""
+        terms = [f"{row[f'{field}_terms']:.1f}" if f"{field}_terms" in row else "" for field in ("raw", "finished")]
         print(
             f"| {model} | {set_name} | {path} | {row['clips']} | {row['raw_wer']:.2f} | "
-            f"{row['finished_wer']:.2f} | {cer} | "
+            f"{row['finished_wer']:.2f} | {cer} | {terms[0]} | {terms[1]} | "
             f"{row['finished_sub']} / {row['finished_del']} / {row['finished_ins']} | "
             f"{row['empty']} | {row['rtf']:.3f} |"
         )
@@ -118,9 +132,9 @@ def clip_ids(path: Path) -> set[str]:
 def print_comparison(root: Path, base_tag: str, new_tag: str) -> None:
     """Both runs scored on the clips both decoded, so a limited or unfinished
     run cannot look better for having heard easier speech."""
-    print(f"\n### {base_tag} vs {new_tag} (WER finished, shared clips only)\n")
-    print(f"| Model | Set | Path | Clips | {base_tag} | {new_tag} | Change |")
-    print("|---|---|---|---|---|---|---|")
+    print(f"\n### {base_tag} vs {new_tag} (finished text, shared clips only)\n")
+    print(f"| Model | Set | Path | Clips | WER {base_tag} | WER {new_tag} | Change | Terms {base_tag} | Terms {new_tag} | Change |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
     base_files = {p.relative_to(root / "results" / base_tag) for p in (root / "results" / base_tag).glob("*/*.jsonl")}
     new_files = {p.relative_to(root / "results" / new_tag) for p in (root / "results" / new_tag).glob("*/*.jsonl")}
     for relative in sorted(base_files & new_files):
@@ -133,7 +147,11 @@ def print_comparison(root: Path, base_tag: str, new_tag: str) -> None:
         if not before or not after:
             continue
         b, a = before["finished_wer"], after["finished_wer"]
-        print(f"| {model} | {set_name} | {path} | {len(shared)} | {b:.2f} | {a:.2f} | {a - b:+.2f} |")
+        terms = "  |  |  |"
+        if "finished_terms" in before:
+            tb, ta = before["finished_terms"], after["finished_terms"]
+            terms = f" {tb:.1f} | {ta:.1f} | {ta - tb:+.1f} |"
+        print(f"| {model} | {set_name} | {path} | {len(shared)} | {b:.2f} | {a:.2f} | {a - b:+.2f} |{terms}")
 
 
 def worst(root: Path, tag: str, model: str, set_name: str, path: str, count: int) -> None:
@@ -144,9 +162,11 @@ def worst(root: Path, tag: str, model: str, set_name: str, path: str, count: int
         clip = references[h["id"]]
         ref, hyp = normalise(clip["text"], clip["language"]), normalise(h["finished"], clip["language"])
         errors = jiwer.process_words(ref, hyp)
-        rows.append((errors.substitutions + errors.deletions + errors.insertions, h["id"], ref, hyp, h["raw"]))
-    for count_errors, clip_id, ref, hyp, raw in sorted(rows, reverse=True)[:count]:
-        print(f"\n{clip_id}: {count_errors} errors\n  ref: {ref}\n  hyp: {hyp}\n  raw: {raw}")
+        missed = [t for t in clip.get("terms", []) if vocab.term_hits(clip["text"], h["finished"], [t])[0] == 0]
+        rows.append((errors.substitutions + errors.deletions + errors.insertions + len(missed), h["id"], ref, hyp, h["raw"], missed))
+    for count_errors, clip_id, ref, hyp, raw, missed in sorted(rows, reverse=True)[:count]:
+        terms = f"\n  missed terms: {', '.join(missed)}" if missed else ""
+        print(f"\n{clip_id}: {count_errors} errors\n  ref: {ref}\n  hyp: {hyp}\n  raw: {raw}{terms}")
 
 
 def main() -> None:

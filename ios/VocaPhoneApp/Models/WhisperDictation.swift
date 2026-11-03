@@ -38,6 +38,11 @@ struct WhisperDictationSettings: Equatable, Sendable {
         )
     }
 
+    /// The hint list for this dictation. See `RecognitionHints`.
+    var hintTerms: [String] {
+        RecognitionHints.terms(vocabulary: CustomVocabulary.terms(vocabulary))
+    }
+
     private func promptTokens(_ tokenizer: (any WhisperTokenizer)?) -> [Int]? {
         guard let tokenizer else { return nil }
         // WhisperKit drops special tokens from a prompt, so they are not counted.
@@ -45,9 +50,9 @@ struct WhisperDictationSettings: Equatable, Sendable {
         func encode(_ text: String) -> [Int] {
             tokenizer.encode(text: text).filter { $0 < specialTokenBegin }
         }
-        let prompt = CustomVocabulary.whisperPrompt(
-            vocabulary,
-            maximumTokens: CustomVocabulary.whisperKitPromptTokens
+        let prompt = RecognitionHints.whisperPrompt(
+            hintTerms,
+            maximumTokens: RecognitionHints.whisperKitPromptTokens
         ) { encode($0).count }
         return prompt.isEmpty ? nil : encode(prompt)
     }

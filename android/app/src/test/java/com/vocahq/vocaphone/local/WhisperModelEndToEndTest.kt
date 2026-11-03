@@ -1,7 +1,6 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
-import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
@@ -184,7 +183,7 @@ class WhisperModelEndToEndTest {
             language = "auto",
             translateTo = "",
             quality = TranscriptionQuality.DEFAULT,
-            prompt = CustomVocabulary.whisperPrompt(vocabulary),
+            prompt = whisperPrompt(vocabulary),
             cropAudioContext = model.cropsAudioContext && TranscriptionQuality.DEFAULT.whisperCropsAudioContext,
             threads = WhisperCpuConfig.preferredThreadCount(model.id),
         )

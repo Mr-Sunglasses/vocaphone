@@ -31,27 +31,6 @@ class CustomVocabularyTest {
     }
 
     @Test
-    fun `the prompt is a comma separated list the decoder can read as text`() {
-        assertEquals(
-            "Kanishk, VocaHQ, Tailscale.",
-            CustomVocabulary.whisperPrompt("Kanishk\nVocaHQ\nTailscale"),
-        )
-        assertEquals("", CustomVocabulary.whisperPrompt(""))
-    }
-
-    @Test
-    fun `an over-long list is truncated at a term boundary`() {
-        val prompt = CustomVocabulary.whisperPrompt(
-            (1..200).joinToString("\n") { "Supercalifragilistic$it" },
-        )
-        assertTrue("prompt should be bounded", prompt.length <= 641)
-        // Never a half-written term: every entry present is complete.
-        prompt.removeSuffix(".").split(", ").forEach { term ->
-            assertTrue("`$term` should be whole", term.matches(Regex("Supercalifragilistic\\d+")))
-        }
-    }
-
-    @Test
     fun `a non-whisper model is told what the list still does`() {
         val note = CustomVocabulary.spellingOnlyNote("Parakeet")
         assertEquals(

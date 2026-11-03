@@ -191,7 +191,10 @@ final class SherpaRecognizer: @unchecked Sendable {
     /// A boundary the silence search found is already cut clean here, so only
     /// a guessed one carries audio across, and while translating that seam is
     /// left as it decoded rather than merged by matching words.
-    func transcribe(_ samples: [Float]) -> SherpaDecodeOutcome {
+    ///
+    /// `hotwords` is what `RecognitionHints.sherpaHotwords` made of the user's
+    /// vocabulary for this family, or nil. Every window decodes with it.
+    func transcribe(_ samples: [Float], hotwords: String? = nil) -> SherpaDecodeOutcome {
         var transcript = SherpaTranscript.empty
         var previousEnd = 0
         var loudestSoFar = 0.0
@@ -217,7 +220,7 @@ final class SherpaRecognizer: @unchecked Sendable {
             )
             let outcome = SherpaEmptyChunkRecovery.decode(
                 samples: bounded,
-                decodeOnce: decode,
+                decodeOnce: { self.decode($0, hotwords: hotwords) },
                 deduplicateOverlap: !translating,
                 recoverAudibleShortInput: carriesNewSpeech
             )
@@ -236,13 +239,15 @@ final class SherpaRecognizer: @unchecked Sendable {
         )
     }
 
-    func transcribeChunk(_ samples: [Float]) -> SherpaDecodeOutcome {
+    func transcribeChunk(_ samples: [Float], hotwords: String? = nil) -> SherpaDecodeOutcome {
         SherpaEmptyChunkRecovery.decode(
-            samples: samples, decodeOnce: decode, deduplicateOverlap: !translating
+            samples: samples,
+            decodeOnce: { self.decode($0, hotwords: hotwords) },
+            deduplicateOverlap: !translating
         )
     }
 
-    private func decode(_ samples: [Float]) -> SherpaDecodeOutcome {
+    private func decode(_ samples: [Float], hotwords: String?) -> SherpaDecodeOutcome {
         guard !samples.isEmpty else { return .failed(.invalidArgument) }
         let samples = SherpaFeatureDither.applied(to: samples, dither: featureDither)
         decodeLock.lock()
@@ -257,6 +262,7 @@ final class SherpaRecognizer: @unchecked Sendable {
                         native,
                         sampleBuffer.baseAddress,
                         Int32(samples.count),
+                        hotwords,
                         outputBuffer.baseAddress,
                         Int32(outputBuffer.count),
                         languageBuffer.baseAddress,
@@ -308,9 +314,12 @@ extension SherpaIncrementalSession {
     convenience init(
         chunks: AsyncStream<Data>,
         recognizer: SherpaRecognizer,
+        hotwords: String? = nil,
         detector: (@Sendable () -> SpeechActivityDetecting?)? = nil,
         onText: (@Sendable (String) -> Void)? = nil
     ) {
-        self.init(chunks: chunks, detector: detector, onText: onText) { recognizer.transcribeChunk($0) }
+        self.init(chunks: chunks, detector: detector, onText: onText) {
+            recognizer.transcribeChunk($0, hotwords: hotwords)
+        }
     }
 }

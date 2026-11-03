@@ -147,6 +147,53 @@ License: NVIDIA Open Model License, where v2 and v3 are CC-BY-4.0. The model car
 states it is ready for commercial and non-commercial use; like every model here
 it is downloaded separately and not bundled.
 
+## Names and jargon: custom vocabulary while decoding (2026-11-03)
+
+Measured with the `vocab-en` set of [`tools/asr-bench`](../tools/asr-bench/README.md):
+50 dictation sentences dense in names and jargon, spoken by six macOS voices,
+each decoded with the custom vocabulary a user would have entered (its own
+terms and four others). Term accuracy is the share of term uses the finished
+text spells exactly. `before` is `main` (vocabulary as Whisper's prompt and in
+finishing only); `after` routes every engine's hints through
+`RecognitionHints` and gives Qwen3-ASR the vocabulary as hotwords. iOS models in
+the simulator, Android whisper.cpp on the Mac through the app's JNI glue.
+
+| Model | Path | WER before | WER after | Terms before | Terms after |
+| --- | --- | --- | --- | --- | --- |
+| Whisper Small (iOS) | file | 2.94 | 2.94 | 97.5 | 97.5 |
+| Whisper Small (iOS) | streamed | 2.94 | 2.94 | 97.5 | 97.5 |
+| Whisper Small Q8 (Android) | file | 4.71 | 4.71 | 93.3 | 93.3 |
+| Qwen3-ASR 0.6B (iOS) | file | 19.41 | 8.43 | 57.5 | 81.7 |
+| Qwen3-ASR 0.6B (iOS) | streamed | 18.63 | 9.41 | 55.8 | 80.8 |
+| Parakeet 0.6B v2 (iOS) | file | 14.71 | 14.31 | 68.3 | 69.2 |
+| Parakeet 0.6B v2 (iOS) | streamed | 13.73 | 14.90 | 70.0 | 66.7 |
+
+What it showed:
+
+- Qwen3-ASR's hotwords are the change. Its raw term accuracy goes from 30.8%
+  to 72.5%; the rest of the finished gain is `VocabularyCorrection` catching
+  more near misses. One term was lost (`getUserById` written as "get user by
+  ID", streamed) against 31 gained, and no clip typed one of its four unspoken
+  terms.
+- Whisper's prompt is unchanged in what it says, so the two runs are
+  identical. The prompt-less retry of an empty decode never fired on this set.
+- Parakeet takes no hint, and its two runs differ only by its feature dither,
+  which is drawn fresh on every decode. ±3 points of term accuracy is that
+  noise; read anything smaller as nothing.
+- The order of the terms matters about as much as their framing. On Android,
+  writing the same terms reversed cost 1.7 to 3.3 points of term
+  accuracy. A `Glossary: ` framing, which VocaMac uses, was no better than the
+  bare list: in the user's order it spelled one term in 120 fewer on each
+  platform (Android 92.5 vs 93.3, iOS 96.7 vs 97.5), and across both orders on
+  Android the two tie exactly. The bare list stays.
+- Whisper already spells most of these terms with today's prompt and
+  finishing. What it misses are names whose sound and spelling part company:
+  Niamh, and Nguyen spoken "Win", on both; Saoirse, Tadhg and Siddharth on
+  Android too.
+
+Synthetic speech from six voices is cleaner and more uniform than a person, so
+the absolute numbers flatter every model; the differences are what carry over.
+
 ## Added: Omnilingual ASR 300M CTC INT8
 
 This adds a non-Whisper option for Arabic, Swahili, and the supported Indic/Asian
@@ -310,9 +357,10 @@ Where it is offered: iOS lists it among the many-languages picks after Parakeet
 v3 and Whisper Large, and Android's "Works across languages" guidance picks it
 where the balanced model is a narrow specialist (SenseVoice for Japanese on an
 8 GB phone). Android keeps it out of `MULTILINGUAL_PREFERENCE`, as it keeps
-Whisper large off first run. Qwen3-ASR also accepts hotwords, which could carry
-the custom word list in a follow-up. Needs phone latency and memory
-measurement before any ranking changes.
+Whisper large off first run. Qwen3-ASR also takes the custom word list as
+hotwords (see [Custom vocabulary while decoding](architecture.md#custom-vocabulary-while-decoding)
+and the `vocab-en` numbers below). Needs phone latency and memory measurement
+before any ranking changes.
 
 ## Replaced: MindType tagger v1.5 → v2.0 (grammar, optional, 2026-10-31)
 

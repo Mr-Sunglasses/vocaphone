@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.RecognitionHints
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.util.concurrent.Executors
 import kotlin.math.ceil
@@ -74,6 +75,39 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
     ): LocalTranscription {
         check(pointer != 0L) { "Whisper context has been released" }
         onNativeDecodeStart?.invoke()
+        var text = decodeOnce(samples, language, translateTo, quality, prompt, cropAudioContext, threads)
+        if (RecognitionHints.shouldRetryWithoutPrompt(text, prompt)) {
+            // The vocabulary prompt talked the decoder out of the speech; the
+            // same audio unprompted is the dictation the user would have had
+            // without a vocabulary. An abort requested meanwhile stops this
+            // decode too, and its caller has already been cancelled.
+            text = decodeOnce(samples, language, translateTo, quality, "", cropAudioContext, threads)
+        }
+        return LocalTranscription(
+            text = text,
+            // Detection is meaningful only for Automatic. With an explicit
+            // selection, the user's requested output language remains the
+            // contract even if the engine reports something contradictory.
+            // Translating overrides both: the detected language is the one
+            // that was spoken, and the text on screen is the target.
+            language = ModelLanguageSupport.outputLanguage(
+                requested = language,
+                reported = WhisperLib.getDetectedLanguage(pointer),
+                translateTo = translateTo,
+            ),
+        )
+    }
+
+    /** One native decode, as text. */
+    private fun decodeOnce(
+        samples: FloatArray,
+        language: String,
+        translateTo: String,
+        quality: TranscriptionQuality,
+        prompt: String,
+        cropAudioContext: Boolean,
+        threads: Int,
+    ): String {
         val status = WhisperLib.fullTranscribe(
             pointer,
             threads,
@@ -94,19 +128,7 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
             "The on-device model could not decode this recording. " +
                 "Try the Fast or Balanced accuracy setting, or a smaller model."
         }
-        return LocalTranscription(
-            text = WhisperText.decode(WhisperLib.getText(pointer)).trim(),
-            // Detection is meaningful only for Automatic. With an explicit
-            // selection, the user's requested output language remains the
-            // contract even if the engine reports something contradictory.
-            // Translating overrides both: the detected language is the one
-            // that was spoken, and the text on screen is the target.
-            language = ModelLanguageSupport.outputLanguage(
-                requested = language,
-                reported = WhisperLib.getDetectedLanguage(pointer),
-                translateTo = translateTo,
-            ),
-        )
+        return WhisperText.decode(WhisperLib.getText(pointer)).trim()
     }
 
     suspend fun release() = withContext(dispatcher) {

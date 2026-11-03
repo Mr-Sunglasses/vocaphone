@@ -51,8 +51,12 @@ internal class SherpaRecognizer private constructor(
      * of it is the measured quiet run the boundary was found in, which
      * duplicates nothing, and where the boundary was misjudged a word repeated
      * beats a word lost.
+     *
+     * [hotwords] is what [com.vocahq.vocaphone.core.RecognitionHints.sherpaHotwords]
+     * made of the user's vocabulary for this family, or null. Every window
+     * decodes with it.
      */
-    fun transcribe(samples: FloatArray): SherpaTranscript {
+    fun transcribe(samples: FloatArray, hotwords: String? = null): SherpaTranscript {
         var transcript = SherpaTranscript.EMPTY
         var previousEnd = 0
         var loudestSoFar = 0.0
@@ -75,7 +79,7 @@ internal class SherpaRecognizer private constructor(
             )
             val chunkResult = SherpaEmptyChunkRecovery.decode(
                 samples = samples.copyOfRange(chunk.start, chunk.endExclusive),
-                decodeOnce = ::decode,
+                decodeOnce = { decode(it, hotwords) },
                 deduplicateOverlap = !translating,
                 recoverAudibleShortInput = carriesNewSpeech,
             )
@@ -90,15 +94,20 @@ internal class SherpaRecognizer private constructor(
     }
 
     /** Decodes one bounded window, recovering an empty result with smaller windows. */
-    fun transcribeChunk(samples: FloatArray): SherpaTranscript = SherpaEmptyChunkRecovery.decode(
-        samples = samples,
-        decodeOnce = ::decode,
-        deduplicateOverlap = !translating,
-    )
+    fun transcribeChunk(samples: FloatArray, hotwords: String? = null): SherpaTranscript =
+        SherpaEmptyChunkRecovery.decode(
+            samples = samples,
+            decodeOnce = { decode(it, hotwords) },
+            deduplicateOverlap = !translating,
+        )
 
-    private fun decode(samples: FloatArray): SherpaTranscript {
+    private fun decode(samples: FloatArray, hotwords: String?): SherpaTranscript {
+        // A stream option, never `createStream(hotwords)`: that is the
+        // transducer contextual-biasing path, and every other family answers it
+        // by exiting the process. Qwen3-ASR reads this option into its prompt.
         val stream = recognizer.createStream()
         return try {
+            if (!hotwords.isNullOrEmpty()) stream.setOption("hotwords", hotwords)
             stream.acceptWaveform(samples, SherpaLongAudio.SAMPLE_RATE)
             recognizer.decode(stream)
             val result = recognizer.getResult(stream)

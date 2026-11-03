@@ -1309,9 +1309,21 @@ final class LocalModelManager {
         return SherpaIncrementalSession(
             chunks: chunks,
             recognizer: recognizer,
+            hotwords: Self.sherpaHotwords(for: descriptor),
             detector: { SileroSpeechDetector() },
             onText: onText
         )
+    }
+
+    /// What a sherpa-onnx model of `descriptor`'s family is told to listen
+    /// for: the user's custom vocabulary as Qwen3-ASR hotwords, and nothing
+    /// for a family that takes none. Read per dictation, like Whisper's
+    /// prompt, so a list saved between two dictations applies to the second.
+    static func sherpaHotwords(for descriptor: LocalModelDescriptor) -> String? {
+        let terms = RecognitionHints.terms(
+            vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+        )
+        return RecognitionHints.sherpaHotwords(family: descriptor.sherpaFamily, terms: terms)
     }
 
     /// Starts loading the selected Whisper model while the user is still
@@ -2368,8 +2380,9 @@ final class LocalModelManager {
                 recordEngineFailure(.localEngineLoadFailed, error)
                 throw error
             }
+            let hotwords = Self.sherpaHotwords(for: descriptor)
             let outcome = await Task.detached(priority: .userInitiated) {
-                sherpaRecognizer.transcribe(samples)
+                sherpaRecognizer.transcribe(samples, hotwords: hotwords)
             }.value
             // Told apart deliberately. A recognizer that would not open a stream
             // and a model that heard no speech both arrive here with no text,

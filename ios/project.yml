@@ -194,6 +194,9 @@ targets:
       - VocaPhoneTests
       - VocaPhoneShared
       - path: VocaPhoneApp/Models/WhisperTranscription.swift
+      # How a dictation's settings and custom vocabulary become decoding
+      # options, so the accuracy benchmark prompts Whisper as the app does.
+      - path: VocaPhoneApp/Models/WhisperDictation.swift
       - path: VocaPhoneApp/Models/SherpaRecognizer.swift
       - path: VocaPhoneApp/Models/SherpaOnnxBridge.c
       # The real voice activity detector, and the Whisper session that listens

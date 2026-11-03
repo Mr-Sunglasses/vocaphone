@@ -262,15 +262,19 @@ data class LocalModelDescriptor(
     val primaryFile: PinnedFile get() = files.first()
 
     /**
-     * Whether a custom word list can reach this model at all.
+     * Whether a custom word list can reach this model while it decodes.
      *
      * Whisper's decoder reads previous text tokens, which is the slot a
-     * vocabulary prompt goes into. The sherpa families have no equivalent: the
-     * CTC and non-autoregressive ones condition on audio alone, and the two
-     * that could be biased — the Parakeet transducers — need a BPE vocabulary
-     * file that their upstream repositories do not publish.
+     * vocabulary prompt goes into, and Qwen3-ASR is a language model whose
+     * chat prompt takes hotwords (see
+     * [com.vocahq.vocaphone.core.RecognitionHints]). The other sherpa families
+     * have no equivalent: the CTC and non-autoregressive ones condition on
+     * audio alone, and the ones that could be biased — the transducers — need
+     * beam search and a BPE vocabulary file their upstream repositories do not
+     * publish.
      */
-    val supportsCustomVocabulary: Boolean get() = engine == LocalModelEngine.WHISPER
+    val supportsCustomVocabulary: Boolean
+        get() = engine == LocalModelEngine.WHISPER || sherpaFamily == SherpaFamily.QWEN3_ASR
 
     /**
      * What the language picker may offer for this model.

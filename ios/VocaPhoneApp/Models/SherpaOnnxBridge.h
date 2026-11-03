@@ -66,10 +66,15 @@ enum VocaPhoneSherpaDecodeStatus {
 /// `language` receives the model's own language label when it reports one — of
 /// the families VocaPhone ships, only SenseVoice does, as a `<|en|>`-style tag.
 /// It is set to an empty string otherwise, and may be NULL if not wanted.
+///
+/// `hotwords` is a comma-separated list set as this decode's `hotwords` stream
+/// option, or NULL or empty for none. Only Qwen3-ASR reads the option; see
+/// `RecognitionHints.qwen3Hotwords`.
 int VocaPhoneSherpaDecode(
     VocaPhoneSherpaRecognizer recognizer,
     const float *samples,
     int32_t sample_count,
+    const char *hotwords,
     char *output,
     int32_t output_capacity,
     char *language,

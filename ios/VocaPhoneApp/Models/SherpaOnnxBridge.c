@@ -225,6 +225,7 @@ int VocaPhoneSherpaDecode(
     VocaPhoneSherpaRecognizer recognizer,
     const float *samples,
     int32_t sample_count,
+    const char *hotwords,
     char *output,
     int32_t output_capacity,
     char *language,
@@ -243,6 +244,12 @@ int VocaPhoneSherpaDecode(
     const SherpaOnnxOfflineStream *stream =
         SherpaOnnxCreateOfflineStream(context->recognizer);
     if (stream == NULL) return VocaPhoneSherpaDecodeStreamUnavailable;
+    // Per stream, never through a hotwords-aware stream constructor: that is
+    // the transducer contextual-biasing path, and every other family answers
+    // it by exiting the process. Qwen3-ASR reads this option into its prompt.
+    if (hotwords != NULL && hotwords[0] != '\0') {
+        SherpaOnnxOfflineStreamSetOption(stream, "hotwords", hotwords);
+    }
 
     SherpaOnnxAcceptWaveformOffline(
         stream, 16000, samples, sample_count);

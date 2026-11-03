@@ -7,6 +7,7 @@ import com.vocahq.vocaphone.audio.CaptureFormat
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.RecognitionHints
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.io.File
 import java.io.FileInputStream
@@ -412,16 +413,18 @@ class LocalModelManager(
         scope: CoroutineScope,
         quality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
         translateTo: String = "",
+        vocabulary: String = "",
     ): SherpaIncrementalSession? {
         val model = LocalModelCatalog.find(modelID) ?: return null
         val resolved = if (model.englishOnly) "en" else language
         val target = model.resolveTranslationTarget(translateTo, resolved)
         if (!canStreamIncrementally(model.engine, target)) return null
+        val hotwords = sherpaHotwords(model, vocabulary)
         return SherpaIncrementalSession(
             scope = scope,
             prepare = { prepareEngine(model, resolved, quality, target) },
             decode = { samples ->
-                decodePreparedSherpa(samples, model, resolved, quality, target)
+                decodePreparedSherpa(samples, model, resolved, quality, target, hotwords)
             },
         )
     }
@@ -914,8 +917,9 @@ class LocalModelManager(
             "Local transcription engine changed before inference started"
         }
         sherpaRecognizer?.let { recognizer ->
+            val hotwords = sherpaHotwords(model, vocabulary)
             return@withLock withContext(Dispatchers.Default) {
-                val result = recognizer.transcribe(samples)
+                val result = recognizer.transcribe(samples, hotwords)
                 LocalTranscription(
                     result.text,
                     ModelLanguageSupport.outputLanguage(
@@ -931,7 +935,7 @@ class LocalModelManager(
             resolvedLanguage,
             resolvedTranslateTo,
             quality,
-            CustomVocabulary.whisperPrompt(vocabulary),
+            whisperPrompt(vocabulary),
             model.cropsAudioContext && quality.whisperCropsAudioContext,
             WhisperCpuConfig.preferredThreadCount(model.id),
         ) ?: error("Local transcription engine is not loaded")
@@ -943,6 +947,7 @@ class LocalModelManager(
         resolvedLanguage: String,
         requestedQuality: TranscriptionQuality,
         resolvedTranslateTo: String,
+        hotwords: String?,
     ): SherpaTranscript = engineMutex.withLock {
         check(
             sherpaEngineStillLoaded(
@@ -959,7 +964,7 @@ class LocalModelManager(
             "On-device model changed during transcription"
         }
         val recognizer = sherpaRecognizer ?: error("Sherpa transcription engine is not loaded")
-        withContext(Dispatchers.Default) { recognizer.transcribeChunk(samples) }
+        withContext(Dispatchers.Default) { recognizer.transcribeChunk(samples, hotwords) }
     }
 
     suspend fun transcribe(
@@ -982,6 +987,25 @@ class LocalModelManager(
 
     private fun readWavSamples(file: File): FloatArray = readPcm16WavSamples(file)
 }
+
+/**
+ * The prompt whisper.cpp decodes [vocabulary] (the stored Settings text) with.
+ * See [RecognitionHints].
+ */
+internal fun whisperPrompt(vocabulary: String): String =
+    RecognitionHints.whisperPrompt(RecognitionHints.terms(CustomVocabulary.terms(vocabulary)))
+
+/**
+ * What a sherpa-onnx [model] is told to listen for: the user's [vocabulary] as
+ * Qwen3-ASR hotwords, and nothing for a family that takes none. Read per
+ * dictation, like Whisper's prompt, so a list saved between two dictations
+ * applies to the second.
+ */
+internal fun sherpaHotwords(model: LocalModelDescriptor, vocabulary: String): String? =
+    RecognitionHints.sherpaHotwords(
+        model.sherpaFamily,
+        RecognitionHints.terms(CustomVocabulary.terms(vocabulary)),
+    )
 
 /** The capture WAV's 16-bit PCM as floats, skipping its 44-byte header. */
 internal fun readPcm16WavSamples(file: File): FloatArray {

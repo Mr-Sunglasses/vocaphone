@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import prepare  # noqa: E402
+import vocab  # noqa: E402
 
 
 class PrepareTest(unittest.TestCase):
@@ -64,6 +65,46 @@ class PrepareTest(unittest.TestCase):
             self.assertTrue(url.startswith("https://"), name)
             self.assertGreater(size, 0, name)
             self.assertRegex(digest, r"^[0-9a-f]{64}$", name)
+
+
+class VocabTest(unittest.TestCase):
+    def test_default_sets_skip_vocab_without_say(self) -> None:
+        self.assertNotIn("vocab-en", prepare.default_sets(lambda tool: None))
+        self.assertIn("librispeech-clean", prepare.default_sets(lambda tool: None))
+        self.assertEqual(prepare.default_sets(lambda tool: f"/usr/bin/{tool}"), list(prepare.SETS))
+
+    def test_the_script_is_the_pinned_one(self) -> None:
+        spec = prepare.vocab_spec()
+        dictionary = [entry["term"] for entry in spec["terms"]]
+        self.assertEqual(len(dictionary), len({t.lower() for t in dictionary}))
+        for sentence in spec["sentences"]:
+            self.assertTrue(vocab.expected_terms(sentence, dictionary), sentence)
+
+    def test_a_term_is_matched_whole_and_exactly(self) -> None:
+        self.assertEqual(vocab.occurrences("Anthropic's API and Anthropic", "Anthropic"), 2)
+        self.assertEqual(vocab.occurrences("GitHubs and github", "GitHub"), 0)
+        self.assertEqual(vocab.occurrences("bump sherpa-onnx now", "sherpa-onnx"), 1)
+        self.assertEqual(vocab.occurrences("Hugging Face.", "Hugging Face"), 1)
+
+    def test_spoken_forms_replace_the_longest_term_first(self) -> None:
+        forms = {"ONNX": "onyx", "sherpa-onnx": "sherpa onyx", "kubectl": "cube control"}
+        self.assertEqual(
+            vocab.spoken("Run kubectl, bump sherpa-onnx and the ONNX models.", forms),
+            "Run cube control, bump sherpa onyx and the onyx models.",
+        )
+
+    def test_the_clip_vocabulary_is_stable_and_holds_the_terms(self) -> None:
+        dictionary = [f"Term{i}" for i in range(20)]
+        first = vocab.clip_vocabulary("vocab-001", ["Term3", "Term7"], dictionary, 4)
+        self.assertEqual(first, vocab.clip_vocabulary("vocab-001", ["Term3", "Term7"], dictionary, 4))
+        self.assertEqual(len(first), 6)
+        self.assertTrue({"Term3", "Term7"} <= set(first))
+        self.assertNotEqual(first, vocab.clip_vocabulary("vocab-002", ["Term3", "Term7"], dictionary, 4))
+
+    def test_term_hits_count_each_use(self) -> None:
+        reference = "Ask Kanishk and Kanishk's team about PostgreSQL."
+        self.assertEqual(vocab.term_hits(reference, "ask Kanishk about Postgres QL", ["Kanishk", "PostgreSQL"]), (1, 3))
+        self.assertEqual(vocab.term_hits(reference, reference, ["Kanishk", "PostgreSQL"]), (3, 3))
 
 
 if __name__ == "__main__":
