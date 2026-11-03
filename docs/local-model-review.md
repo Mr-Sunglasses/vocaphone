@@ -69,6 +69,84 @@ What it showed:
 - Android Whisper Hindi text is decoded per segment, and a character split
   between segments comes out as mojibake.
 
+## Added: Parakeet Unified 0.6B English, the English pick in place of v2
+
+Reviewed 2026-11-03.
+[nvidia/parakeet-unified-en-0.6b](https://huggingface.co/nvidia/parakeet-unified-en-0.6b)
+is NVIDIA's newest English Parakeet: a FastConformer RNN-T (not TDT) trained
+for offline and streaming use in one model. The catalog pins the sherpa-onnx
+int8 export
+(`csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming@8c3a10fb`,
+663 MB), which carries only the offline half. It runs on the pinned sherpa-onnx
+1.13.8 through the existing NeMo transducer path, with no runtime change.
+
+Word error rate, Open ASR Leaderboard English normaliser, on the model's own
+text and on what the keyboard types:
+
+| Model | Set | Path | WER raw | WER finished | RTF (simulator) |
+| --- | --- | --- | --- | --- | --- |
+| v2 | LibriSpeech clean | file | 1.74 | 1.79 | 0.064 |
+| **Unified** | LibriSpeech clean | file | **1.46** | **1.48** | 0.050 |
+| v2 | LibriSpeech clean | streamed | 1.74 | 1.79 | 0.087 |
+| **Unified** | LibriSpeech clean | streamed | **1.53** | **1.55** | 0.071 |
+| v2 | LibriSpeech other | file | 4.11 | 4.20 | 0.119 |
+| **Unified** | LibriSpeech other | file | **3.54** | **3.68** | 0.047 |
+| v2 | LibriSpeech other | streamed | 3.77 | 3.85 | 0.068 |
+| **Unified** | LibriSpeech other | streamed | **3.54** | **3.68** | 0.071 |
+| v2 | 45–90 s long-form | file | 2.12 | 2.15 | 0.067 |
+| **Unified** | 45–90 s long-form | file | **1.98** | **2.02** | 0.067 |
+| v2 | 45–90 s long-form | streamed | 2.00 | 2.08 | 0.126 |
+| **Unified** | 45–90 s long-form | streamed | **1.97** | **2.04** | 0.106 |
+
+`just ios accuracy` (iOS simulator, the same 200 / 200 / 24 clips as the
+baseline above). v2 is the `baseline` run; RTF is the Mac's CPU on different
+days and says nothing about a phone. A paired check with the sherpa-onnx 1.13.8
+Python wheel, both models decoding the same 549 test-clean and 490 test-other
+utterances in alternation (greedy, four threads, whole utterances): test-clean
+1.43 against 1.64, test-other 2.70 against 3.18. Unified had fewer errors on 40
+test-clean clips and v2 on 21; on test-other, 60 against 31. Real-time factors
+were within noise of each other (0.098 / 0.095 and 0.094 / 0.113), and peak RSS
+decoding a 14 s window on macOS arm64 was 0.70 GB against v2's 0.69 GB, so the
+4 GB floor stays.
+
+The model writes its own punctuation and capitals, and in conversational speech
+numbers as digits ("Revenue rose 35.3% to $1,200.", "555-0123", "6 p.m.").
+LibriSpeech is read audiobook text: Unified wrote no digit in any of these clips,
+and errors involving a digit after normalising were at most 0.14 points, the
+same reference words as v2's. The digits do not inflate these numbers.
+
+Two finishing defects it exposed, both shared with v2 and fixed on both
+platforms:
+
+- sherpa-onnx 1.13.8 deletes the space before every ASCII punctuation mark when
+  it joins tokens, opening ones included, so "to $1,200" arrived as "to$1,200".
+  The NeMo transducers now rebuild their text from the tokens and close up only
+  before `, . ! ? ; : % ) ] }`. Over the 2,078 paired decodes above this changed
+  two transcripts, both a space the model put before an apostrophe
+  ("little 'Lisbeth"). The other two NeMo transducers were checked the same way
+  on 286 Parakeet v3 decodes (English, French, German, Spanish, Italian,
+  Portuguese, Dutch, Polish, Russian) and 11 GigaAM Russian ones: French
+  elisions, "?", "!" and ":" came out unchanged, and the only differences were
+  "$" and `<unk>` regaining their space, v3's Russian "Москва - столица" where
+  sherpa-onnx typed "Москва- столица", and GigaAM's `сказал: "Бэк` where it
+  typed `сказал:"Бэк`.
+- A sentence ending in a dotted abbreviation got a second full stop:
+  "closes at 6 p.m.." The styler now counts a masked span that ends in a stop
+  as the sentence's terminator.
+
+Not fixed: on "Johnson and Johnson" spoken by one macOS voice, Unified wrote
+"Johnson ??  Johnson" — the "&" it meant comes out as two question-mark tokens
+(v2 wrote `<unk>`). Seen on that synthetic sentence only.
+
+v2 stays in the catalog, unchanged, for anyone who has it. It is out of the
+English preference and accuracy ranking rather than behind Unified: it needs
+exactly the memory Unified does, so it could never be the fallback, and ranking
+both would spend two of the three first-run cards on 660 MB English models.
+
+License: NVIDIA Open Model License, where v2 and v3 are CC-BY-4.0. The model card
+states it is ready for commercial and non-commercial use; like every model here
+it is downloaded separately and not bundled.
+
 ## Added: Omnilingual ASR 300M CTC INT8
 
 This adds a non-Whisper option for Arabic, Swahili, and the supported Indic/Asian

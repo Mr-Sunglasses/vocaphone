@@ -103,7 +103,7 @@ internal class SherpaRecognizer private constructor(
             recognizer.decode(stream)
             val result = recognizer.getResult(stream)
             val raw = if (family?.joinsTokens == true && result.tokens.isNotEmpty()) {
-                SherpaFamily.joinTokens(result.tokens)
+                family.joinedText(result.tokens)
             } else {
                 result.text
             }

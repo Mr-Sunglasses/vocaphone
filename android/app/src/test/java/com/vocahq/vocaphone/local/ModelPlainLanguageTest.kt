@@ -63,7 +63,25 @@ class ModelPlainLanguageTest {
         assertEquals("Call NASA today", SherpaFamily.lowercasingCapitals("Call NASA today"))
         assertEquals("지하철에서 다리를", SherpaFamily.lowercasingCapitals("지하철에서 다리를"))
         assertTrue(SherpaFamily.ZIPFORMER_TRANSDUCER.joinsTokens)
-        assertFalse(SherpaFamily.NEMO_TRANSDUCER.joinsTokens)
+        assertTrue(SherpaFamily.NEMO_TRANSDUCER.joinsTokens)
+        assertFalse(SherpaFamily.NEMO_CTC.joinsTokens)
+    }
+
+    /**
+     * Parakeet Unified's tokens for "Revenue rose 35.3% to $1,200." -- the
+     * `text` sherpa-onnx 1.13.8 builds from them reads "to$1,200".
+     */
+    @Test
+    fun `a nemo transcript keeps the space before an opening mark`() {
+        val tokens = arrayOf(
+            " Re", "ven", "ue", " ro", "se", " ", "3", "5", ".", "3", "%",
+            " to", " ", "$", "1", ",", "2", "0", "0", ".",
+        )
+        val nemo = SherpaFamily.NEMO_TRANSDUCER
+        assertEquals("Revenue rose 35.3% to $1,200.", nemo.joinedText(tokens))
+        assertEquals("Tom & Jerry", nemo.joinedText(arrayOf(" Tom", " ", "&", " Jerry")))
+        // A bare word boundary before a closing mark is still closed up.
+        assertEquals("Yes, please.", nemo.joinedText(arrayOf(" Yes", " ", ",", " please", " ", ".")))
     }
 
     @Test

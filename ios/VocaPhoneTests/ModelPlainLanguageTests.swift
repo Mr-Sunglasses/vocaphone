@@ -43,6 +43,40 @@ struct ModelPlainLanguageTests {
         #expect(!SherpaFamily.nemoTransducer.transcribesInCapitals)
     }
 
+    /// The bridge's token joining, on the tokens sherpa-onnx 1.13.8 returns.
+    private static func joined(_ tokens: [String], closingUp: Bool) -> String {
+        let copies = tokens.map { UnsafePointer<CChar>(strdup($0)) }
+        defer { copies.forEach { free(UnsafeMutablePointer(mutating: $0)) } }
+        var output = [CChar](repeating: 0, count: 256)
+        let written = copies.withUnsafeBufferPointer { pointers in
+            VocaPhoneSherpaJoinTokens(
+                pointers.baseAddress, Int32(pointers.count), closingUp ? 1 : 0,
+                &output, Int32(output.count)
+            )
+        }
+        guard written >= 0 else { return "error \(written)" }
+        return String(decoding: output.prefix(Int(written)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
+    @Test func aZipformerTranscriptKeepsTheSpacesItsTokensCarry() {
+        // The Korean model's own test_wavs/1.wav; its `text` has no spaces.
+        let tokens = [" 지하철", "에서", " 다리", "를", " 벌", "리고", " ", "앉", "지", " 마", "라", "."]
+        #expect(Self.joined(tokens, closingUp: false) == "지하철에서 다리를 벌리고 앉지 마라.")
+    }
+
+    /// Parakeet Unified's tokens for "Revenue rose 35.3% to $1,200." — the
+    /// `text` sherpa-onnx 1.13.8 builds from them reads "to$1,200".
+    @Test func aNemoTranscriptKeepsTheSpaceBeforeAnOpeningMark() {
+        let tokens = [
+            " Re", "ven", "ue", " ro", "se", " ", "3", "5", ".", "3", "%",
+            " to", " ", "$", "1", ",", "2", "0", "0", ".",
+        ]
+        #expect(Self.joined(tokens, closingUp: true) == "Revenue rose 35.3% to $1,200.")
+        #expect(Self.joined([" Tom", " ", "&", " Jerry"], closingUp: true) == "Tom & Jerry")
+        // A bare word boundary before a closing mark is still closed up.
+        #expect(Self.joined([" Yes", " ", ",", " please", " ", "."], closingUp: true) == "Yes, please.")
+    }
+
     @Test func vietnameseAndKoreanGetTheirSpecialists() {
         #expect(LocalModelCatalog.accuracyRanking(for: "vi").first == "zipformer-vi")
         #expect(LocalModelCatalog.accuracyRanking(for: "ko").contains("zipformer-ko"))

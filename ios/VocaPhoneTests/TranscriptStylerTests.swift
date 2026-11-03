@@ -159,4 +159,11 @@ struct TranscriptStylerTests {
             ) == "मैं कल बाजार जाऊंगा।"
         )
     }
+
+    @Test func aSentenceEndingInADottedAbbreviationIsNotTerminatedTwice() {
+        #expect(TranscriptStyler.apply("we close at 6 p.m.", style: .formal) == "We close at 6 p.m.")
+        #expect(TranscriptStyler.apply("Flights to the U.S.", style: .clean) == "Flights to the U.S.")
+        // Only a span that carries its own stop counts: a time still gets one.
+        #expect(TranscriptStyler.apply("we close at 6:30", style: .formal) == "We close at 6:30.")
+    }
 }

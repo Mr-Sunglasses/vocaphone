@@ -208,4 +208,12 @@ class TranscriptStylerTest {
             TranscriptStyler.apply("मैं कल बाजार जाऊंगा", WritingStyle.FORMAL, "hi"),
         )
     }
+
+    @Test
+    fun `a sentence ending in a dotted abbreviation is not terminated twice`() {
+        assertEquals("We close at 6 p.m.", TranscriptStyler.apply("we close at 6 p.m.", WritingStyle.FORMAL))
+        assertEquals("Flights to the U.S.", TranscriptStyler.apply("Flights to the U.S.", WritingStyle.CLEAN))
+        // Only a span that carries its own stop counts: a time still gets one.
+        assertEquals("We close at 6:30.", TranscriptStyler.apply("we close at 6:30", WritingStyle.FORMAL))
+    }
 }

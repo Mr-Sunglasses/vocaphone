@@ -155,7 +155,7 @@ shows up as an actionable repair prompt rather than a silent failure.
    the active engine, whether it is ready, and whether it supports streaming.
 
 The catalog carries four whisper.cpp Q8_0 builds (Tiny, Base, Small and Large
-v3 Turbo) and 11 sherpa-onnx models (Parakeet TDT and CTC, SenseVoice, Canary,
+v3 Turbo) and 12 sherpa-onnx models (Parakeet TDT, RNN-T and CTC, SenseVoice, Canary,
 GigaAM, Omnilingual, Qwen3-ASR and the icefall Zipformers) covering English,
 Chinese, Japanese, Korean, Russian, Vietnamese and European sets that small
 whisper builds handle poorly. Only models this phone has the memory for are

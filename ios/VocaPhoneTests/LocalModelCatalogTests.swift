@@ -18,7 +18,7 @@ struct LocalModelCatalogTests {
 
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
-        #expect(sherpa.count == 11)
+        #expect(sherpa.count == 12)
         #expect(sherpa.allSatisfy { $0.repository != nil && $0.revision != nil })
         #expect(sherpa.allSatisfy { $0.sherpaFamily != nil })
     }
@@ -73,7 +73,7 @@ struct LocalModelCatalogTests {
     @Test func recommendationLeadsWithParakeetThenFallsBackByMemory() {
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 4, language: "en").id
-                == "parakeet-tdt-0.6b-v2-en"
+                == "parakeet-unified-0.6b-en"
         )
         // The 132 MB Parakeet 110M fits a 2 GB phone as well, so it is the
         // English answer everywhere the 0.6B does not fit.
@@ -93,7 +93,7 @@ struct LocalModelCatalogTests {
     @Test func picksCoverAccuracyBreadthAndASmallDownload() {
         let english = LocalModelCatalog.recommendations(deviceMemoryGB: 8, language: "en")
         #expect(english.map(\.role) == [.english, .multilingual, .compact])
-        #expect(english[0].model.id == "parakeet-tdt-0.6b-v2-en")
+        #expect(english[0].model.id == "parakeet-unified-0.6b-en")
         #expect(english[1].model.id == "parakeet-tdt-0.6b-v3")
         #expect(english[2].model.sizeBytes < english[0].model.sizeBytes)
 
@@ -121,7 +121,7 @@ struct LocalModelCatalogTests {
         #expect(picks[0].model.covers("ru"))
         // The specialists stay, as alternates rather than as the answer.
         #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
-        #expect(picks.contains { $0.model.id == "parakeet-tdt-0.6b-v2-en" })
+        #expect(picks.contains { $0.model.id == "parakeet-unified-0.6b-en" })
     }
 
     /// One keyboard language still leads with its specialist: there is nothing
@@ -208,7 +208,7 @@ struct LocalModelCatalogTests {
         )
         #expect(spoken == ["en", "hi"])
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 6, languages: spoken)
-        #expect(picks[0].model.id == "parakeet-tdt-0.6b-v2-en")
+        #expect(picks[0].model.id == "parakeet-unified-0.6b-en")
         #expect(picks.contains { $0.model.covers("hi") })
     }
 
@@ -231,7 +231,7 @@ struct LocalModelCatalogTests {
     @Test func onboardingOffersOnlyTheMostAccurateModels() {
         let picks = LocalModelCatalog.onboardingRecommendations(deviceMemoryGB: 6, languages: ["en"])
         #expect(picks.map(\.model.id) == [
-            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-0.6b-v3", "parakeet-tdt-ctc-110m-en",
+            "parakeet-unified-0.6b-en", "parakeet-tdt-0.6b-v3", "parakeet-tdt-ctc-110m-en",
         ])
         #expect(picks.allSatisfy { LocalModelCatalog.isHighAccuracy($0.model, for: "en") })
     }
@@ -244,7 +244,7 @@ struct LocalModelCatalogTests {
             languages: ["en", "hi"]
         )
         #expect(picks.count == 3)
-        #expect(picks[0].model.id == "parakeet-tdt-0.6b-v2-en")
+        #expect(picks[0].model.id == "parakeet-unified-0.6b-en")
         #expect(picks.contains { $0.model.id == "openai_whisper-large-v3-v20240930_626MB" })
     }
 
@@ -274,11 +274,27 @@ struct LocalModelCatalogTests {
         #expect(picks.first.map { $0.model.covers("hr") } == true)
     }
 
+    /// Parakeet Unified replaced v2 as the English answer: the same download
+    /// and memory, fewer errors. v2 stays in the catalog for anyone who has it,
+    /// but is no longer one of the first-run cards, which would otherwise be
+    /// three 660 MB English models.
+    @Test func theEarlierEnglishParakeetStaysButIsNotOffered() {
+        let earlier = LocalModelCatalog.descriptor(for: "parakeet-tdt-0.6b-v2-en")
+        #expect(earlier?.covers("en") == true)
+        #expect(earlier.map { LocalModelCatalog.isHighAccuracy($0, for: "en") } == false)
+        for memory in [4, 6, 8] {
+            let picks = LocalModelCatalog.onboardingRecommendations(
+                deviceMemoryGB: memory, languages: ["en"]
+            )
+            #expect(!picks.contains { $0.model.id == "parakeet-tdt-0.6b-v2-en" }, "\(memory) GB")
+        }
+    }
+
     @Test func choicesAreBestSmallerAndWiderForEnglish() {
         let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["en"])
         #expect(choices.map(\.kind) == [.best, .smaller, .moreLanguages])
         #expect(choices.map(\.model.id) == [
-            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-ctc-110m-en", "parakeet-tdt-0.6b-v3",
+            "parakeet-unified-0.6b-en", "parakeet-tdt-ctc-110m-en", "parakeet-tdt-0.6b-v3",
         ])
     }
 
@@ -383,6 +399,7 @@ struct LocalModelCatalogTests {
     @Test func everyFamilyHasItsMaker() {
         let maker = { (id: String) in LocalModelCatalog.descriptor(for: id)?.maker }
         #expect(maker("parakeet-tdt-0.6b-v2-en") == .nvidia)
+        #expect(maker("parakeet-unified-0.6b-en") == .nvidia)
         #expect(maker("canary-180m-flash") == .nvidia)
         #expect(maker("openai_whisper-base") == .openAI)
         #expect(maker("parakeet-tdt-ctc-110m-en") == .nvidia)

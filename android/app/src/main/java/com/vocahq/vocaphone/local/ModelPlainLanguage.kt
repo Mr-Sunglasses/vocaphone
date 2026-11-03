@@ -70,8 +70,15 @@ data class ModelPlainLanguage(
                 accuracy = 3, speed = 4,
             ),
             "parakeet-tdt-0.6b-v2-en" to ModelPlainLanguage(
+                "Accurate English · earlier",
+                "The earlier version of the most accurate English model here. " +
+                    "A few more mistakes, and a large download.",
+                accuracy = 4, speed = 3,
+            ),
+            "parakeet-unified-0.6b-en" to ModelPlainLanguage(
                 "Most accurate English",
-                "The most accurate English model here. A large download.",
+                "The most accurate English model here, and writes numbers as digits. " +
+                    "A large download.",
                 accuracy = 4, speed = 3,
             ),
             "parakeet-tdt-0.6b-v3" to ModelPlainLanguage(

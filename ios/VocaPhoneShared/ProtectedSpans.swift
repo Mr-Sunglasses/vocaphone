@@ -89,6 +89,17 @@ struct ProtectedSpans {
         )
     }
 
+    /// Whether `masked` ends in a span that carries its own full stop — "a.m.",
+    /// "U.S." — so a stage that adds a terminator would double it.
+    func endsInFullStop(_ masked: String) -> Bool {
+        guard masked.last == Self.close,
+              let open = masked.lastIndex(of: Self.open)
+        else { return false }
+        let digits = masked[masked.index(after: open)..<masked.index(before: masked.endIndex)]
+        guard let index = Int(digits), tokens.indices.contains(index) else { return false }
+        return tokens[index].hasSuffix(".")
+    }
+
     /// Puts the original spans back. Takes the text rather than reading
     /// ``text``, because the caller has rewritten everything around them.
     func restore(_ masked: String) -> String {

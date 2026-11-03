@@ -15,7 +15,14 @@ struct VocaPhoneSherpaContext {
     /// "지하철에서다리를벌리고앉지마라." although every token it emitted carries
     /// its own leading space. Concatenating the tokens verbatim is the text the
     /// model actually produced.
+    ///
+    /// The NeMo transducers for a narrower reason. The same joining step in
+    /// sherpa-onnx 1.13.8 deletes the space before *every* ASCII punctuation
+    /// mark, opening ones included, so Parakeet Unified's "to $1,200" arrives
+    /// as "to$1,200". Their tokens still carry the space, and only a closing
+    /// mark has it taken away: see `VocaPhoneSherpaJoinTokens`.
     int join_tokens;
+    int close_up_punctuation;
 };
 
 static int copy_text(
@@ -37,26 +44,33 @@ static int copy_text(
     return written;
 }
 
-/// Concatenates `result`'s tokens into `output`, dropping the leading space
-/// the first word-initial token carries. Same return contract as `copy_text`.
-static int copy_joined_tokens(
-    const SherpaOnnxOfflineRecognizerResult *result,
+/// Marks no word-boundary space belongs in front of, which is the part of
+/// sherpa-onnx's own joining worth keeping: a NeMo model that emits a bare word
+/// boundary before a comma would otherwise type "word ,".
+static int is_closing_punctuation(char c) {
+    return c != '\0' && strchr(",.!?;:%)]}", c) != NULL;
+}
+
+int VocaPhoneSherpaJoinTokens(
+    const char *const *tokens,
+    int32_t count,
+    int close_up_punctuation,
     char *output,
     int32_t output_capacity
 ) {
-    if (output == NULL || output_capacity <= 0) {
+    if (output == NULL || output_capacity <= 0 || (tokens == NULL && count > 0)) {
         return VocaPhoneSherpaDecodeInvalidArgument;
-    }
-    if (result->tokens_arr == NULL || result->count <= 0) {
-        return copy_text(result->text, output, output_capacity);
     }
     size_t used = 0;
     output[0] = '\0';
-    for (int32_t i = 0; i < result->count; i++) {
-        const char *token = result->tokens_arr[i];
+    for (int32_t i = 0; i < count; i++) {
+        const char *token = tokens[i];
         if (token == NULL) continue;
         if (used == 0) {
             while (*token == ' ') token++;
+        }
+        if (close_up_punctuation && is_closing_punctuation(*token)) {
+            while (used > 0 && output[used - 1] == ' ') output[--used] = '\0';
         }
         size_t length = strlen(token);
         if (used + length >= (size_t)output_capacity) {
@@ -68,6 +82,22 @@ static int copy_joined_tokens(
     }
     while (used > 0 && output[used - 1] == ' ') output[--used] = '\0';
     return (int)used;
+}
+
+/// `VocaPhoneSherpaJoinTokens` over `result`, or its `text` when it carries no
+/// tokens. Same return contract as `copy_text`.
+static int copy_joined_tokens(
+    const SherpaOnnxOfflineRecognizerResult *result,
+    int close_up_punctuation,
+    char *output,
+    int32_t output_capacity
+) {
+    if (result->tokens_arr == NULL || result->count <= 0) {
+        return copy_text(result->text, output, output_capacity);
+    }
+    return VocaPhoneSherpaJoinTokens(
+        result->tokens_arr, result->count, close_up_punctuation,
+        output, output_capacity);
 }
 
 VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
@@ -185,7 +215,9 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
         return NULL;
     }
     result->recognizer = native;
-    result->join_tokens = family == VocaPhoneSherpaZipformerTransducer;
+    result->join_tokens = family == VocaPhoneSherpaZipformerTransducer
+        || family == VocaPhoneSherpaNemoTransducer;
+    result->close_up_punctuation = family == VocaPhoneSherpaNemoTransducer;
     return (VocaPhoneSherpaRecognizer)result;
 }
 
@@ -220,7 +252,8 @@ int VocaPhoneSherpaDecode(
     int copied = result == NULL
         ? VocaPhoneSherpaDecodeResultMissing
         : context->join_tokens
-            ? copy_joined_tokens(result, output, output_capacity)
+            ? copy_joined_tokens(
+                result, context->close_up_punctuation, output, output_capacity)
             : copy_text(result->text, output, output_capacity);
     if (result != NULL) {
         // Optional in the struct and left null by every family except

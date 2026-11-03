@@ -82,6 +82,40 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
+            id = "parakeet-unified-0.6b-en",
+            languageCodes = setOf("en"),
+            displayName = "Parakeet Unified 0.6B English",
+            // NVIDIA's newest English Parakeet, and the English pick in place of
+            // v2: a FastConformer RNN-T (not TDT) with the same int8 encoder size
+            // and working memory, and fewer errors on every set measured.
+            // tools/asr-bench through the iOS decode path, sherpa-onnx 1.13.8,
+            // greedy, WER on the model's own text:
+            //   LibriSpeech clean 1.46 (v2 1.74)   other 3.54 (v2 4.11)
+            //   45-90 s long-form 1.98 (v2 2.12)
+            // The export carries only the offline half of the model. It writes its
+            // own punctuation and capitals and, in conversational speech, numbers
+            // as digits -- "35.3%", "$1,200", "6 p.m." -- which finishing leaves
+            // alone. NVIDIA Open Model License, where v2 and v3 are CC-BY-4.0. See
+            // docs/local-model-review.md.
+            repository = "csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
+            revision = "8c3a10fb13408c7a7054f6898958bf1c64a8d6c7",
+            family = SherpaFamily.NEMO_TRANSDUCER,
+            sizeBytes = 663_043_117L,
+            minimumRamGB = 4,
+            languages = "English",
+            englishOnly = true,
+            files = listOf(
+                PinnedFile("encoder.int8.onnx", 654_040_552L,
+                    "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0"),
+                PinnedFile("decoder.int8.onnx", 7_257_753L,
+                    "a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6"),
+                PinnedFile("joiner.int8.onnx", 1_735_860L,
+                    "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a"),
+                PinnedFile("tokens.txt", 8_952L,
+                    "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff"),
+            ),
+        ),
+        sherpa(
             id = "parakeet-tdt-0.6b-v3",
             languageCodes = PARAKEET_V3_LANGUAGES,
             detectsLanguage = true,

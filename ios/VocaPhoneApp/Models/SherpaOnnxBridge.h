@@ -76,6 +76,19 @@ int VocaPhoneSherpaDecode(
     int32_t language_capacity
 );
 
+/// Joins decoded tokens into a transcript, without the first word's leading
+/// space or any trailing one. With `close_up_punctuation`, a space in front of
+/// a closing mark (`,.!?;:%)]}`) is dropped too, while one in front of an
+/// opening mark such as `$`, `&` or `(` is kept -- sherpa-onnx 1.13.8 drops
+/// both. Same return contract as `VocaPhoneSherpaDecode`.
+int VocaPhoneSherpaJoinTokens(
+    const char *const *tokens,
+    int32_t count,
+    int close_up_punctuation,
+    char *output,
+    int32_t output_capacity
+);
+
 void VocaPhoneSherpaDestroy(VocaPhoneSherpaRecognizer recognizer);
 
 typedef void *VocaPhoneSpeechDetector;

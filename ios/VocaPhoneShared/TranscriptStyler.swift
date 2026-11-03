@@ -38,11 +38,12 @@ enum TranscriptStyler {
         case .raw:
             result = normalized
         case .clean:
-            result = ensureTerminator(flattened, punctuation: punctuation)
+            result = ensureTerminator(flattened, punctuation: punctuation, spans: spans)
         case .formal:
             result = ensureTerminator(
                 capitalizeSentenceStarts(flattened, punctuation: punctuation),
-                punctuation: punctuation
+                punctuation: punctuation,
+                spans: spans
             )
         case .casual:
             result = casual(flattened, punctuation: punctuation)
@@ -95,12 +96,17 @@ enum TranscriptStyler {
         return result
     }
 
+    /// A sentence that ends in "6 p.m." is already terminated, although the
+    /// masked text ends in a placeholder: Parakeet writes times that way, and
+    /// the full stop added after it typed "6 p.m..".
     private static func ensureTerminator(
         _ text: String,
-        punctuation: SentencePunctuation
+        punctuation: SentencePunctuation,
+        spans: ProtectedSpans
     ) -> String {
         guard !text.isEmpty, !punctuation.terminator.isEmpty else { return text }
         guard let last = text.last, !punctuation.terminators.contains(last) else { return text }
+        if spans.endsInFullStop(text) { return text }
         return text + punctuation.terminator
     }
 

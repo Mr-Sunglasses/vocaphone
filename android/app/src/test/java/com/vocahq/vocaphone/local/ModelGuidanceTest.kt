@@ -31,7 +31,7 @@ class ModelGuidanceTest {
         )
 
         assertEquals(ModelGuidanceConfidence.GOOD_DEFAULT, result.confidence)
-        assertEquals("parakeet-tdt-0.6b-v2-en", result.model?.id)
+        assertEquals("parakeet-unified-0.6b-en", result.model?.id)
         assertTrue(result.reason.contains("English"))
     }
 

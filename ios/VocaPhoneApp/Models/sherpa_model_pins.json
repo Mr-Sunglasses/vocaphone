@@ -42,6 +42,32 @@
         }
       ]
     },
+    "parakeet-unified-0.6b-en": {
+      "repository": "csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
+      "revision": "8c3a10fb13408c7a7054f6898958bf1c64a8d6c7",
+      "files": [
+        {
+          "path": "encoder.int8.onnx",
+          "size": 654040552,
+          "sha256": "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 7257753,
+          "sha256": "a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6"
+        },
+        {
+          "path": "joiner.int8.onnx",
+          "size": 1735860,
+          "sha256": "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 8952,
+          "sha256": "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff"
+        }
+      ]
+    },
     "parakeet-tdt-0.6b-v3": {
       "repository": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
       "revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",

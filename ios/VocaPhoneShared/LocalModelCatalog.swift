@@ -468,6 +468,30 @@ enum LocalModelCatalog {
             englishOnly: true
         ),
         .init(
+            id: "parakeet-unified-0.6b-en",
+            displayName: "Parakeet Unified 0.6B English",
+            engine: .sherpaOnnx,
+            // NVIDIA's newest English Parakeet, and the English pick in place of
+            // v2: a FastConformer RNN-T (not TDT) with the same int8 encoder size
+            // and working memory, and fewer errors on every set measured.
+            // tools/asr-bench through the iOS decode path, sherpa-onnx 1.13.8,
+            // greedy, WER on the model's own text:
+            //   LibriSpeech clean 1.46 (v2 1.74)   other 3.54 (v2 4.11)
+            //   45-90 s long-form 1.98 (v2 2.12)
+            // The export carries only the offline half of the model. It writes its
+            // own punctuation and capitals and, in conversational speech, numbers
+            // as digits -- "35.3%", "$1,200", "6 p.m." -- which finishing leaves
+            // alone. NVIDIA Open Model License, where v2 and v3 are CC-BY-4.0. See
+            // docs/local-model-review.md.
+            repository: "csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
+            revision: "8c3a10fb13408c7a7054f6898958bf1c64a8d6c7",
+            sherpaFamily: .nemoTransducer,
+            sizeBytes: 663_043_117,
+            minimumRamGB: 4,
+            languages: "English",
+            englishOnly: true
+        ),
+        .init(
             id: "parakeet-tdt-0.6b-v3",
             displayName: "Parakeet TDT 0.6B",
             engine: .sherpaOnnx,
@@ -869,8 +893,12 @@ enum LocalModelCatalog {
         ]
         switch code {
         case "en":
+            // Parakeet Unified in place of v2, not ahead of it: the same
+            // download and memory with fewer errors, so ranking both would
+            // spend two of the three first-run cards on 660 MB English models.
+            // v2 stays in the catalog for anyone who already has it.
             return [
-                "parakeet-tdt-0.6b-v2-en",
+                "parakeet-unified-0.6b-en",
                 "parakeet-tdt-0.6b-v3",
                 "canary-180m-flash",
                 "parakeet-tdt-ctc-110m-en",
@@ -1066,14 +1094,20 @@ enum LocalModelCatalog {
 
     /// English models best first. Parakeet leads wherever the memory allows it.
     ///
+    /// Parakeet Unified is the 0.6B English model, in place of v2: the same
+    /// download and memory, with fewer errors on every LibriSpeech set. See the
+    /// note on its catalog entry. v2 needs exactly the memory Unified does, so
+    /// it could never be the fallback here and is left out.
+    ///
     /// The 110M Parakeet is the small English model: a fifth of the 0.6B's
     /// download, about three times as fast on the same CPU, at 3.00 against
-    /// 1.75 WER on LibriSpeech test-clean. See the note on its catalog entry.
+    /// 1.75 WER for v2 on LibriSpeech test-clean. See the note on its catalog
+    /// entry.
     ///
     /// The `.en` WhisperKit builds are gone from the catalog, so the multilingual
     /// Base build is the whisper fallback for English too.
     private static let englishPreference = [
-        "parakeet-tdt-0.6b-v2-en",
+        "parakeet-unified-0.6b-en",
         "parakeet-tdt-ctc-110m-en",
         "openai_whisper-base"
     ]

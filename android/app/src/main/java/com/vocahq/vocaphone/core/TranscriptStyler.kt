@@ -27,10 +27,11 @@ object TranscriptStyler {
             else -> flattenModelCaps(normalized, punctuation)
         }
         val result = when (style) {
-            WritingStyle.CLEAN -> ensureTerminator(flattened, punctuation)
+            WritingStyle.CLEAN -> ensureTerminator(flattened, punctuation, spans)
             WritingStyle.FORMAL -> ensureTerminator(
                 capitalizeSentenceStarts(flattened, punctuation),
                 punctuation,
+                spans,
             )
             WritingStyle.CASUAL -> casual(flattened, punctuation)
             WritingStyle.VERY_CASUAL -> veryCasual(
@@ -81,9 +82,18 @@ object TranscriptStyler {
         }
     }
 
-    private fun ensureTerminator(text: String, punctuation: SentencePunctuation): String {
+    /**
+     * A sentence that ends in "6 p.m." is already terminated, although the
+     * masked text ends in a placeholder: Parakeet writes times that way, and
+     * the full stop added after it typed "6 p.m..".
+     */
+    private fun ensureTerminator(
+        text: String,
+        punctuation: SentencePunctuation,
+        spans: ProtectedSpans,
+    ): String {
         if (text.isEmpty() || punctuation.terminator.isEmpty()) return text
-        return if (text.last() in punctuation.terminators) text
+        return if (text.last() in punctuation.terminators || spans.endsInFullStop(text)) text
         else text + punctuation.terminator
     }
 

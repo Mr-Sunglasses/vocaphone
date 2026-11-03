@@ -42,7 +42,7 @@ class DeviceProfileLanguagesTest {
             LocalModelCatalog.recommendations(before).map { it.model.id },
             LocalModelCatalog.recommendations(after).map { it.model.id },
         )
-        assertEquals("parakeet-tdt-0.6b-v2-en", picks(listOf("en")).first())
+        assertEquals("parakeet-unified-0.6b-en", picks(listOf("en")).first())
     }
 
     // --- the reported case ------------------------------------------------
@@ -51,10 +51,10 @@ class DeviceProfileLanguagesTest {
     @Test
     fun anEnglishPhoneWithARussianKeyboardIsNotOfferedEnglishFirst() {
         val ids = picks(listOf("en", "ru"))
-        assertFalse("English-only must not lead", ids.first() == "parakeet-tdt-0.6b-v2-en")
+        assertFalse("English-only must not lead", ids.first() == "parakeet-unified-0.6b-en")
         assertTrue("the Russian specialist is offered", "giga-am-v3-ru" in ids)
         assertTrue("the multilingual Parakeet covers both", "parakeet-tdt-0.6b-v3" in ids)
-        assertTrue("English-only is still there for the English half", "parakeet-tdt-0.6b-v2-en" in ids)
+        assertTrue("English-only is still there for the English half", "parakeet-unified-0.6b-en" in ids)
     }
 
     /**
@@ -111,7 +111,7 @@ class DeviceProfileLanguagesTest {
         assertEquals(listOf("hi"), hindi.languages)
         assertFalse(hindi.englishOnly)
         val ids = LocalModelCatalog.recommendations(hindi).map { it.model.id }
-        assertFalse("English-only must not lead a Hindi request", ids.first() == "parakeet-tdt-0.6b-v2-en")
+        assertFalse("English-only must not lead a Hindi request", ids.first() == "parakeet-unified-0.6b-en")
         assertTrue(LocalModelCatalog.find(ids.first())!!.coversLanguage("hi"))
     }
 
@@ -194,7 +194,7 @@ class DeviceProfileLanguagesTest {
         val picks = LocalModelCatalog.recommendations(
             if (result.explicitLanguage) profile.withExplicitLanguage(result.intent.language) else profile,
         ).map { it.model.id }
-        assertEquals("parakeet-tdt-0.6b-v2-en", picks.first())
+        assertEquals("parakeet-unified-0.6b-en", picks.first())
     }
 
     @Test

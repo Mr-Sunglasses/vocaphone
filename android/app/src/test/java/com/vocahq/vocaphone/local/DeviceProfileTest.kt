@@ -44,7 +44,7 @@ class DeviceProfileTest {
     fun `english leads with parakeet wherever the budget holds it`() {
         for (ram in listOf(4L, 8L, 16L, 20L)) {
             val pick = LocalModelCatalog.recommended(profile(ram, language = "en"))
-            assertEquals("parakeet-tdt-0.6b-v2-en", pick.id)
+            assertEquals("parakeet-unified-0.6b-en", pick.id)
             assertTrue(pick.minimumRamGB <= profile(ram).modelRamBudgetGB)
         }
     }
@@ -61,9 +61,23 @@ class DeviceProfileTest {
             listOf(ModelPickRole.ENGLISH, ModelPickRole.MULTILINGUAL, ModelPickRole.COMPACT),
             picks.map { it.role },
         )
-        assertEquals("parakeet-tdt-0.6b-v2-en", picks[0].model.id)
+        assertEquals("parakeet-unified-0.6b-en", picks[0].model.id)
         assertEquals("parakeet-tdt-0.6b-v3", picks[1].model.id)
         assertTrue(picks[2].model.sizeBytes < 100_000_000L)
+    }
+
+    /**
+     * Parakeet Unified replaced v2 as the English answer: the same download and
+     * memory, fewer errors. v2 stays in the catalog for anyone who has it.
+     */
+    @Test
+    fun `the earlier english parakeet stays in the catalog but is not offered`() {
+        val earlier = LocalModelCatalog.find("parakeet-tdt-0.6b-v2-en")
+        assertTrue(earlier != null && earlier.coversLanguage("en"))
+        for (ram in listOf(4L, 8L, 16L)) {
+            val ids = LocalModelCatalog.recommendations(profile(ram, language = "en")).map { it.model.id }
+            assertTrue("$ram GB: $ids", "parakeet-tdt-0.6b-v2-en" !in ids)
+        }
     }
 
     @Test
@@ -73,7 +87,7 @@ class DeviceProfileTest {
         assertEquals(ModelPickRole.REGIONAL, picks[0].role)
         // The multilingual and English answers stay on offer next to it.
         assertEquals("parakeet-tdt-0.6b-v3", picks[1].model.id)
-        assertEquals("parakeet-tdt-0.6b-v2-en", picks[2].model.id)
+        assertEquals("parakeet-unified-0.6b-en", picks[2].model.id)
         assertTrue(picks.size in 3..4)
         picks.forEach { assertTrue(profile(8).fits(it.model)) }
     }

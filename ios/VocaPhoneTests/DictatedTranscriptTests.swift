@@ -418,4 +418,31 @@ struct DictatedTranscriptTests {
             ) == "He don't know."
         )
     }
+
+    /// Parakeet Unified writes numbers, money and times itself. Finishing must
+    /// leave them as the model wrote them, digits on or off, and must not
+    /// terminate a sentence that "p.m." already ended.
+    @Test func aModelsOwnDigitsSymbolsAndStopsComeThroughFinishing() {
+        let written = [
+            "Revenue rose 35.3% to $1,200.",
+            "Call me back at 555-0123 before 10 o'clock.",
+            "The office opens at 8 a.m. and closes at 6 p.m.",
+            "We sold 23 units in 2024, up from 9.",
+        ]
+        for text in written {
+            for style in [WritingStyle.clean, .formal] {
+                for digits in [false, true] {
+                    let finished = DictatedTranscript.finished(
+                        text,
+                        style: style,
+                        language: "en",
+                        repairSpeech: true,
+                        numbersAsDigits: digits,
+                        spokenEmoji: false
+                    )
+                    #expect(finished == text, "\(style), digits \(digits)")
+                }
+            }
+        }
+    }
 }

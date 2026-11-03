@@ -24,6 +24,15 @@ class ProtectedSpans private constructor(
         tokens.getOrNull(match.groupValues[1].toInt()) ?: match.value
     }
 
+    /**
+     * Whether [masked] ends in a span that carries its own full stop -- "a.m.",
+     * "U.S." -- so a stage that adds a terminator would double it.
+     */
+    fun endsInFullStop(masked: String): Boolean {
+        val match = TRAILING_PLACEHOLDER.find(masked) ?: return false
+        return tokens.getOrNull(match.groupValues[1].toInt())?.endsWith('.') == true
+    }
+
     companion object {
         const val OPEN = '\uE000'
         const val CLOSE = '\uE001'
@@ -76,6 +85,7 @@ class ProtectedSpans private constructor(
         )
 
         private val PLACEHOLDER = Regex("$OPEN(\\d+)$CLOSE")
+        private val TRAILING_PLACEHOLDER = Regex("$OPEN(\\d+)$CLOSE$")
 
         /**
          * Where the spans [mask] would hide sit in [text], as UTF-16 offsets
