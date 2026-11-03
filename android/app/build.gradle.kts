@@ -310,4 +310,12 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Room's KSP processor and AGP's lint tool still request a Guava with
+    // GHSA-xxph-c9ww-hj94. Both run only at build time; nothing here reaches
+    // either flavor's runtime classpath.
+    constraints {
+        ksp("com.google.guava:guava:33.7.2-jre")
+        add("androidLintTool", "com.google.guava:guava:33.7.2-jre")
+    }
 }
