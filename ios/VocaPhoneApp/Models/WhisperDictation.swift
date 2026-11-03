@@ -13,9 +13,14 @@ struct WhisperDictationSettings: Equatable, Sendable {
     /// What the user's replacements write, which Whisper may be told to
     /// listen for. See `WordReplacements.hintTargets`.
     var replacementTargets: [String] = []
+    /// Names and identifiers from the text around the cursor, for this one
+    /// dictation. See `ContextTerms`.
+    var contextTerms: [String] = []
 
     @MainActor
-    static func current(for descriptor: LocalModelDescriptor, language: String) -> WhisperDictationSettings {
+    static func current(
+        for descriptor: LocalModelDescriptor, language: String, contextTerms: [String] = []
+    ) -> WhisperDictationSettings {
         let resolved = descriptor.englishOnly ? "en" : language
         return WhisperDictationSettings(
             language: resolved == "auto" ? nil : resolved,
@@ -26,7 +31,8 @@ struct WhisperDictationSettings: Equatable, Sendable {
             translate: !descriptor.resolvedTranslationTarget.isEmpty,
             quality: LocalTranscriptionPreferences.quality,
             vocabulary: LocalTranscriptionPreferences.customVocabulary,
-            replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements)
+            replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements),
+            contextTerms: contextTerms
         )
     }
 
@@ -46,7 +52,8 @@ struct WhisperDictationSettings: Equatable, Sendable {
     var hintTerms: [String] {
         RecognitionHints.terms(
             vocabulary: CustomVocabulary.terms(vocabulary),
-            replacementTargets: replacementTargets
+            replacementTargets: replacementTargets,
+            contextTerms: contextTerms
         )
     }
 

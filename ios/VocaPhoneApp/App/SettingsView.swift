@@ -513,6 +513,10 @@ struct DictationSettingsView: View {
         LocalTranscriptionPreferences.vocabularyKey,
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var savedCustomVocabulary = ""
+    @AppStorage(
+        LocalTranscriptionPreferences.nearbyTextKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var usesNearbyText = true
     @State private var customVocabularyDraft = ""
     @AppStorage(
         LocalTranscriptionPreferences.replacementsKey,
@@ -777,6 +781,12 @@ struct DictationSettingsView: View {
                 ReplacementsSettingsView()
             } label: {
                 LabeledContent("Replacements", value: replacementCountDetail)
+            }
+            Toggle(isOn: $usesNearbyText) {
+                SettingLabel(
+                    "Use nearby text for spelling",
+                    detail: "Names in the text around the cursor are listened for and spelled as written there. Only those names reach vocaphone, and they are forgotten when the dictation ends."
+                )
             }
             NavigationLink {
                 CorrectionSuggestionsSettingsView()

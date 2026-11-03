@@ -38,6 +38,9 @@ package com.vocahq.vocaphone.core
  *    One-letter slips and sound-alikes are corrected only in English text;
  *    other languages get spacing and case. `lowConfidenceWords` is what the
  *    engine was unsure of, or null when it does not say ([RecognitionConfidence]).
+ *    Then the terms from the text around the cursor ([ContextTerms.correct]):
+ *    exact letter matches only, after the user's own lists so their spelling
+ *    wins.
  * 7. Spoken emoji — after styling, because the styler has to see "emoji" as an
  *    ordinary word to capitalize and terminate around it; before digits,
  *    because the table's keys are words — "hundred emoji" is 💯, and once
@@ -64,6 +67,7 @@ object DictatedTranscript {
         lowConfidenceWords: Set<String>? = null,
         isDictionaryWord: (String) -> Boolean = { false },
         grammar: GrammarStage? = null,
+        contextTerms: List<String> = emptyList(),
     ): String {
         val cleaned = TraditionalChinese.apply(TranscriptSanitizer.clean(raw), chineseScript, language)
         val repaired = if (repairSpeech && style != WritingStyle.RAW) {
@@ -87,10 +91,23 @@ object DictatedTranscript {
         } else {
             styled
         }
-        val emojified = if (spokenEmoji && style != WritingStyle.RAW) {
-            SpokenEmoji.glyphsIn(spelled, language)
+        val contextSpelled = if (style != WritingStyle.RAW && contextTerms.isNotEmpty()) {
+            ContextTerms.correct(
+                spelled,
+                contextTerms,
+                // The user's own lists win: neither a custom word nor what a
+                // replacement writes is respelled the field's way.
+                vocabulary + WordReplacements.hintTargets(replacements),
+                isDictionaryWord,
+                SnippetExpander.triggerRanges(spelled, snippets),
+            )
         } else {
             spelled
+        }
+        val emojified = if (spokenEmoji && style != WritingStyle.RAW) {
+            SpokenEmoji.glyphsIn(contextSpelled, language)
+        } else {
+            contextSpelled
         }
         if (!numbersAsDigits) return SnippetExpander.expand(emojified, snippets)
 

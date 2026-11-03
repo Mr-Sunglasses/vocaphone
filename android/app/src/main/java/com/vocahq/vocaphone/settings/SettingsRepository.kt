@@ -315,6 +315,12 @@ data class VocaPhoneSettings(
      * instead of [customVocabulary]. Turn it off to keep a separate list.
      */
     val syncWhisperDictionary: Boolean = true,
+    /**
+     * Whether a dictation started from the keyboard reads names and
+     * identifiers from the text around the cursor
+     * ([com.vocahq.vocaphone.core.ContextTerms]). On unless turned off.
+     */
+    val useNearbyText: Boolean = true,
     val numberRowEnabled: Boolean = true,
     val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
     val splitKeyboard: SplitKeyboard = SplitKeyboard.DEFAULT,
@@ -617,6 +623,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setSyncWhisperDictionary(enabled: Boolean) =
         put(Keys.SYNC_WHISPER_DICTIONARY, enabled)
+
+    suspend fun setUseNearbyText(enabled: Boolean) = put(Keys.USE_NEARBY_TEXT, enabled)
 
     suspend fun setRepairSpeech(enabled: Boolean) = put(Keys.REPAIR_SPEECH, enabled)
 
@@ -976,6 +984,7 @@ class SettingsRepository(private val context: Context) {
         transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
         syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
+        useNearbyText = this[Keys.USE_NEARBY_TEXT] ?: true,
         repairSpeech = this[Keys.REPAIR_SPEECH] ?: true,
         fixGrammar = this[Keys.FIX_GRAMMAR] ?: false,
         grammarModelRequested = this[Keys.GRAMMAR_MODEL_REQUESTED] ?: false,
@@ -1049,6 +1058,7 @@ class SettingsRepository(private val context: Context) {
         val TRANSCRIPTION_QUALITY = stringPreferencesKey("transcription_quality")
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
         val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")
+        val USE_NEARBY_TEXT = booleanPreferencesKey("use_nearby_text")
         val REPAIR_SPEECH = booleanPreferencesKey("repair_speech")
         val FIX_GRAMMAR = booleanPreferencesKey("fix_grammar")
         val GRAMMAR_MODEL_REQUESTED = booleanPreferencesKey("grammar_model_requested")

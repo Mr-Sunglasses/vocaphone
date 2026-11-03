@@ -1630,6 +1630,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             before: snapshot.before,
             after: snapshot.after
         )
+        saveCursorContextTerms(for: record.sessionID, from: snapshot)
         let availability = try? store.loadQuickDictationAvailability()
         record.prefersQuickDictation = availability?.isReady() == true
         do {
@@ -1651,6 +1652,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } catch {
             flash("Could not create a shared session.")
         }
+    }
+
+    /// Names and identifiers from the text around the cursor, for the app to
+    /// listen for and spell this dictation with (`ContextTerms`). Extracted
+    /// here, from the snapshot this tap already read; only the terms are
+    /// written to the App Group, beside the session, and the app deletes them
+    /// as it reads them. Never in a field that has turned typing intelligence
+    /// off — passwords, one-time codes, card numbers, number pads — and never
+    /// with "Use nearby text" off.
+    private func saveCursorContextTerms(for sessionID: UUID, from snapshot: DocumentSnapshot) {
+        guard LocalTranscriptionPreferences.usesNearbyText,
+              TypingFieldPolicy.resolve(for: textDocumentProxy).allowsTypingIntelligence
+        else { return }
+        // Until the word list has loaded, every capitalized word would look
+        // like a name; treating them all as ordinary keeps only the shapes.
+        let hasWordList = typing.hasWordList
+        let terms = ContextTerms.extract(before: snapshot.before, after: snapshot.after) { word in
+            !hasWordList || self.typing.isListedWord(word)
+        }
+        guard !terms.isEmpty else { return }
+        try? store.saveCursorContextTerms(terms, for: sessionID)
     }
 
     /// Says why Dictate cannot start, with the button that fixes it. A failure

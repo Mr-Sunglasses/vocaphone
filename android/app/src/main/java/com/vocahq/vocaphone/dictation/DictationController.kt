@@ -17,6 +17,7 @@ import com.vocahq.vocaphone.audio.MicrophoneInterruption
 import com.vocahq.vocaphone.audio.PcmConversion
 import com.vocahq.vocaphone.audio.SilentCapture
 import com.vocahq.vocaphone.audio.WavWriter
+import com.vocahq.vocaphone.core.ContextTerms
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.WordReplacements
@@ -62,6 +63,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -78,6 +80,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -181,6 +184,53 @@ class DictationController(
 
     @Volatile
     private var cancelRequested = false
+
+    /**
+     * What the keyboard offered to read around the cursor for the dictation it
+     * is about to start, and when. Taken by the next keyboard [start]; see
+     * [offerCursorText].
+     */
+    @Volatile
+    private var offeredCursorText: Pair<CursorTextReader, Long>? = null
+
+    /**
+     * The keyboard is about to start a dictation in a field that may be read
+     * ([com.vocahq.vocaphone.core.ImeInputPolicy.allowsContextRead]), or null
+     * when it may not. Only the next start from the keyboard, within a few
+     * seconds, uses it; with "Use nearby text" off it is never called.
+     */
+    fun offerCursorText(reader: CursorTextReader?) {
+        offeredCursorText = reader?.let { it to SystemClock.elapsedRealtime() }
+    }
+
+    private fun takeCursorText(source: DictationSource): CursorTextReader? {
+        val offered = offeredCursorText
+        offeredCursorText = null
+        if (source != DictationSource.IME || offered == null) return null
+        return offered.first.takeIf { SystemClock.elapsedRealtime() - offered.second <= CURSOR_TEXT_OFFER_MS }
+    }
+
+    /**
+     * The names and identifiers around the cursor ([ContextTerms]) for this
+     * dictation, read and extracted off the main thread. The text itself is
+     * dropped here; the terms live only as long as the dictation that asked.
+     * Empty when the keyboard offered nothing, the setting is off, or the field
+     * did not answer in time.
+     */
+    private suspend fun cursorContextTerms(
+        reader: CursorTextReader?,
+        configuration: VocaPhoneSettings,
+    ): List<String> {
+        if (reader == null || !configuration.useNearbyText) return emptyList()
+        val text = withTimeoutOrNull(CURSOR_TEXT_READ_MS) {
+            runInterruptible(Dispatchers.IO) {
+                runCatching { reader.read(ContextTerms.MAX_CHARACTERS_EACH_SIDE) }.getOrNull()
+            }
+        } ?: return emptyList()
+        return withContext(Dispatchers.Default) {
+            ContextTerms.extract(text.before, text.after, ::isEnglishWord)
+        }
+    }
 
     /**
      * Which dictation owns [state]. `fail` finishes its history write under
@@ -338,6 +388,7 @@ class DictationController(
                 lostSlot = true
             } else {
                 activeSource = source
+                val cursorText = takeCursorText(source)
                 finishSignal = CompletableDeferred()
                 cancelRequested = false
                 val repairSignal = CompletableDeferred<Unit>()
@@ -362,7 +413,7 @@ class DictationController(
                 return@launch
             }
             val token = if (configuration.localTranscriptionEnabled) null else settings.token()
-            runDictation(source, configuration, token, UUID.randomUUID(), generation)
+            runDictation(source, configuration, token, UUID.randomUUID(), generation, cursorText)
             }
             }
         }
@@ -874,6 +925,7 @@ class DictationController(
         token: String?,
         sessionId: UUID,
         generation: Int,
+        cursorText: CursorTextReader? = null,
     ) {
         audioDirectory.mkdirs()
         val wavFile = File(audioDirectory, "$sessionId.wav")
@@ -909,6 +961,19 @@ class DictationController(
         var streamPump: Job? = null
         val streamReference = AtomicReference<GatewayRecordingTransport?>()
         try {
+        // Read beside the microphone starting, never ahead of it; whatever
+        // needs the terms waits for them there. A child of this dictation and
+        // held by nothing else, so they end with it.
+        val contextTermsRead = CoroutineScope(currentCoroutineContext()).async {
+            try {
+                cursorContextTerms(cursorText, configuration)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                // Hints are optional; a dictation never fails for want of them.
+                emptyList()
+            }
+        }
         val incrementalSession = if (configuration.localTranscriptionEnabled) {
             selectedLocalModelID?.let { modelID ->
                 localModels.startIncrementalSession(
@@ -919,6 +984,7 @@ class DictationController(
                     translateTo = configuration.translationTarget,
                     vocabulary = configuration.whisperVocabulary,
                     replacementTargets = WordReplacements.hintTargets(configuration.replacements),
+                    contextTerms = { contextTermsRead.await() },
                 )
             }
         } else {
@@ -1297,6 +1363,7 @@ class DictationController(
                 conditioningStartSample = cueAnalysisStartSample,
                 preparedTranscript = preparedTranscript,
                 transcriptionTimingRecorded = timingRecorded,
+                contextTerms = contextTermsRead.await(),
             )
             return
         }
@@ -1351,6 +1418,8 @@ class DictationController(
                 vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
                 replacements = configuration.replacements,
                 isDictionaryWord = ::isEnglishWord,
+                // Spelling on this phone only: the terms are never sent.
+                contextTerms = contextTermsRead.await(),
             )
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
@@ -1379,6 +1448,7 @@ class DictationController(
             configuration,
             source,
             generation,
+            contextTermsRead.await(),
         )
         } finally {
             streamPump?.cancel()
@@ -1443,6 +1513,7 @@ class DictationController(
         configuration: VocaPhoneSettings,
         source: DictationSource,
         generation: Int,
+        contextTerms: List<String> = emptyList(),
     ) {
         try {
             _state.update { it.copy(phase = DictationPhase.UPLOADING) }
@@ -1465,6 +1536,8 @@ class DictationController(
                 vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
                 replacements = configuration.replacements,
                 isDictionaryWord = ::isEnglishWord,
+                // Spelling on this phone only: the terms are never sent.
+                contextTerms = contextTerms,
             )
             if (transcript.isEmpty()) {
                 throw GatewayException(
@@ -1491,6 +1564,7 @@ class DictationController(
         preparedTranscript: LocalTranscription? = null,
         transcriptionTimingRecorded: Boolean = false,
         ownsAudio: Boolean = true,
+        contextTerms: List<String> = emptyList(),
     ) {
         val preparingJob = showLocalProgress()
         try {
@@ -1507,6 +1581,7 @@ class DictationController(
                         conditioningStartSample = conditioningStartSample,
                         preparedTranscript = preparedTranscript,
                         transcriptionTimingRecorded = transcriptionTimingRecorded,
+                        contextTerms = contextTerms,
                     )
                 },
                 onFailure = { error ->
@@ -1560,6 +1635,7 @@ class DictationController(
         conditioningStartSample: Int,
         preparedTranscript: LocalTranscription?,
         transcriptionTimingRecorded: Boolean,
+        contextTerms: List<String>,
     ) {
         _state.update { it.copy(phase = DictationPhase.TRANSCRIBING, streaming = false) }
         if (!transcriptionTimingRecorded) {
@@ -1579,15 +1655,16 @@ class DictationController(
             conditioningStartSample,
             configuration.translationTarget,
             WordReplacements.hintTargets(configuration.replacements),
+            contextTerms,
         )
-        val transcript = styleLocalTranscript(local, configuration)
+        val transcript = styleLocalTranscript(local, configuration, contextTerms = contextTerms)
         if (transcript.isEmpty()) {
             throw GatewayException.emptyTranscript()
         }
         // The same funnel without Fix grammar: string passes only, and what
         // History offers back when the model changed something.
         val withoutGrammar = if (grammar != null && configuration.fixGrammar) {
-            styleLocalTranscript(local, configuration, useGrammar = false)
+            styleLocalTranscript(local, configuration, useGrammar = false, contextTerms = contextTerms)
         } else {
             null
         }
@@ -1606,6 +1683,7 @@ class DictationController(
         local: LocalTranscription,
         configuration: VocaPhoneSettings,
         useGrammar: Boolean = true,
+        contextTerms: List<String> = emptyList(),
     ): String = DictatedTranscript.finished(
         local.text,
         style = configuration.style,
@@ -1625,6 +1703,7 @@ class DictationController(
         isDictionaryWord = ::isEnglishWord,
         // Gateway routes never get here; they pass styledUpstream instead.
         grammar = grammar?.takeIf { configuration.fixGrammar && useGrammar },
+        contextTerms = contextTerms,
     )
 
     /**
@@ -1934,6 +2013,16 @@ class DictationController(
          * margin for the joins in the unwind path.
          */
         const val CANCEL_UNWIND_MILLIS = 2_500L
+
+        /** How long an offer of the text around the cursor waits for its start. */
+        const val CURSOR_TEXT_OFFER_MS = 5_000L
+
+        /**
+         * How long reading the text around the cursor may hold up the start of
+         * decoding. The editor answers in milliseconds when it is well; one
+         * that does not is not worth a slower dictation.
+         */
+        const val CURSOR_TEXT_READ_MS = 300L
 
         /**
          * How long a settle waits for a cancelled pipeline's own tail to

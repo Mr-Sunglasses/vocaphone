@@ -293,6 +293,27 @@ final class RecordingCoordinator {
     private var claimedModel: LocalModelDescriptor?
     private var claimedQuality: TranscriptionQuality?
 
+    /// Names and identifiers the keyboard found around the cursor, for the
+    /// one session that carried them. Taken off disk when the session is
+    /// claimed, held here and nowhere else, and dropped once that session's
+    /// transcript is finished or it ends (`commit`). See `ContextTerms`.
+    private var cursorContext: (sessionID: UUID, terms: [String])?
+
+    /// The cursor-context terms for `sessionID`; empty for any other session.
+    private func contextTerms(for sessionID: UUID) -> [String] {
+        guard let cursorContext, cursorContext.sessionID == sessionID,
+              LocalTranscriptionPreferences.usesNearbyText
+        else { return [] }
+        return cursorContext.terms
+    }
+
+    /// Takes the keyboard's terms for `id` off disk whatever the setting says,
+    /// so none are left behind, and keeps them only when it is on.
+    private func claimCursorContext(for id: UUID) {
+        let terms = store.takeCursorContextTerms(for: id)
+        cursorContext = LocalTranscriptionPreferences.usesNearbyText && !terms.isEmpty ? (id, terms) : nil
+    }
+
     private func captureClaimedTranscriptionSettings() {
         claimedModel = LocalModelCatalog.descriptor(
             for: LocalTranscriptionPreferences.modelIdentifier
@@ -1081,6 +1102,7 @@ final class RecordingCoordinator {
             // Activity can name the same place the whole way through.
             record.processingLocation = Self.selectedProcessingLocation()
         captureClaimedTranscriptionSettings()
+            claimCursorContext(for: id)
             do {
                 try commit(&record)
             } catch is CancellationError {
@@ -1148,6 +1170,7 @@ final class RecordingCoordinator {
                 requested = try stillRequested()
             }
             guard let latestRecord = requested else {
+                if cursorContext?.sessionID == id { cursorContext = nil }
                 if KeyboardPreferences.quickDictationArmable, audioSessionAvailable {
                     armQuickDictation()
                 } else {
@@ -1188,10 +1211,12 @@ final class RecordingCoordinator {
                 // retries the same model in batch mode.
                 let language = record.language
                 let sessionID = record.sessionID
+                let nearbyTerms = contextTerms(for: sessionID)
                 localSherpaSession = Task { [localModels] in
                     try? await localModels.startSherpaIncrementalSession(
                         chunks: chunks,
-                        language: language
+                        language: language,
+                        contextTerms: nearbyTerms
                     ) { [weak self] text in
                         Task { @MainActor in
                             self?.publishLiveTranscript(text, for: sessionID)
@@ -1203,7 +1228,8 @@ final class RecordingCoordinator {
                 let sessionID = record.sessionID
                 localWhisperSession = localModels.startWhisperIncrementalSession(
                     chunks: chunks,
-                    language: record.language
+                    language: record.language,
+                    contextTerms: contextTerms(for: sessionID)
                 ) { [weak self] text in
                     self?.publishLiveTranscript(text, for: sessionID)
                 }
@@ -1288,7 +1314,19 @@ final class RecordingCoordinator {
     /// follow an await, and an ended session throws `CancellationError`, which
     /// every caller treats as "stop quietly". `record` becomes what was written.
     private func commit(_ record: inout SessionRecord) throws {
+        defer {
+            if cursorContext?.sessionID == record.sessionID, !Self.needsCursorContext(record.state) {
+                cursorContext = nil
+            }
+        }
         record = try store.saveUnlessEnded(record)
+    }
+
+    /// States in which a session's transcript is still to be decoded or
+    /// finished. Past them, its cursor-context terms are forgotten.
+    private static func needsCursorContext(_ state: SessionState) -> Bool {
+        [.idle, .launchingApp, .awaitingReturn, .recording, .finalizing, .uploading, .transcribing]
+            .contains(state)
     }
 
     /// The keyboard cancelled, or expiry retired the session, while it was
@@ -1297,6 +1335,7 @@ final class RecordingCoordinator {
     /// shared-state signal may already have done some of it; all of it is safe
     /// to repeat.
     private func abandonEndedStart(_ id: UUID) async {
+        if cursorContext?.sessionID == id { cursorContext = nil }
         await streamingBridge.cancel()
         discardIncrementalSession()
         captureStartedAt = nil
@@ -1592,7 +1631,9 @@ final class RecordingCoordinator {
                     repairSpeech: KeyboardPreferences.repairSpeech,
                     numbersAsDigits: KeyboardPreferences.numbersAsDigits,
                     spokenEmoji: KeyboardPreferences.spokenEmoji,
-                    chineseScript: KeyboardPreferences.chineseScript
+                    chineseScript: KeyboardPreferences.chineseScript,
+                    // Spelling on this iPhone only: the terms are never sent.
+                    contextTerms: contextTerms(for: record.sessionID)
                 )
                 record.error = nil
                 try record.transition(to: .readyToInsert)
@@ -1671,7 +1712,9 @@ final class RecordingCoordinator {
                 repairSpeech: KeyboardPreferences.repairSpeech,
                 numbersAsDigits: KeyboardPreferences.numbersAsDigits,
                 spokenEmoji: KeyboardPreferences.spokenEmoji,
-                chineseScript: KeyboardPreferences.chineseScript
+                chineseScript: KeyboardPreferences.chineseScript,
+                // Spelling on this iPhone only: the terms are never sent.
+                contextTerms: contextTerms(for: record.sessionID)
             )
             record.error = nil
             try record.transition(to: .readyToInsert)
@@ -1794,7 +1837,8 @@ final class RecordingCoordinator {
                     do {
                         let wholeFile = try await localModels.transcribe(
                             audioURL: audioURL,
-                            language: record.language
+                            language: record.language,
+                            contextTerms: contextTerms(for: record.sessionID)
                         )
                                 transcribed = incrementalResult.supersededBy(wholeFile.text)
                             ? wholeFile
@@ -1826,7 +1870,8 @@ final class RecordingCoordinator {
                 transcribed = try await localModels.transcribe(
                     audioURL: audioURL,
                     language: record.language,
-                    whisperSession: streamed
+                    whisperSession: streamed,
+                    contextTerms: contextTerms(for: record.sessionID)
                 )
             }
             DiagnosticLog.record(
@@ -1859,6 +1904,7 @@ final class RecordingCoordinator {
             let vocabulary = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
             let replacements = LocalTranscriptionPreferences.replacements
             let lowConfidenceWords = transcribed.confidence.lowConfidenceWords
+            let nearbyTerms = contextTerms(for: record.sessionID)
             // The on-device route only: the gateway calls above pass
             // `styledUpstream` and no grammar.
             let grammar: GrammarCorrector? = KeyboardPreferences.fixGrammar ? grammar : nil
@@ -1877,7 +1923,8 @@ final class RecordingCoordinator {
                     replacements: replacements,
                     lowConfidenceWords: lowConfidenceWords,
                     grammar: grammar,
-                    learnedWords: learnedWords
+                    learnedWords: learnedWords,
+                    contextTerms: nearbyTerms
                 )
             }
             // Grammar is model inference, up to its 150 ms budget and one call
@@ -2383,6 +2430,7 @@ final class RecordingCoordinator {
             pipelineTask?.cancel()
             pipelineTask = nil
             pipelineSessionID = nil
+            if cursorContext?.sessionID == shared.sessionID { cursorContext = nil }
             await streamingBridge.cancel()
             discardIncrementalSession()
             let shouldRemainReady = shouldKeepQuickDictationReady(after: shared)

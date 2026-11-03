@@ -374,6 +374,9 @@ final class TypingEngine {
     /// Whether `word` is in the shipped list, for telling English text apart.
     func isListedWord(_ word: String) -> Bool { wordList.rank(of: word) != nil }
 
+    /// Whether the shipped list has loaded; it loads off the main thread.
+    var hasWordList: Bool { !wordList.isEmpty }
+
     /// For a process about to end: learned words are written behind the
     /// keystroke, and a queued write would not survive `exit`.
     @discardableResult

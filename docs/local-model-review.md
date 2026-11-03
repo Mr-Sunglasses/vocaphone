@@ -299,6 +299,51 @@ Mac); on LibriSpeech with all 56 terms, RTF 0.064 to 0.085 against greedy's
 and nothing here was measured on one. A user without custom words keeps
 greedy search and pays nothing.
 
+## Names and jargon: the text around the cursor (2026-11-04)
+
+The `vocab-en` set again, now with **no** custom vocabulary. `none` decodes
+with nothing; `context` decodes with the terms `ContextTerms` takes from an
+earlier message in the same thread (`tools/asr-bench/vocab_en_context.json`),
+handed over as a keyboard dictation hands them: the hint list (Whisper's
+prompt, Qwen3-ASR's hotwords) and the exact-match pass after the vocabulary.
+Quality Fast, so two runs differ only by the context (Parakeet still has its
+dither). Measured before #459 and #460 landed; with no custom words or
+replacements neither changes these paths (Parakeet Unified stays on greedy
+search, and context alone never switches it to beam search). The messages were written the way a person would, so 98 of the 120
+term uses are reachable: names that open a sentence, `NVIDIA` and `Notion`
+(both in the keyboard's word list), two-word names and `kubectl`/`npm` are not
+extracted. LibriSpeech clean (50 clips) decodes every clip with one unrelated
+message full of names, to see what a busy field costs speech that uses none
+of them.
+
+| Model | Path | Terms none | Terms context | WER none | WER context | LibriSpeech WER none → context |
+| --- | --- | --- | --- | --- | --- | --- |
+| Whisper Small (iOS) | file | 39.2 | 85.8 | 22.55 | 7.25 | 3.06 → 3.50 |
+| Whisper Small (iOS) | streamed | 39.2 | 85.8 | 22.55 | 7.25 | |
+| Whisper Small Q8 (Android) | file | 38.3 | 76.7 | 21.18 | 8.24 | 3.24 → 3.32 |
+| Qwen3-ASR 0.6B (iOS) | file | 30.0 | 75.0 | 26.27 | 9.80 | 2.54 → 2.71 |
+| Qwen3-ASR 0.6B (iOS) | streamed | 27.5 | 75.8 | 25.10 | 10.20 | |
+| Parakeet 0.6B v2 (iOS) | file | 42.5 | 62.5 | 21.37 | 16.08 | 1.66 → 1.66 |
+| Parakeet 0.6B v2 (iOS) | streamed | 43.3 | 62.5 | 21.18 | 16.67 | |
+| Parakeet Unified 0.6B (iOS) | file | 40.8 | 61.7 | 20.78 | 15.29 | 1.66 → 1.66 |
+| Parakeet Unified 0.6B (iOS) | streamed | 41.7 | 62.5 | 20.39 | 15.10 | |
+
+What it showed:
+
+- The models that take hints gain the most: Whisper and Qwen3-ASR spell
+  roughly twice as many terms. Most of that is the hint itself; the exact
+  pass adds 2.5 to 5.8 points on top (raw term accuracy with context: iOS
+  Whisper 83.3, Android 71.7, Qwen3-ASR 70.8 / 70.0).
+- Parakeet takes no hint, so its 20 points are the exact pass alone: the
+  spacing and case of a word it already heard.
+- The cost on unrelated speech is small but not zero for the prompted models:
+  a prompted Whisper punctuates differently and changes a few words, in both
+  directions ("our tale" fixed, "whereupon" → "We're up on" broken). On 50
+  clips that is +0.44 WER on iOS, +0.09 on Android and +0.17 for Qwen3-ASR,
+  about four, one and two words in a thousand. Parakeet's WER is unchanged.
+- Synthetic voices and hand-written threads flatter every number; the
+  differences are what carry over.
+
 ## Added: Omnilingual ASR 300M CTC INT8
 
 This adds a non-Whisper option for Arabic, Swahili, and the supported Indic/Asian

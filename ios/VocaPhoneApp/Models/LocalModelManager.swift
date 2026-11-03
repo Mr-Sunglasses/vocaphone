@@ -1283,6 +1283,7 @@ final class LocalModelManager {
     func startSherpaIncrementalSession(
         chunks: AsyncStream<Data>,
         language: String,
+        contextTerms: [String] = [],
         onText: (@Sendable (String) -> Void)? = nil
     ) async throws -> SherpaIncrementalSession? {
         guard let id = LocalTranscriptionPreferences.modelIdentifier,
@@ -1312,35 +1313,44 @@ final class LocalModelManager {
         return SherpaIncrementalSession(
             chunks: chunks,
             recognizer: recognizer,
-            hotwords: Self.sherpaHotwords(for: descriptor),
+            hotwords: Self.sherpaHotwords(for: descriptor, contextTerms: contextTerms),
             detector: { SileroSpeechDetector() },
             onText: onText
         )
     }
 
     /// What a sherpa-onnx `descriptor` is told to listen for: the user's
-    /// custom vocabulary and replacement targets as Qwen3-ASR's or Parakeet
+    /// custom vocabulary and replacement targets, then the dictation's
+    /// `contextTerms` from around the cursor, as Qwen3-ASR's or Parakeet
     /// Unified's hotwords, and nothing for a model that takes none. Read per
     /// dictation, like Whisper's prompt, so a list saved between two dictations applies to the second.
-    static func sherpaHotwords(for descriptor: LocalModelDescriptor) -> String? {
-        let terms = RecognitionHints.terms(
+    static func sherpaHotwords(for descriptor: LocalModelDescriptor, contextTerms: [String] = []) -> String? {
+        RecognitionHints.sherpaHotwords(
+            for: descriptor,
             vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary),
-            replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements)
+            replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements),
+            contextTerms: contextTerms
         )
-        return RecognitionHints.sherpaHotwords(for: descriptor, terms: terms)
     }
 
     /// The bundled BPE vocabulary `descriptor`'s recognizer is built with, so
     /// that it takes this dictation's hotwords: nil for a model without one,
-    /// and nil while the user has no words, so they keep greedy search.
+    /// and nil while the user has no words, so they keep greedy search. Never
+    /// the cursor's terms: they cannot switch the search (see
+    /// `RecognitionHints.sherpaHotwords(for:vocabulary:replacementTargets:contextTerms:)`).
     /// Missing from the bundle is nil too, and greedy search, rather than a
     /// recognizer sherpa-onnx would refuse to build.
     static func hotwordVocabulary(for descriptor: LocalModelDescriptor) -> URL? {
         guard let name = descriptor.hotwordVocabularyFile,
-              sherpaHotwords(for: descriptor) != nil
+              RecognitionHints.takesHotwordSearch(
+                  descriptor,
+                  vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary),
+                  replacementTargets: WordReplacements.hintTargets(LocalTranscriptionPreferences.replacements)
+              )
         else { return nil }
         return Bundle.main.url(forResource: name, withExtension: nil)
     }
+
 
     /// Starts loading the selected Whisper model while the user is still
     /// speaking, and listens for the pauses to decode early in.
@@ -1357,6 +1367,7 @@ final class LocalModelManager {
     func startWhisperIncrementalSession(
         chunks: AsyncStream<Data>,
         language: String,
+        contextTerms: [String] = [],
         onText: (@MainActor @Sendable (String) -> Void)? = nil
     ) -> WhisperIncrementalSession? {
         guard !isInert,
@@ -1369,7 +1380,9 @@ final class LocalModelManager {
         else { return nil }
         let dictation = WhisperDictation(
             modelID: id,
-            settings: WhisperDictationSettings.current(for: descriptor, language: language)
+            settings: WhisperDictationSettings.current(
+                for: descriptor, language: language, contextTerms: contextTerms
+            )
         )
         whisperDictation = dictation
         dictation.load = Task { [weak self] in
@@ -2231,7 +2244,8 @@ final class LocalModelManager {
     func transcribe(
         audioURL: URL,
         language: String,
-        whisperSession: WhisperIncrementalSession? = nil
+        whisperSession: WhisperIncrementalSession? = nil,
+        contextTerms: [String] = []
     ) async throws -> LocalTranscription {
         let dictation = whisperDictation
         whisperDictation = nil
@@ -2316,7 +2330,9 @@ final class LocalModelManager {
                 in: tokenizerFolder,
                 files: LocalModelIntegrity.tokenizer(for: tokenizerRepository).files
             )
-            let settings = WhisperDictationSettings.current(for: descriptor, language: language)
+            let settings = WhisperDictationSettings.current(
+                for: descriptor, language: language, contextTerms: contextTerms
+            )
             // Windows decoded during the dictation's pauses, if they were
             // decoded on these same terms. A setting changed mid-recording
             // means decoding again rather than trusting what was.
@@ -2402,7 +2418,7 @@ final class LocalModelManager {
                 recordEngineFailure(.localEngineLoadFailed, error)
                 throw error
             }
-            let hotwords = Self.sherpaHotwords(for: descriptor)
+            let hotwords = Self.sherpaHotwords(for: descriptor, contextTerms: contextTerms)
             let outcome = await Task.detached(priority: .userInitiated) {
                 sherpaRecognizer.transcribe(samples, hotwords: hotwords)
             }.value

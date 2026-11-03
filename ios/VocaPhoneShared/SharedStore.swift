@@ -116,6 +116,9 @@ final class SharedStore: @unchecked Sendable {
             try? fileManager.removeItem(at: meterURL(for: record.sessionID, directory: directory))
             try? fileManager.removeItem(at: liveTranscriptURL(for: record.sessionID, directory: directory))
         }
+        if !Self.mayStillTakeCursorContext(record.state) {
+            try? fileManager.removeItem(at: cursorContextURL(for: record.sessionID, directory: directory))
+        }
         notify(.sessionChanged)
         if rootOverride == nil {
             DiagnosticLog.record(
@@ -287,7 +290,11 @@ final class SharedStore: @unchecked Sendable {
     private func removeSessionFiles(at recordURL: URL) throws -> Bool {
         let base = recordURL.deletingPathExtension()
         var firstError: Error?
-        let sidecars = [base.appendingPathExtension("meter"), base.appendingPathExtension("live")]
+        let sidecars = [
+            base.appendingPathExtension("meter"),
+            base.appendingPathExtension("live"),
+            base.appendingPathExtension("context"),
+        ]
         for file in sidecars {
             do {
                 _ = try removeIfPresent(file)
@@ -411,8 +418,8 @@ final class SharedStore: @unchecked Sendable {
     }
 
     /// Recover sidecars stranded by older app versions or an interrupted
-    /// write. The age floor avoids racing a recording that has only just
-    /// created its preview file.
+    /// write, and cursor-context terms a crash left mid-take. The age floor
+    /// avoids racing a recording that has only just created its preview file.
     @discardableResult
     func pruneOrphanedSessionSidecars(
         minimumAge: TimeInterval = 60 * 60,
@@ -423,7 +430,7 @@ final class SharedStore: @unchecked Sendable {
         var removed = 0
         var firstError: Error?
         for file in try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-        where file.pathExtension == "meter" || file.pathExtension == "live" {
+        where ["meter", "live", "context", "taking"].contains(file.pathExtension) {
             let record = file.deletingPathExtension().appendingPathExtension("json")
             guard !fileManager.fileExists(atPath: record.path),
                   now.timeIntervalSince(modificationDate(of: file)) > minimumAge
@@ -541,6 +548,47 @@ final class SharedStore: @unchecked Sendable {
             throw SharedStoreError.unsupportedSchema(status.schemaVersion)
         }
         return status
+    }
+
+    // MARK: - Terms from around the cursor
+
+    /// The terms the keyboard found around the cursor, for the session it is
+    /// about to start. Written before the record, so the app that claims the
+    /// record finds them. Never the text they came from; see
+    /// `CursorContextTerms`.
+    func saveCursorContextTerms(_ terms: [String], for id: UUID) throws {
+        let directory = try sessionsDirectory()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try encoder.encode(CursorContextTerms(terms: terms))
+            .write(to: cursorContextURL(for: id, directory: directory), options: .atomic)
+    }
+
+    /// Reads the session's terms and deletes them in the same step, so they
+    /// spend no longer on disk than the hand-off takes. Empty when there are
+    /// none.
+    func takeCursorContextTerms(for id: UUID) -> [String] {
+        guard let directory = try? sessionsDirectory() else { return [] }
+        let fileURL = cursorContextURL(for: id, directory: directory)
+        let claimed = directory.appendingPathComponent("\(id.uuidString.lowercased()).\(UUID().uuidString).taking")
+        guard (try? fileManager.moveItem(at: fileURL, to: claimed)) != nil else { return [] }
+        defer { try? fileManager.removeItem(at: claimed) }
+        guard let data = try? Data(contentsOf: claimed),
+              let stored = try? decoder.decode(CursorContextTerms.self, from: data),
+              stored.schemaVersion == CursorContextTerms.schemaVersion
+        else { return [] }
+        return stored.terms
+    }
+
+    /// Removes the session's terms, taken or not.
+    func removeCursorContextTerms(for id: UUID) {
+        guard let directory = try? sessionsDirectory() else { return }
+        try? fileManager.removeItem(at: cursorContextURL(for: id, directory: directory))
+    }
+
+    /// States in which the app may not have claimed the session yet. Saving
+    /// the record in any other state deletes a file nobody took.
+    static func mayStillTakeCursorContext(_ state: SessionState) -> Bool {
+        [.idle, .launchingApp, .awaitingReturn].contains(state)
     }
 
     // MARK: - Check grammar while typing
@@ -706,6 +754,12 @@ final class SharedStore: @unchecked Sendable {
         directory
             .appendingPathComponent(id.uuidString.lowercased())
             .appendingPathExtension("live")
+    }
+
+    private func cursorContextURL(for id: UUID, directory: URL) -> URL {
+        directory
+            .appendingPathComponent(id.uuidString.lowercased())
+            .appendingPathExtension("context")
     }
 
     private func quickDictationURL(root: URL) -> URL {

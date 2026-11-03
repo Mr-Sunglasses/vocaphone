@@ -38,7 +38,9 @@ import Foundation
 ///    which leave a replacement's text alone. One-letter slips and sound-alikes
 ///    are corrected only in English text; other languages get spacing and
 ///    case. `lowConfidenceWords` is what the engine was unsure of, or nil when
-///    it does not say (`RecognitionConfidence`).
+///    it does not say (`RecognitionConfidence`). Then the terms from the text
+///    around the cursor (`ContextTerms.correct`): exact letter matches only,
+///    after the user's own lists so their spelling wins.
 /// 7. Spoken emoji. After styling, because the styler has to see "emoji" as
 ///    an ordinary word to capitalize and terminate around it; before digits,
 ///    because the table's keys are words — "hundred emoji" is 💯, and once
@@ -70,7 +72,8 @@ enum DictatedTranscript {
         lowConfidenceWords: Set<String>? = nil,
         isDictionaryWord: (String) -> Bool = EnglishWords.contains,
         grammar: (any GrammarStage)? = nil,
-        learnedWords: [String] = []
+        learnedWords: [String] = [],
+        contextTerms: [String] = []
     ) -> String {
         let cleaned = TraditionalChinese.apply(
             TranscriptSanitizer.clean(raw), script: chineseScript, language: language
@@ -103,9 +106,20 @@ enum DictatedTranscript {
                 isDictionaryWord: isDictionaryWord
             )
             : styled
-        let emojified = spokenEmoji && style != .raw
-            ? SpokenEmoji.glyphs(in: spelled, language: language)
+        let contextSpelled = style != .raw && !contextTerms.isEmpty
+            ? ContextTerms.correct(
+                spelled,
+                terms: contextTerms,
+                // The user's own lists win: neither a custom word nor what a
+                // replacement writes is respelled the field's way.
+                vocabulary: vocabulary + WordReplacements.hintTargets(replacements),
+                isDictionaryWord: isDictionaryWord,
+                protectedRanges: SnippetExpander.triggerRanges(in: spelled, using: snippets)
+            )
             : spelled
+        let emojified = spokenEmoji && style != .raw
+            ? SpokenEmoji.glyphs(in: contextSpelled, language: language)
+            : contextSpelled
         let digited = numbersAsDigits ? SpokenNumbers.digits(in: emojified) : emojified
         return snippetExpander.expand(in: digited, using: snippets)
     }

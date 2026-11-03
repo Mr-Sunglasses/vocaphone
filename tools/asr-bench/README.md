@@ -18,6 +18,11 @@ just android accuracy small-q8_0 vocab "vocab-en"
 # decoded with all 56 vocab-en terms (the last argument; iOS only)
 just ios accuracy parakeet-unified-0.6b-en all56 "librispeech-clean librispeech-other" "file streamed" "" balanced vocab-en
 
+# The same sentences with no vocabulary, then with the text around the cursor
+just ios accuracy qwen3-asr-0.6b ctx-none "vocab-en" "file streamed" "" fast "" "" none
+just ios accuracy qwen3-asr-0.6b ctx-context "vocab-en" "file streamed" "" fast "" "" context
+just android accuracy small-q8_0 ctx-context "vocab-en" model fast "" "" context
+
 # Score again, compare two runs, or read the worst clips
 uv run --with-requirements tools/asr-bench/requirements.txt python tools/asr-bench/score.py --tag baseline --compare mytag
 uv run --with-requirements tools/asr-bench/requirements.txt python tools/asr-bench/score.py --tag baseline \
@@ -60,6 +65,17 @@ list to the app as its custom vocabulary, so it reaches the decoder (Whisper's
 prompt, Qwen3-ASR's and Parakeet Unified's hotwords) and the finishing funnel
 exactly as Settings would. Synthetic speech is cleaner than a person; read the set for the
 difference a change makes, not as a phone's accuracy on names.
+
+The last argument of each recipe, `hints`, says what a clip is decoded with:
+`vocabulary` (the default) as above; `none`, nothing; or `context`, no
+vocabulary but the terms `ContextTerms` takes from a text before the cursor, as
+a keyboard dictation would (see [Text around the cursor](../../docs/architecture.md#text-around-the-cursor)).
+That text is [`vocab_en_context.json`](vocab_en_context.json): for each
+`vocab-en` sentence, an earlier message in the same thread, written the way a
+person would (so some terms start a sentence, and `kubectl` and `npm` are not
+there at all); for every other set, one unrelated message full of names, which
+checks that a busy field costs nothing on speech that uses none of them. The
+file is read by the runners directly, so editing it needs no new audio.
 
 `prepare.py` checks `vocab_en.json` against a pinned SHA-256 and records the
 macOS version and each clip's audio digest in `sets/vocab-en/source.json`:
@@ -120,6 +136,7 @@ lists the terms each clip missed.
 | --- | --- |
 | `prepare.py` | Downloads and builds the sets. Standard library and `ffmpeg`; `say` for `vocab-en` |
 | `vocab_en.json` | The `vocab-en` sentences and the 56-term vocabulary |
+| `vocab_en_context.json` | The text around the cursor for `hints=context` |
 | `vocab.py` | Term matching shared by `prepare.py` and `score.py` |
 | `score.py` | WER / CER / term accuracy tables, run comparison, worst clips |
 | `requirements.txt` | `jiwer` and `whisper-normalizer`, pinned |

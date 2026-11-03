@@ -234,6 +234,24 @@ enum SettingsHelp {
                     + "they write is also passed to Whisper, Qwen3-ASR and Parakeet Unified "
                     + "models like a custom word. They stay on this iPhone.",
             ]),
+            .init(heading: "Nearby text", paragraphs: [
+                "When you dictate from the vocaphone keyboard, it reads up to 1,000 "
+                    + "characters either side of the cursor in the field you are typing "
+                    + "in, and picks out names and code words: capitalized names that "
+                    + "are not ordinary words, and words like GitHub, userId or "
+                    + "max_retries. The text itself stays in the keyboard.",
+                "Only those words go to the vocaphone app, for that one dictation. "
+                    + "Whisper and Qwen3-ASR models listen for them, and a word you say "
+                    + "whose letters match one exactly is spelled the same way. Your own "
+                    + "custom words win when the two disagree, and an ordinary word is "
+                    + "never changed.",
+                "They pass to the app through vocaphone's own storage on this "
+                    + "iPhone, and the app deletes them as it reads them. They are not "
+                    + "kept after the dictation, not added to History or your custom "
+                    + "words, not logged and not sent anywhere, including your gateway. "
+                    + "Nothing is read in password, one-time code, card number or "
+                    + "number-pad fields, or with this switch off.",
+            ]),
         ]
     )
 

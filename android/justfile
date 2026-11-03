@@ -149,10 +149,11 @@ model-test model="base-q8_0":
 #
 #   just android accuracy small-q8_0
 #   just android accuracy small-q8_0 crop-off "librispeech-clean" off
+#   just android accuracy small-q8_0 context "vocab-en" model balanced "" "" context
 #
 # Measure a pinned whisper.cpp model's word error rate on public speech test sets.
 [group('test')]
-accuracy model="small-q8_0" tag="current" sets="librispeech-clean librispeech-other librispeech-long fleurs-hi" crop="model" quality="balanced" limit="" finish_vocabulary="":
+accuracy model="small-q8_0" tag="current" sets="librispeech-clean librispeech-other librispeech-long fleurs-hi" crop="model" quality="balanced" limit="" finish_vocabulary="" hints="vocabulary":
     #!/usr/bin/env bash
     set -euo pipefail
     export ANDROID_HOME="$({{ just_executable() }} _sdk)"
@@ -181,6 +182,8 @@ accuracy model="small-q8_0" tag="current" sets="librispeech-clean librispeech-ot
         -Dvocaphone.asrBench.quality='{{ quality }}' \
         -Dvocaphone.asrBench.limit='{{ limit }}' \
         -Dvocaphone.asrBench.finishVocabulary='{{ finish_vocabulary }}' \
+        -Dvocaphone.asrBench.hints='{{ hints }}' \
+        -Dvocaphone.asrBench.context="${root}/../tools/asr-bench/vocab_en_context.json" \
         -Dvocaphone.whisperLibrary="${root}/build/host-whisper"
     uv run --quiet --with-requirements "${root}/../tools/asr-bench/requirements.txt" \
         python "${root}/../tools/asr-bench/score.py" --dir "${bench}" --tag '{{ tag }}'

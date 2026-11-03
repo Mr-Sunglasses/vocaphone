@@ -9,6 +9,7 @@ enum LocalTranscriptionPreferences {
     static let qualityKey = "localTranscriptionQuality"
     static let vocabularyKey = "localTranscriptionVocabulary"
     static let replacementsKey = "localTranscriptionReplacements"
+    static let nearbyTextKey = "dictationUsesNearbyText"
     static let transcriptRetentionKey = "transcriptRetention"
 
     nonisolated(unsafe) private static let defaults = UserDefaults(
@@ -104,5 +105,14 @@ enum LocalTranscriptionPreferences {
     static var replacements: [WordReplacement] {
         get { WordReplacement.decode(defaults?.data(forKey: replacementsKey)) }
         set { defaults?.set(WordReplacement.encode(newValue), forKey: replacementsKey) }
+    }
+
+    /// Whether a dictation started from the keyboard takes names and
+    /// identifiers from the text around the cursor (`ContextTerms`). On unless
+    /// the user turned it off. Read by the keyboard before it extracts
+    /// anything and by the app before it uses what it was handed.
+    static var usesNearbyText: Bool {
+        get { defaults?.object(forKey: nearbyTextKey) as? Bool ?? true }
+        set { defaults?.set(newValue, forKey: nearbyTextKey) }
     }
 }

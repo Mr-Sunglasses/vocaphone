@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.core
 
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -66,5 +67,25 @@ class ImeInputPolicyTest {
                 InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD,
             ),
         )
+    }
+
+    @Test
+    fun `nearby text is read only where dictation is offered and learning is allowed`() {
+        val text = InputType.TYPE_CLASS_TEXT
+        assertTrue(ImeInputPolicy.allowsContextRead(text, EditorInfo.IME_ACTION_SEND, "Message", null))
+        assertFalse(
+            ImeInputPolicy.allowsContextRead(
+                text or InputType.TYPE_TEXT_VARIATION_PASSWORD, EditorInfo.IME_ACTION_DONE, null, null,
+            ),
+        )
+        assertFalse(ImeInputPolicy.allowsContextRead(InputType.TYPE_CLASS_NUMBER, 0, null, null))
+        // Incognito tabs and private messaging ask keyboards not to learn.
+        assertFalse(
+            ImeInputPolicy.allowsContextRead(
+                text, EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING, null, null,
+            ),
+        )
+        assertFalse(ImeInputPolicy.allowsContextRead(text, 0, "Enter your OTP", null))
+        assertFalse(ImeInputPolicy.allowsContextRead(text, 0, null, "recovery_phrase"))
     }
 }

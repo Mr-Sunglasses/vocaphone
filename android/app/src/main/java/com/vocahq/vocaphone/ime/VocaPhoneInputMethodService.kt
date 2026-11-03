@@ -30,6 +30,8 @@ import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptSanitizer
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.dictation.AppliedInsertion
+import com.vocahq.vocaphone.dictation.CursorText
+import com.vocahq.vocaphone.dictation.CursorTextReader
 import com.vocahq.vocaphone.dictation.DictationService
 import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.dictation.InsertionOutcome
@@ -1447,10 +1449,34 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             voiceShortcutOwnedSession = true
             voiceShortcutStartRequested = true
         }
+        container.dictation.offerCursorText(cursorTextReader())
         if (VoiceShortcutIme.usesMicrophoneForegroundService(voiceShortcutActive)) {
             DictationService.start(this, DictationSource.IME)
         } else {
             container.dictation.start(DictationSource.IME)
+        }
+    }
+
+    /**
+     * The text around the cursor of this field, for the dictation about to
+     * start ([com.vocahq.vocaphone.core.ContextTerms]), or null where it may
+     * not be read: passwords and PINs, fields that ask keyboards not to learn,
+     * fields whose hint or id names a secret. Nothing is read here. The
+     * controller calls the reader once, off the main thread and only with
+     * "Use nearby text" on; `getTextBeforeCursor` is safe from any thread on
+     * this side of the connection.
+     */
+    private fun cursorTextReader(): CursorTextReader? {
+        val info = currentInputEditorInfo ?: return null
+        if (!ImeInputPolicy.allowsContextRead(info.inputType, info.imeOptions, info.hintText, info.fieldName)) {
+            return null
+        }
+        val connection = currentInputConnection ?: return null
+        return CursorTextReader { limit ->
+            CursorText(
+                before = connection.getTextBeforeCursor(limit, 0)?.toString().orEmpty(),
+                after = connection.getTextAfterCursor(limit, 0)?.toString().orEmpty(),
+            )
         }
     }
 

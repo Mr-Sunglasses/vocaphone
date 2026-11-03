@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
+import com.vocahq.vocaphone.core.ContextTerms
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.TranscriptionQuality
@@ -35,6 +36,14 @@ import org.junit.Test
  * the user's custom vocabulary: into the decoder as `LocalModelManager` hands
  * it over, and into the finishing funnel with the keyboard's word list, as
  * `DictationController` finishes a dictation. Every other clip has none.
+ *
+ * `vocaphone.asrBench.hints=none` decodes every clip with no vocabulary.
+ * `vocaphone.asrBench.hints=context` decodes with no vocabulary either, but
+ * with the terms [ContextTerms] takes from a text before the cursor
+ * (`tools/asr-bench/vocab_en_context.json`): an earlier message in the same
+ * thread for a `vocab-en` clip, one unrelated message for every other set.
+ * The terms go where `DictationController` sends them: Whisper's prompt and
+ * the finishing funnel's exact-match pass.
  */
 class WhisperAccuracyBenchmarkTest {
 
@@ -58,20 +67,21 @@ class WhisperAccuracyBenchmarkTest {
                 val id = clip.getString("id")
                 if (id in done) continue
                 val samples = readWav(File(root, "sets/$set/${clip.getString("file")}"))
-                val vocabulary = vocabulary(clip)
+                val vocabulary = if (hints == "vocabulary") vocabulary(clip) else ""
+                val contextTerms = if (hints == "context") contextTerms(clip) else emptyList()
                 val started = System.nanoTime()
                 val transcription = requireNotNull(context).transcribe(
                     SpeechAudioConditioning.condition(samples),
                     language = language,
                     translateTo = "",
                     quality = quality,
-                    prompt = whisperPrompt(vocabulary),
+                    prompt = whisperPrompt(vocabulary, contextTerms = contextTerms),
                     cropAudioContext = crop,
                     threads = WhisperCpuConfig.preferredThreadCount(model.id),
                 )
                 val milliseconds = (System.nanoTime() - started) / 1_000_000
                 val unsure = transcription.confidence.lowConfidenceWords
-                val finished = finish(transcription.text, language, CustomVocabulary.terms(vocabulary), unsure)
+                val finished = finish(transcription.text, language, CustomVocabulary.terms(vocabulary), unsure, contextTerms)
                 val line = JSONObject()
                     .put("id", id)
                     .put("raw", transcription.text)
@@ -92,7 +102,13 @@ class WhisperAccuracyBenchmarkTest {
     }
 
     /** As the app finishes an on-device dictation, with no replacements. */
-    private fun finish(raw: String, language: String, vocabulary: List<String>, unsure: Set<String>?): String =
+    private fun finish(
+        raw: String,
+        language: String,
+        vocabulary: List<String>,
+        unsure: Set<String>?,
+        contextTerms: List<String> = emptyList(),
+    ): String =
         DictatedTranscript.finished(
             raw,
             style = WritingStyle.CASUAL,
@@ -104,6 +120,7 @@ class WhisperAccuracyBenchmarkTest {
             replacements = emptyList(),
             lowConfidenceWords = unsure,
             isDictionaryWord = { it in englishWords },
+            contextTerms = contextTerms,
         )
 
     /**
@@ -116,6 +133,7 @@ class WhisperAccuracyBenchmarkTest {
         // The list itself, not its file name: a resume with other terms, or
         // with none where there were some, must not pass as the same control.
         finishVocabulary?.let { settings.put("finishVocabulary", it.joinToString("\n")) }
+        if (hints != "vocabulary") settings.put("hints", hints)
         val file = File(directory, "settings.json")
         if (!file.exists()) {
             file.writeText(settings.toString())
@@ -149,6 +167,21 @@ class WhisperAccuracyBenchmarkTest {
     private fun vocabulary(clip: JSONObject): String {
         val terms = clip.optJSONArray("vocabulary") ?: return ""
         return (0 until terms.length()).joinToString("\n") { terms.getString(it) }
+    }
+
+    /**
+     * The terms from the clip's text before the cursor, as the keyboard's
+     * dictation reads them. The earlier message sits above the cursor, as a
+     * reply's would.
+     */
+    private fun contextTerms(clip: JSONObject): List<String> {
+        val texts = JSONObject(File(requireNotNull(contextFile) { "set -Dvocaphone.asrBench.context" }).readText())
+        val before = if (clip.has("vocabulary")) {
+            texts.getJSONObject("contexts").getString(clip.getString("text"))
+        } else {
+            texts.getString("unrelated")
+        }
+        return ContextTerms.extract(before = before + "\n", after = null) { it in englishWords }
     }
 
     /** The prepared WAVs are 32-bit float, mono, 16 kHz. */
@@ -199,6 +232,8 @@ class WhisperAccuracyBenchmarkTest {
             }
         }
         private var context: WhisperContext? = null
+        private val hints = System.getProperty("vocaphone.asrBench.hints")?.ifBlank { null } ?: "vocabulary"
+        private val contextFile: String? = System.getProperty("vocaphone.asrBench.context")
 
         /** `DictationController.englishWords`, from the repository's copy of the asset. */
         private val englishWords: Set<String> by lazy {

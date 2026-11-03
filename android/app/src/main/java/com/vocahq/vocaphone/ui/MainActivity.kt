@@ -455,6 +455,7 @@ fun VocaPhoneApp(
                 onTranscriptionQuality = { viewModel.setTranscriptionQuality(it) },
                 onCustomVocabulary = { viewModel.setCustomVocabulary(it) },
                 onSyncWhisperDictionary = { viewModel.setSyncWhisperDictionary(it) },
+                onUseNearbyText = { viewModel.setUseNearbyText(it) },
                 onNumberRow = { viewModel.setNumberRowEnabled(it) },
                 onKeyboardHeight = { viewModel.setKeyboardHeight(it) },
                 onSplitKeyboard = { viewModel.setSplitKeyboard(it) },

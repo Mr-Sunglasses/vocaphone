@@ -523,6 +523,9 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     fun setCustomVocabulary(vocabulary: String) =
         viewModelScope.launch { container.settings.setCustomVocabulary(vocabulary) }
 
+    fun setUseNearbyText(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setUseNearbyText(enabled) }
+
     fun setSyncWhisperDictionary(enabled: Boolean) {
         viewModelScope.launch {
             if (!enabled) {

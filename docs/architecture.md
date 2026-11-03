@@ -303,7 +303,8 @@ where it does:
    [tools/grammar-eval](../tools/grammar-eval/README.md) for the recipe.
 5. **Style**, for on-device transcripts only: a gateway has already styled its
    own.
-6. **Replacements, then custom vocabulary**. Not for Raw. See below.
+6. **Replacements, then custom vocabulary, then the terms from around the
+   cursor** (exact letter matches only). Not for Raw. See below.
 7. **Spoken emoji**, when on. Not for Raw.
 8. **Digits**, when on.
 9. **Snippet expansion**, last.
@@ -360,7 +361,9 @@ get them from one builder, `RecognitionHints` on both platforms
   first: terms from the text around the cursor, then replacement targets, then
   the user's custom vocabulary, each source with its first-ranked term last.
   Replacement targets are the written forms that read like a term
-  (`isHintableReplacement`: not an address, a link or a sentence). Every engine that has to shorten the
+  (`isHintableReplacement`: not an address, a link or a sentence). The
+  cursor's terms come from a keyboard dictation (see
+  [Text around the cursor](#text-around-the-cursor)). Every engine that has to shorten the
   list cuts from the front, so the user's own words, and among them the ones
   written first, are the last to go. What an engine keeps it writes most
   important first, which for the vocabulary alone is the order the user wrote. The list stays on the phone and in memory
@@ -401,6 +404,69 @@ get them from one builder, `RecognitionHints` on both platforms
 
 A gateway decodes with whatever its engine does; the vocabulary is not sent to
 it.
+
+## Text around the cursor
+
+A dictation started from the keyboard can borrow names and identifiers from
+the field it is dictating into, as VocaMac does from the focused field through
+Accessibility. Settings › Use nearby text for spelling, on by default.
+`ContextTerms` (`android/.../core/ContextTerms.kt`,
+`ios/VocaPhoneShared/ContextTerms.swift`) is a port of VocaMac's
+`ScreenContextTerms` plus one shape it lacks, words that start with two
+capitals (CUDA, OAuth):
+
+```text
+iOS
+  keyboard: Dictate tap
+    -> TypingFieldPolicy allows typing intelligence? setting on?
+    -> documentContextBefore/AfterInput (the snapshot the tap already read),
+       at most 1,000 characters each side
+    -> ContextTerms.extract (word list already loaded; until then shapes only)
+    -> SharedStore.saveCursorContextTerms: sessions/<id>.context, terms only
+    -> session record saved (launchingApp)
+  app: RecordingCoordinator claims the session
+    -> SharedStore.takeCursorContextTerms (read + delete)
+    -> held in memory for that session ID only
+    -> WhisperDictationSettings / LocalModelManager.sherpaHotwords
+       (RecognitionHints.terms(contextTerms:))
+    -> DictatedTranscript.finished(contextTerms:)
+    -> forgotten when the session is finished, fails or is cancelled
+
+Android (one process)
+  IME: Dictate tap
+    -> ImeInputPolicy.allowsContextRead (dictation offered, no
+       IME_FLAG_NO_PERSONALIZED_LEARNING, no secret-named hint or id)
+    -> DictationController.offerCursorText(reader); nothing read yet
+  DictationController.runDictation (setting on), beside the microphone
+  starting rather than ahead of it
+    -> reader on Dispatchers.IO, 300 ms: getTextBefore/AfterCursor(1,000)
+    -> ContextTerms.extract on Dispatchers.Default with the en.txt word list
+    -> text dropped; terms in a Deferred local to that dictation
+    -> sherpaHotwords at the first incremental decode; whisperPrompt and
+       sherpaHotwords in transcribe after Finish
+    -> DictatedTranscript.finished(contextTerms:)
+```
+
+Ranking is VocaMac's: shown more often (up to three times), then nearest the
+cursor, then first shown; at most 100, which is all `RecognitionHints` takes.
+They are the least important hints, so the user's own words always go into a
+short Whisper prompt or Qwen3-ASR's 20 hotwords first. Parakeet Unified is
+different: the cursor's terms never switch it into beam search. Whether its
+recognizer is built for hotwords stays the user's lists' decision alone (a
+warm-up asks for it before the field is read, and a mismatch would load the
+660 MB model twice). When the user's lists already have it in hotword search,
+the cursor's terms join its 64 hotwords after the user's; with no list of the
+user's, Unified gets them only through the spelling pass below
+(`RecognitionHints.sherpaHotwords(for:vocabulary:replacementTargets:contextTerms:)`).
+
+The spelling pass (`ContextTerms.correct`) runs after `VocabularyCorrection`
+and is deliberately narrower: only a run of words whose letters and digits
+equal a term's, ignoring case and spaces ("git hub" → GitHub); never a near
+miss; never a single word in the English word list; an identifier-shaped term
+(camelCase, `_`, `-`, `.`, digits) only ever replaces one word, so "set up" is
+never `setUp`; and a term with the same letters as one of the user's own words
+is dropped so their spelling stands. It runs on every route, gateway included,
+on the phone; the gateway is never sent the terms.
 
 ## Writing check
 

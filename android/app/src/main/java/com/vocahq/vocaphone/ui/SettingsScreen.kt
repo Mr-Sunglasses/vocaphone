@@ -153,6 +153,7 @@ fun SettingsScreen(
     onTranscriptionQuality: (TranscriptionQuality) -> Unit,
     onCustomVocabulary: (String) -> Unit,
     onSyncWhisperDictionary: (Boolean) -> Unit,
+    onUseNearbyText: (Boolean) -> Unit,
     onNumberRow: (Boolean) -> Unit,
     onKeyboardHeight: (KeyboardHeight) -> Unit,
     onSplitKeyboard: (SplitKeyboard) -> Unit,
@@ -547,6 +548,8 @@ fun SettingsScreen(
                     synced = settings.syncWhisperDictionary,
                     onSyncedChange = onSyncWhisperDictionary,
                     onSaveVocabulary = onCustomVocabulary,
+                    nearbyText = settings.useNearbyText,
+                    onNearbyTextChange = onUseNearbyText,
                     unsupportedModel = localModel
                         ?.takeIf { settings.localTranscriptionEnabled && !it.supportsCustomVocabulary }
                         ?.displayName,
@@ -1021,6 +1024,8 @@ private fun PersonalDictionaryPage(
     synced: Boolean,
     onSyncedChange: (Boolean) -> Unit,
     onSaveVocabulary: (String) -> Unit,
+    nearbyText: Boolean,
+    onNearbyTextChange: (Boolean) -> Unit,
     unsupportedModel: String?,
 ) {
     var confirmClear by remember { mutableStateOf(false) }
@@ -1060,6 +1065,14 @@ private fun PersonalDictionaryPage(
             supporting = "Spells them your way in transcripts.",
             checked = synced,
             onCheckedChange = onSyncedChange,
+        )
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Use nearby text for spelling",
+            supporting = "Names in the text around the cursor are listened for and spelled as " +
+                "written there. Only those names are kept, and only until the dictation ends.",
+            checked = nearbyText,
+            onCheckedChange = onNearbyTextChange,
         )
         if (!synced) {
             SettingsDivider()

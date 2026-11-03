@@ -459,17 +459,31 @@ class LocalModelManager(
         translateTo: String = "",
         vocabulary: String = "",
         replacementTargets: List<String> = emptyList(),
+        contextTerms: suspend () -> List<String> = { emptyList() },
     ): SherpaIncrementalSession? {
         val model = LocalModelCatalog.find(modelID) ?: return null
         val resolved = if (model.englishOnly) "en" else language
         val target = model.resolveTranslationTarget(translateTo, resolved)
         if (!canStreamIncrementally(model.engine, target)) return null
-        val hotwords = sherpaHotwords(model, vocabulary, replacementTargets)
-        val hotwordSearch = takesHotwordSearch(model, hotwords)
+        // Whether the recognizer is built for hotword search is the user's
+        // lists' decision alone: the terms from around the cursor never switch
+        // it into beam search, or a warm-up started before they are read and
+        // this session would ask for different recognizers.
+        val hotwordSearch = hotwordSearchFor(model, vocabulary, replacementTargets)
+        // The hotwords themselves are resolved at the first decode rather than
+        // here: the terms from around the cursor are still being read while the
+        // microphone starts, and the first decode waits for a pause in speech
+        // anyway. Decodes run one at a time, so the first one settles it.
+        var hotwords: String? = null
+        var hotwordsResolved = false
         return SherpaIncrementalSession(
             scope = scope,
             prepare = { prepareEngine(model, resolved, quality, target, hotwordSearch) },
             decode = { samples ->
+                if (!hotwordsResolved) {
+                    hotwords = sherpaHotwords(model, vocabulary, replacementTargets, contextTerms())
+                    hotwordsResolved = true
+                }
                 decodePreparedSherpa(samples, model, resolved, quality, target, hotwords, hotwordSearch)
             },
         )
@@ -859,7 +873,7 @@ class LocalModelManager(
             spoken,
             quality,
             model.resolveTranslationTarget(translateTo, spoken),
-            takesHotwordSearch(model, sherpaHotwords(model, vocabulary, replacementTargets)),
+            hotwordSearchFor(model, vocabulary, replacementTargets),
         )
     }
 
@@ -872,11 +886,12 @@ class LocalModelManager(
         conditioningStartSample: Int = 0,
         translateTo: String = "",
         replacementTargets: List<String> = emptyList(),
+        contextTerms: List<String> = emptyList(),
     ): LocalTranscription {
         val model = LocalModelCatalog.find(modelID) ?: error("Unknown local model: $modelID")
         val resolved = if (model.englishOnly) "en" else language
         val target = model.resolveTranslationTarget(translateTo, resolved)
-        val hotwordSearch = takesHotwordSearch(model, sherpaHotwords(model, vocabulary, replacementTargets))
+        val hotwordSearch = hotwordSearchFor(model, vocabulary, replacementTargets)
         prepareEngine(model, resolved, quality, target, hotwordSearch)
         // One gain and one DC-offset correction cover the complete recording.
         // Sherpa used to have a separate during-recording path that could apply
@@ -890,6 +905,7 @@ class LocalModelManager(
             vocabulary,
             target,
             replacementTargets,
+            contextTerms,
         )
     }
 
@@ -980,6 +996,7 @@ class LocalModelManager(
         vocabulary: String,
         resolvedTranslateTo: String,
         replacementTargets: List<String>,
+        contextTerms: List<String>,
     ): LocalTranscription = engineMutex.withLock {
         check(
             loadedModelID == model.id &&
@@ -995,7 +1012,7 @@ class LocalModelManager(
             "Local transcription engine changed before inference started"
         }
         sherpaRecognizer?.let { recognizer ->
-            val hotwords = sherpaHotwords(model, vocabulary, replacementTargets)
+            val hotwords = sherpaHotwords(model, vocabulary, replacementTargets, contextTerms)
             return@withLock withContext(Dispatchers.Default) {
                 val result = recognizer.transcribe(samples, hotwords)
                 // No confidence: the prebuilt sherpa-onnx JNI's
@@ -1016,7 +1033,7 @@ class LocalModelManager(
             resolvedLanguage,
             resolvedTranslateTo,
             quality,
-            whisperPrompt(vocabulary, replacementTargets),
+            whisperPrompt(vocabulary, replacementTargets, contextTerms),
             model.cropsAudioContext && quality.whisperCropsAudioContext,
             WhisperCpuConfig.preferredThreadCount(model.id),
         ) ?: error("Local transcription engine is not loaded")
@@ -1064,6 +1081,7 @@ class LocalModelManager(
         conditioningStartSample: Int = 0,
         translateTo: String = "",
         replacementTargets: List<String> = emptyList(),
+        contextTerms: List<String> = emptyList(),
     ): LocalTranscription = transcribe(
         withContext(Dispatchers.IO) { readWavSamples(wavFile) },
         modelID,
@@ -1073,35 +1091,45 @@ class LocalModelManager(
         conditioningStartSample,
         translateTo,
         replacementTargets,
+        contextTerms,
     )
 
     private fun readWavSamples(file: File): FloatArray = readPcm16WavSamples(file)
 }
 
 /**
- * The prompt whisper.cpp decodes [vocabulary] (the stored Settings text) and
- * the user's [replacementTargets] with. See [RecognitionHints].
+ * The prompt whisper.cpp decodes [vocabulary] (the stored Settings text), the
+ * user's [replacementTargets] and the dictation's [contextTerms] from around the
+ * cursor with. See [RecognitionHints].
  */
-internal fun whisperPrompt(vocabulary: String, replacementTargets: List<String> = emptyList()): String =
+internal fun whisperPrompt(
+    vocabulary: String,
+    replacementTargets: List<String> = emptyList(),
+    contextTerms: List<String> = emptyList(),
+): String =
     RecognitionHints.whisperPrompt(
-        RecognitionHints.terms(CustomVocabulary.terms(vocabulary), replacementTargets = replacementTargets),
+        RecognitionHints.terms(
+            CustomVocabulary.terms(vocabulary),
+            replacementTargets = replacementTargets,
+            contextTerms = contextTerms,
+        ),
     )
 
 /**
  * What a sherpa-onnx [model] is told to listen for: the user's [vocabulary] and
- * [replacementTargets] as Qwen3-ASR's or Parakeet Unified's hotwords, and
- * nothing for a model that takes none. Read per dictation, like Whisper's
+ * [replacementTargets], then the dictation's [contextTerms], as Qwen3-ASR's or
+ * Parakeet Unified's hotwords, and nothing for a model that takes none. The
+ * context terms never switch Unified into hotword search on their own (see
+ * [RecognitionHints.sherpaHotwords]). Read per dictation, like Whisper's
  * prompt, so a list saved between two dictations applies to the second.
  */
 internal fun sherpaHotwords(
     model: LocalModelDescriptor,
     vocabulary: String,
     replacementTargets: List<String> = emptyList(),
+    contextTerms: List<String> = emptyList(),
 ): String? =
-    RecognitionHints.sherpaHotwords(
-        model,
-        RecognitionHints.terms(CustomVocabulary.terms(vocabulary), replacementTargets = replacementTargets),
-    )
+    RecognitionHints.sherpaHotwords(model, CustomVocabulary.terms(vocabulary), replacementTargets, contextTerms)
 
 /**
  * Whether [model]'s recognizer is built to take [hotwords] in its search: only
@@ -1109,6 +1137,20 @@ internal fun sherpaHotwords(
  * while there are hotwords, so a user without custom words keeps greedy
  * search. See [SherpaSearch].
  */
+/**
+ * Whether [model]'s recognizer is built for hotword (beam) search, as warm-up,
+ * [LocalModelManager.prepare], the incremental session and [LocalModelManager.transcribe]
+ * all ask for it: the user's own lists alone. It takes no terms from around
+ * the cursor on purpose; they are read after a warm-up has already asked, and
+ * a different answer at decode time would load the model a second time (see
+ * [RecognitionHints.sherpaHotwords]).
+ */
+internal fun hotwordSearchFor(
+    model: LocalModelDescriptor,
+    vocabulary: String,
+    replacementTargets: List<String>,
+): Boolean = takesHotwordSearch(model, sherpaHotwords(model, vocabulary, replacementTargets))
+
 internal fun takesHotwordSearch(model: LocalModelDescriptor, hotwords: String?): Boolean =
     model.hotwordVocabularyFile != null && !hotwords.isNullOrEmpty()
 

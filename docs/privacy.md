@@ -49,6 +49,60 @@ the transcript is stored. Diagnostics record only a duration, a yes/no for
 whether the text was decoded before Finish, and how many milliseconds of
 trailing silence were left out.
 
+### Text around the cursor (Use nearby text for spelling)
+
+**Use nearby text for spelling** is on by default, next to Custom words
+(iOS: Settings › Dictation › Custom words; Android: Settings › Words ›
+Dictation). It applies only to a dictation started from the VocaPhone
+keyboard, never to the floating mic, Shortcuts or the in-app scratchpad.
+
+- **What is read, and when.** Once, when the user taps Dictate: at most 1,000
+  characters before and 1,000 after the cursor of the field being dictated
+  into. On iOS that is `documentContextBeforeInput` /
+  `documentContextAfterInput`, which iOS itself may cut shorter; on Android
+  `getTextBeforeCursor` / `getTextAfterCursor`, called once off the main
+  thread and given 300 ms to answer.
+- **What is kept from it.** Only names and identifiers (`ContextTerms` on both
+  platforms): camelCase, snake_case and kebab-case words, words with capitals
+  inside them (GitHub), words that start with two capitals (CUDA, OAuth), and
+  capitalized words that do not start a sentence and are not in the keyboard's
+  English word list. At most 100. The text itself is dropped as soon as the
+  terms are taken from it.
+- **Where the terms go.** On iOS the terms are extracted inside the keyboard
+  extension; the text never leaves it. The terms are written beside the
+  session record in the App Group container (`sessions/<id>.context`), and the
+  containing app reads and deletes that file in one step when it claims the
+  dictation. A file nobody took is deleted when the session is saved in any
+  state past "waiting for the app" (including when an unclaimed session
+  expires), when the session is deleted, and by the app's housekeeping sweep,
+  which removes any such file over an hour old with no session record. On Android the keyboard and the app share a process:
+  the text is read and the terms extracted there, and the terms are passed in
+  memory to that one dictation and nowhere else. On both, the app holds them
+  in memory until that dictation's transcript is finished, fails or is
+  cancelled, then forgets them.
+- **What they do.** They are the least important recognition hints
+  (`RecognitionHints`): the Whisper prompt and Qwen3-ASR's hotwords get them
+  after the user's own custom words, and only as room allows; Parakeet
+  Unified's hotwords too, but only while the user's own lists already have it
+  in hotword search. After the
+  user's own vocabulary is applied, a transcript word whose letters exactly
+  match a term is written the way the field writes it. Never a near miss, never
+  a single ordinary English word, never a code identifier made out of several
+  spoken words, and never against the user's own spelling of the same word.
+- **What never happens to them.** They are not stored beyond that hand-off,
+  not added to History, custom words, learned words or the personal
+  dictionary, not written to the diagnostic log or usage statistics, and not
+  sent anywhere: on a gateway route the gateway gets only the audio, and the
+  spelling pass runs on the phone afterwards.
+- **Where nothing is read.** With the setting off. On iOS, in any field where
+  typing intelligence is off: secure entry, password, new-password,
+  one-time-code and card-number content types, and number, phone and decimal
+  pads. On Android, where dictation is not offered at all (passwords and
+  PINs), in fields that set `IME_FLAG_NO_PERSONALIZED_LEARNING` (incognito
+  tabs, private messaging), and in fields whose hint or id names a secret
+  (one-time codes, card numbers, recovery phrases; the floating mic's list).
+  iOS gives a keyboard no equivalent of the incognito flag.
+
 **Fix grammar (English)** is off by default (Settings › Dictation › Output). It
 is only offered where the app already ships ONNX Runtime: the iOS app and the
 Android `full` and `x` builds, not the F-Droid build. Turning it on first
@@ -374,10 +428,13 @@ The iOS keyboard completes, corrects and predicts entirely on the device.
   cursor moves. iOS gives a keyboard extension no composing region, so this is
   the only way to know which word to replace. Neither is logged or stored.
   With Check grammar on, the last sentence or two of that context goes to the
-  containing app after a pause, as described above. After a dictation, the same
-  snapshot is compared off the main thread for up to 20 seconds to learn the
-  user's spelling fixes; only the pairs reach the app (Learning from
-  corrections, above).
+  containing app after a pause, as described above. When a dictation starts,
+  with Use nearby text on, the keyboard also reads up to 1,000 characters
+  either side of the cursor once and hands only the names and identifiers in
+  it to the app; see [Text around the cursor](#text-around-the-cursor-use-nearby-text-for-spelling).
+  After a dictation, the same snapshot is compared off the main thread for up
+  to 20 seconds to learn the user's spelling fixes; only the pairs reach the
+  app (Learning from corrections, above).
 - **Sensitive fields.** Suggestions, correction, prediction and learning are all
   switched off — not merely hidden — in password, new-password, one-time-code,
   card-number and number-pad fields.
@@ -415,11 +472,15 @@ corrections have a token. That window stays in memory, is never logged, and is
 not sent to the gateway. With Check grammar on, the keyboard also reads up to
 600 characters before the cursor once the user pauses, and checks the last
 sentence or two of it with the on-device grammar model in the same process;
-that text is never logged, stored or sent anywhere. With Learn from my
-corrections on, the 32-character read is widened for up to 20 seconds after a
-keyboard dictation so the user's spelling fixes in it can be learned (see
-Learning from corrections above); only the "heard → corrected" pairs are kept.
-Swipe typing matches the
+that text is never logged, stored or sent anywhere. When a dictation starts
+from the keyboard, with Use nearby text on, it reads up to 1,000 characters
+either side of the cursor once, off the main thread, and keeps only the names
+and identifiers in it for that dictation; see
+[Text around the cursor](#text-around-the-cursor-use-nearby-text-for-spelling).
+With Learn from my corrections on, the 32-character read is widened for up to
+20 seconds after a keyboard dictation so the user's spelling fixes in it can be
+learned (see Learning from corrections above); only the "heard → corrected"
+pairs are kept. Swipe typing matches the
 finger path against the same on-phone English word list and does not read the
 field. Swipe and suggestions
 are English only; the app does not download other keyboard language packs. The clipboard chip and

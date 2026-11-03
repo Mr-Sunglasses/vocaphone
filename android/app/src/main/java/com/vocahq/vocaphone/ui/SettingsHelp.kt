@@ -147,6 +147,20 @@ internal object SettingsHelp {
                 "ignoring case, in every language and every writing style except Raw, " +
                 "and Whisper, Qwen3-ASR and Parakeet Unified models listen for what " +
                 "they write.",
+            "Use nearby text for spelling: when you dictate from the VocaPhone " +
+                "keyboard, it reads up to 1,000 characters either side of the cursor " +
+                "in the field you are typing in and picks out names and code words — " +
+                "capitalized names that are not ordinary words, and words like GitHub, " +
+                "userId or max_retries. The text is dropped as soon as they are picked out.",
+            "Those words stay in memory for that one dictation. Whisper and Qwen3-ASR " +
+                "models listen for them, and Parakeet Unified too while your own words " +
+                "or replacements have it listening; a word you say whose letters match " +
+                "one exactly is spelled the same way. Your own words win when the two " +
+                "disagree, and an ordinary word is never changed. They are not saved, " +
+                "not added to History or your words, not logged and not sent anywhere, " +
+                "including your gateway. Nothing is read in password or PIN fields, in " +
+                "fields that ask keyboards not to learn (such as incognito tabs), or with " +
+                "this switch off.",
         ),
     )
 }

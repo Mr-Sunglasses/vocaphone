@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.core
 
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 
 /**
  * The editor fields into which the VocaPhone keyboard may offer dictation.
@@ -28,6 +29,22 @@ object ImeInputPolicy {
         if (!acceptsDictation(inputType)) return false
         if (inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0) return false
         return inputType and InputType.TYPE_MASK_VARIATION !in NON_PROSE_TEXT_VARIATIONS
+    }
+
+    /**
+     * Whether a dictation started here may read the text around the cursor
+     * for names to listen for ([ContextTerms]). Only where dictation itself is
+     * offered — never a password or PIN — and never in a field that asked the
+     * keyboard not to learn from it ([EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING],
+     * set by incognito tabs and private messaging), nor in one whose hint or
+     * id names a secret ([FieldClassifier]'s list: one-time codes, card
+     * numbers, recovery phrases).
+     */
+    fun allowsContextRead(inputType: Int, imeOptions: Int, hintText: CharSequence?, fieldName: String?): Boolean {
+        if (!acceptsDictation(inputType)) return false
+        if (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0) return false
+        return !FieldClassifier.matchesSensitiveName(hintText?.toString()) &&
+            !FieldClassifier.matchesSensitiveName(fieldName)
     }
 
     /** Used only to explain why the mic is hidden. Suggestions also stay off here. */
