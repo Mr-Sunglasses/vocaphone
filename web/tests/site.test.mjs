@@ -59,6 +59,23 @@ test("page has one clear title and a landmark structure", () => {
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
 });
 
+test("ties the app to the author's Person node and the VocaHQ organization", () => {
+  const personId = "https://jatinkrmalik.com/about/#person";
+  // Exact array membership; `.includes` on a URL string trips CodeQL's substring-sanitization check.
+  const lists = (urls, url) => urls.some((entry) => entry === url);
+  const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
+    (match) => JSON.parse(match[1]),
+  );
+  const app = blocks.find((block) => block["@type"] === "MobileApplication");
+  assert.ok(app, "MobileApplication JSON-LD missing");
+  for (const role of ["author", "creator"]) {
+    assert.equal(app[role]?.["@id"], personId, `app ${role}`);
+  }
+  assert.ok(lists(app.author.sameAs, "https://www.wikidata.org/wiki/Q142178778"), "app author sameAs");
+  assert.equal(app.publisher?.["@id"], "https://vocahq.com/#organization");
+  assert.equal(app.publisher?.name, "VocaHQ");
+});
+
 test("in-page links have matching section ids", () => {
   const anchors = [...html.matchAll(/href="#([\w-]+)"/g)].map((match) => match[1]);
   for (const anchor of anchors) {
