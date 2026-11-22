@@ -276,6 +276,63 @@
           "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
         }
       ]
+    },
+    "oruk-fourier-2b": {
+      "repository": "oruk/oruk-fourier-2b",
+      "revision": "3fda023e157ce7986f137f76fcf326ed6e08fa73",
+      "pathPrefix": "onnx/sherpa-int8",
+      "files": [
+        {
+          "path": "conv_frontend.onnx",
+          "size": 48080440,
+          "sha256": "19ddcb711237bba84f7aa385ce7c63320bcb736ce8888299064036d57a774bd9"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 5393503,
+          "sha256": "d252adc96e55aa858876896e20783a357fda4c38e216d5be1c7b42bf73c86e8b"
+        },
+        {
+          "path": "decoder.int8.onnx.data",
+          "size": 2032082944,
+          "sha256": "4625b41d68653f974af294b6ef5539c36e32d0477d0a2262a9157e275a09433f"
+        },
+        {
+          "path": "encoder.int8.onnx",
+          "size": 1670820,
+          "sha256": "61255ca9e30a52c0d1da59ade9327792f08e32849cb1570da19be9ed6760cef9"
+        },
+        {
+          "path": "encoder.int8.onnx.data",
+          "size": 306487296,
+          "sha256": "a11a260308504627190fbf662478eec9ff95cb36b3387f257892f6fb8886e8a1"
+        },
+        {
+          "path": "tokenizer/config.json",
+          "size": 2072,
+          "sha256": "9306077f32e1989f6128d12a0e471a3bd612389dbd5bff81305b8f558fee9901"
+        },
+        {
+          "path": "tokenizer/merges.txt",
+          "size": 1671853,
+          "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+        },
+        {
+          "path": "tokenizer/tokenizer.json",
+          "size": 11429377,
+          "sha256": "bd2a97b55c8f7f9c328c73ee9b9178771037e9f566dfca8e238a063d41cbac92"
+        },
+        {
+          "path": "tokenizer/tokenizer_config.json",
+          "size": 10386,
+          "sha256": "e8f0641c46b7c259b8d4a34097471dab636bd5d5062f480ed7c97a3d3b3981ee"
+        },
+        {
+          "path": "tokenizer/vocab.json",
+          "size": 3080118,
+          "sha256": "97dfe4fe392c23cda68fe01c60babe50a57c894fc0cf44d02c4048ad283499c3"
+        }
+      ]
     }
   }
 }

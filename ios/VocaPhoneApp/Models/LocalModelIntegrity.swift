@@ -34,6 +34,7 @@ enum LocalModelIntegrity {
     }
 
     struct SherpaModelManifest: Decodable, Sendable {
+        var pathPrefix: String? = nil
         let repository: String
         let revision: String
         let files: [ManifestFile]

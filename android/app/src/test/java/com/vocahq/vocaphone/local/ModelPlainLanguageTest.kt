@@ -26,6 +26,11 @@ class ModelPlainLanguageTest {
                 assertFalse("$id title says $word", plain.title.contains(word))
                 assertFalse("$id summary says $word", plain.summary.contains(word))
             }
+            if (id == "oruk-fourier-2b") {
+                assertEquals(ModelPlainLanguage.UNRATED, plain.accuracy)
+                assertEquals(ModelPlainLanguage.UNRATED, plain.speed)
+                return@forEach
+            }
             assertTrue("$id accuracy", plain.accuracy in 1..ModelPlainLanguage.MAXIMUM_RATING)
             assertTrue("$id speed", plain.speed in 1..ModelPlainLanguage.MAXIMUM_RATING)
         }

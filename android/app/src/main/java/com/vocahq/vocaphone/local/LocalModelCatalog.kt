@@ -213,6 +213,8 @@ data class LocalModelDescriptor(
     val detectsLanguage: Boolean = false,
     /** Whether short recordings may use a cropped whisper encoder window. */
     val cropsAudioContext: Boolean = false,
+    /** Optional remote directory stripped from the installed model paths. */
+    val pathPrefix: String? = null,
 ) {
     /**
      * Which languages this model can translate speech *into*.
@@ -614,8 +616,10 @@ object LocalModelCatalog {
         cropsAudioContext = !name.startsWith("medium") && !name.startsWith("large"),
     )
 
-    fun downloadUrl(model: LocalModelDescriptor, file: PinnedFile): String =
-        "https://huggingface.co/${model.repository}/resolve/${model.revision}/${file.path}"
+    fun downloadUrl(model: LocalModelDescriptor, file: PinnedFile): String {
+        val path = listOfNotNull(model.pathPrefix, file.path).joinToString("/")
+        return "https://huggingface.co/${model.repository}/resolve/${model.revision}/$path"
+    }
 
     /**
      * The first-run pick for [language], or null when the catalog has no

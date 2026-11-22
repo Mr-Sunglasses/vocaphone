@@ -646,6 +646,19 @@ enum LocalModelCatalog {
             detectsLanguageAutomatically: true
         ),
         .init(
+            id: "oruk-fourier-2b",
+            displayName: "Oruk Fourier 2B",
+            engine: .sherpaOnnx,
+            repository: "oruk/oruk-fourier-2b",
+            revision: "3fda023e157ce7986f137f76fcf326ed6e08fa73",
+            sherpaFamily: .qwen3Asr,
+            sizeBytes: 2_409_908_809,
+            minimumRamGB: 8,
+            languages: "English",
+            englishOnly: true,
+            languageCodesOverride: ["en"]
+        ),
+        .init(
             id: "zipformer-ko",
             displayName: "Zipformer Korean",
             engine: .sherpaOnnx,
@@ -1205,6 +1218,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
     case openAI
     case huggingFace
     case alibaba
+    case oruk
     case usefulSensors
     case sber
     case meta
@@ -1216,6 +1230,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
         case .openAI: "OpenAI"
         case .huggingFace: "Hugging Face"
         case .alibaba: "Alibaba"
+        case .oruk: "Oruk"
         case .usefulSensors: "Useful Sensors"
         case .sber: "Sber"
         case .meta: "Meta"
@@ -1227,6 +1242,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
 extension LocalModelDescriptor {
     /// Read from the identifier's family, which is stable across builds.
     var maker: ModelMaker {
+        if id.hasPrefix("oruk-") { return .oruk }
         if id.hasPrefix("omnilingual") { return .meta }
         if id.hasPrefix("openai_whisper") { return .openAI }
         if id.hasPrefix("moonshine") { return .usefulSensors }

@@ -18,6 +18,11 @@ struct ModelPlainLanguageTests {
                 #expect(!plain.title.contains(word), "\(id) title says \(word)")
                 #expect(!plain.summary.contains(word), "\(id) summary says \(word)")
             }
+            if id == "oruk-fourier-2b" {
+                #expect(plain.accuracy == ModelPlainLanguage.unrated)
+                #expect(plain.speed == ModelPlainLanguage.unrated)
+                continue
+            }
             #expect((1...ModelPlainLanguage.maximumRating).contains(plain.accuracy), "\(id)")
             #expect((1...ModelPlainLanguage.maximumRating).contains(plain.speed), "\(id)")
         }

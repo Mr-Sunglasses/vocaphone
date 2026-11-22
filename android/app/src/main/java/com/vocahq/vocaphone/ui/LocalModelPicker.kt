@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -1150,6 +1151,12 @@ private fun ModelDetailSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(model.plain.summary, style = MaterialTheme.typography.bodyMedium)
+            if (model.id == "oruk-fourier-2b") {
+                val uriHandler = LocalUriHandler.current
+                TextButton(onClick = {
+                    uriHandler.openUri("https://huggingface.co/oruk/oruk-fourier-2b#vocaphone-local-workplace-dictation")
+                }) { Text("Oruk license and workplace permission") }
+            }
             ModelRatings(model.plain)
             if (recommended) {
                 Text(
@@ -1362,6 +1369,7 @@ private fun RetiredModelNotice(
  */
 @Composable
 internal fun ModelRatings(plain: ModelPlainLanguage) {
+    if (plain.accuracy == ModelPlainLanguage.UNRATED || plain.speed == ModelPlainLanguage.UNRATED) return
     Row(
         modifier = Modifier.clearAndSetSemantics {
             contentDescription = plain.accessibilityRatings

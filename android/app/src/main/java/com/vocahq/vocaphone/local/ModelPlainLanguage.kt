@@ -31,6 +31,7 @@ data class ModelPlainLanguage(
 
     companion object {
         const val MAXIMUM_RATING = 4
+        const val UNRATED = 0
 
         /**
          * Every catalog id. `ModelPlainLanguageTest` fails when a model is added
@@ -97,6 +98,11 @@ data class ModelPlainLanguage(
                 "One model for 30 languages and many Chinese dialects, and tells them apart " +
                     "by itself. Slower, and a large download.",
                 accuracy = 3, speed = 1,
+            ),
+            "oruk-fourier-2b" to ModelPlainLanguage(
+                "English dictation on this device",
+                "A large English model for local dictation. Oruk permits dictating work documents in vocaphone.",
+                accuracy = UNRATED, speed = UNRATED,
             ),
             "canary-180m-flash" to ModelPlainLanguage(
                 "English, German, Spanish, French",

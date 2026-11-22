@@ -125,6 +125,21 @@ class LocalModelIntegrityTest {
     }
 
     @Test
+    fun fourierFetchesTheExternalGraphsFromTheOriginalRepository() {
+        val model = requireNotNull(LocalModelCatalog.find("oruk-fourier-2b"))
+        assertTrue(model.englishOnly)
+        assertTrue(model.translationTargets.isEmpty())
+        assertEquals(10, model.files.size)
+        for (path in listOf("decoder.int8.onnx.data", "encoder.int8.onnx.data", "tokenizer/vocab.json")) {
+            val pinned = model.files.single { it.path == path }
+            assertEquals(
+                "https://huggingface.co/oruk/oruk-fourier-2b/resolve/${model.revision}/onnx/sherpa-int8/$path",
+                LocalModelCatalog.downloadUrl(model, pinned),
+            )
+        }
+    }
+
+    @Test
     fun catalogPinsAreWellFormedAndUnique() {
         val ids = LocalModelCatalog.all.map { it.id }
         assertEquals(ids.size, ids.toSet().size)

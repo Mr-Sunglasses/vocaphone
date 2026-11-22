@@ -889,6 +889,12 @@ struct LocalModelPicker: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if state == .notDownloaded, model.id == "oruk-fourier-2b",
+                       let url = URL(string: "https://huggingface.co/oruk/oruk-fourier-2b#vocaphone-local-workplace-dictation") {
+                        Link("Oruk license and workplace permission", destination: url)
+                            .font(.footnote)
+                            .buttonStyle(.borderless)
+                    }
                     ModelRatingsView(plain: model.plain)
                     Text(model.technicalName)
                         .font(.caption)
@@ -1229,14 +1235,16 @@ struct ModelRatingsView: View {
     let plain: ModelPlainLanguage
 
     var body: some View {
-        HStack(spacing: VocaMetrics.padding - VocaMetrics.tight) {
-            rating("Accuracy", plain.accuracy)
-            rating("Speed", plain.speed)
+        if plain.accuracy != ModelPlainLanguage.unrated && plain.speed != ModelPlainLanguage.unrated {
+            HStack(spacing: VocaMetrics.padding - VocaMetrics.tight) {
+                rating("Accuracy", plain.accuracy)
+                rating("Speed", plain.speed)
+            }
+            .font(.caption)
+            .foregroundStyle(Color.vocaSecondaryText)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(plain.accessibilityRatings)
         }
-        .font(.caption)
-        .foregroundStyle(Color.vocaSecondaryText)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(plain.accessibilityRatings)
     }
 
     private func rating(_ label: String, _ value: Int) -> some View {
@@ -1287,7 +1295,7 @@ struct ModelMakerTile: View {
         case .openAI: "MakerOpenAI"
         case .huggingFace: "MakerHuggingFace"
         case .alibaba: "MakerAlibaba"
-        case .usefulSensors, .sber, .meta, .nextGenKaldi: nil
+        case .usefulSensors, .sber, .meta, .nextGenKaldi, .oruk: nil
         }
     }
 
@@ -1297,6 +1305,7 @@ struct ModelMakerTile: View {
         case .sber: "S"
         case .meta: "M"
         case .nextGenKaldi: "K2"
+        case .oruk: "O"
         default: ""
         }
     }
@@ -1304,7 +1313,7 @@ struct ModelMakerTile: View {
     private var tileColor: Color {
         switch maker {
         case .nvidia: Color(red: 118 / 255, green: 185 / 255, blue: 0)
-        case .openAI: Color(white: 0.12)
+        case .openAI, .oruk: Color(white: 0.12)
         case .huggingFace: Color(red: 1, green: 210 / 255, blue: 30 / 255)
         case .alibaba: Color(red: 1, green: 106 / 255, blue: 0)
         case .usefulSensors: Color(red: 91 / 255, green: 79 / 255, blue: 219 / 255)

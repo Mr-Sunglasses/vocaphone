@@ -29,9 +29,12 @@ def plan(model_id: str, out: Path) -> list[tuple[str, Path, int, str]]:
     model = models.get(model_id)
     if model is None:
         sys.exit(f"{model_id} is not pinned in {PINS.name}: {', '.join(models)}")
+    base = f"https://huggingface.co/{model['repository']}/resolve/{model['revision']}"
+    if prefix := model.get("pathPrefix"):
+        base += f"/{prefix}"
     return [
         (
-            f"https://huggingface.co/{model['repository']}/resolve/{model['revision']}/{file['path']}",
+            f"{base}/{file['path']}",
             out / model_id / file["path"],
             file["size"],
             file["sha256"],

@@ -1533,7 +1533,7 @@ final class LocalModelManager {
                     repository: manifest.repository,
                     revision: manifest.revision,
                     files: manifest.files,
-                    pathPrefix: nil,
+                    pathPrefix: manifest.pathPrefix,
                     progressTracker: progressTracker
                 )
             }

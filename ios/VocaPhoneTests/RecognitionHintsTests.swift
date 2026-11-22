@@ -197,7 +197,7 @@ struct RecognitionHintsTests {
         #expect(RecognitionHints.sherpaHotwords(for: unified, terms: terms) == "Kanishk/Tailscale")
         #expect(RecognitionHints.sherpaHotwords(for: unified, terms: []) == nil)
         let others = LocalModelCatalog.all.filter {
-            $0.engine == .sherpaOnnx && $0.id != qwen.id && $0.id != unified.id
+            $0.engine == .sherpaOnnx && $0.sherpaFamily != .qwen3Asr && $0.id != unified.id
         }
         #expect(others.count > 5)
         for model in others {
@@ -208,7 +208,7 @@ struct RecognitionHintsTests {
     @Test func whisperQwen3AndUnifiedAreTheModelsAVocabularyReachesWhileDecoding() throws {
         let reached = Set(LocalModelCatalog.all.filter(\.supportsCustomVocabulary).map(\.id))
         let whisper = Set(LocalModelCatalog.all.filter { $0.engine == .whisperKit }.map(\.id))
-        #expect(reached == whisper.union(["qwen3-asr-0.6b", "parakeet-unified-0.6b-en"]))
+        #expect(reached == whisper.union(["qwen3-asr-0.6b", "oruk-fourier-2b", "parakeet-unified-0.6b-en"]))
     }
 
     // MARK: - Transducer search

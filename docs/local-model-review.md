@@ -632,3 +632,13 @@ the keyboard with the containing app in the background. Confirm the last
 sentence is inserted, a failed decode remains retryable, and no jetsam event
 occurs. Also exercise model retirement with installed older models and the new
 Omnilingual download on physical iOS and Android devices.
+
+### Oruk Fourier 2B (English)
+
+The optional [Fourier pack](https://huggingface.co/oruk/oruk-fourier-2b) uses
+the existing Qwen3-ASR engine. It downloads 2.41 GB once. The two external ONNX
+data files must stay beside the encoder and decoder. Oruk distributes the
+weights under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/);
+Oruk additionally permits [local workplace dictation in VocaPhone](https://huggingface.co/oruk/oruk-fourier-2b#vocaphone-local-workplace-dictation), including commercial work. Other commercial uses require separate permission. The picker offers the model on
+devices with at least 8 GB RAM and leaves its ratings blank pending comparable
+on-device measurements.

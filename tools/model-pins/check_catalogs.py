@@ -57,6 +57,7 @@ def read_android() -> dict[str, dict]:
         models[model_id] = {
             "repository": re.search(r'repository = "([^"]+)"', block).group(1),
             "revision": re.search(r'revision = "([^"]+)"', block).group(1),
+            "pathPrefix": next(iter(re.findall(r'pathPrefix = "([^"]+)"', block)), None),
             "sizeBytes": _int(re.search(r"sizeBytes = ([\d_]+)L", block).group(1)),
             "files": {
                 path: (_int(size), digest)
@@ -206,6 +207,8 @@ def main() -> int:
         if model_id not in sherpa_pins:
             continue
         pin = sherpa_pins[model_id]
+        if pin.get("pathPrefix") != a["pathPrefix"]:
+            problems.append(f"{model_id}: remote folder differs between Android and iOS")
         if pin["repository"] != a["repository"]:
             problems.append(f"{model_id}: sherpa_model_pins repository disagrees with the catalog")
         if pin["revision"] != a["revision"]:

@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.core
 
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelEngine
+import com.vocahq.vocaphone.local.SherpaFamily
 import com.vocahq.vocaphone.local.whisperPrompt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -204,7 +205,7 @@ class RecognitionHintsTest {
         assertEquals("Kanishk/Tailscale", RecognitionHints.sherpaHotwords(unified, terms))
         assertNull(RecognitionHints.sherpaHotwords(unified, emptyList()))
         val others = LocalModelCatalog.all.filter {
-            it.engine == LocalModelEngine.SHERPA_ONNX && it.id != qwen.id && it.id != unified.id
+            it.engine == LocalModelEngine.SHERPA_ONNX && it.sherpaFamily != SherpaFamily.QWEN3_ASR && it.id != unified.id
         }
         assertTrue(others.size > 5)
         others.forEach { assertNull(it.id, RecognitionHints.sherpaHotwords(it, terms)) }
@@ -214,7 +215,7 @@ class RecognitionHintsTest {
     fun `whisper qwen3 and unified are the models a vocabulary reaches while decoding`() {
         val reached = LocalModelCatalog.all.filter { it.supportsCustomVocabulary }.map { it.id }.toSet()
         val whisper = LocalModelCatalog.all.filter { it.engine == LocalModelEngine.WHISPER }.map { it.id }.toSet()
-        assertEquals(whisper + setOf("qwen3-asr-0.6b", "parakeet-unified-0.6b-en"), reached)
+        assertEquals(whisper + setOf("qwen3-asr-0.6b", "oruk-fourier-2b", "parakeet-unified-0.6b-en"), reached)
         assertFalse(LocalModelCatalog.find("parakeet-tdt-0.6b-v2-en")!!.supportsCustomVocabulary)
     }
 }
