@@ -100,36 +100,24 @@ struct KeyboardDictationTests {
 
     // MARK: What the app shares with the keyboard
 
-    @Test func keyboardSkipsTheWebSocketOnlyOnAFreshNo() {
-        defer { KeyboardGatewayAccess.clear() }
-        let gateway = URL(string: "http://gateway.local:8765")!
-        KeyboardGatewayAccess.publish(baseURL: gateway, maximumDurationSeconds: 300)
-        #expect(KeyboardGatewayAccess.shouldAttemptStreaming(for: gateway))
-
-        KeyboardGatewayAccess.publish(
-            baseURL: gateway, maximumDurationSeconds: 300,
-            streamingSupported: false, streamingCheckedAt: Date()
-        )
-        #expect(!KeyboardGatewayAccess.shouldAttemptStreaming(for: gateway))
-        #expect(KeyboardGatewayAccess.reportedMaximumDurationSeconds == 300)
-        // An hour later the answer is stale and the socket is tried again.
-        #expect(KeyboardGatewayAccess.shouldAttemptStreaming(
-            for: gateway, now: Date().addingTimeInterval(3_600)
-        ))
+    @Test func streamingIsTriedOnlyWhenTheCurrentModelCanStream() {
+        // Read from a health response taken for this dictation: a model swapped
+        // on the gateway is followed at once, and an older gateway that says
+        // nothing still negotiates on the socket.
+        #expect(GatewayStreamingPolicy.attemptsStream(reported: true))
+        #expect(!GatewayStreamingPolicy.attemptsStream(reported: false))
+        #expect(GatewayStreamingPolicy.attemptsStream(reported: nil))
     }
 
     @Test func anotherGatewayForgetsWhatTheLastOneSaid() {
         defer { KeyboardGatewayAccess.clear() }
         let first = URL(string: "http://first.local:8765")!
         let second = URL(string: "http://second.local:8765")!
-        KeyboardGatewayAccess.publish(
-            baseURL: first, maximumDurationSeconds: 60,
-            streamingSupported: false, streamingCheckedAt: Date()
-        )
+        KeyboardGatewayAccess.publish(baseURL: first, maximumDurationSeconds: 60)
+        #expect(KeyboardGatewayAccess.reportedMaximumDurationSeconds == 60)
         KeyboardGatewayAccess.publish(baseURL: second, maximumDurationSeconds: nil)
         #expect(KeyboardGatewayAccess.baseURL == second)
         #expect(KeyboardGatewayAccess.reportedMaximumDurationSeconds == nil)
-        #expect(KeyboardGatewayAccess.shouldAttemptStreaming(for: second))
         KeyboardGatewayAccess.clear()
         #expect(KeyboardGatewayAccess.baseURL == nil)
     }

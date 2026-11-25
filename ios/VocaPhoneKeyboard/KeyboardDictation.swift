@@ -219,6 +219,7 @@ final class KeyboardDictation {
             tappedAt: .now
         )
         self.fallback = fallback
+        openTransport(for: template)
         let warm = capture?.isWarm == true
         let capture = capture ?? KeyboardMicrophoneCapture(host: host)
         capture.attach(to: host)
@@ -254,6 +255,42 @@ final class KeyboardDictation {
             self?.giveUp(id)
         }
         capture.start()
+    }
+
+    /// Connects to the gateway at the tap, alongside the microphone starting
+    /// rather than after it: on a slow link the handshake is a couple of round
+    /// trips, and a short dictation used to end before it did. Audio waits in
+    /// the stream until the transport is ready. A microphone that then fails
+    /// to start cancels it, and the gateway's half-made session is either
+    /// reused by vocaphone (same session ID) or swept up with its other
+    /// abandoned sessions.
+    private func openTransport(for template: SessionRecord) {
+        guard var current = dictation else { return }
+        let (chunks, continuation) = AsyncStream.makeStream(
+            of: Data.self, bufferingPolicy: .bufferingOldest(Self.streamBacklogChunks)
+        )
+        current.chunks = continuation
+        dictation = current
+        let id = template.sessionID
+        let client = current.gateway.client
+        let language = template.language
+        let style = template.style
+        let bridge = current.bridge
+        let uploadFinished: @Sendable () async -> Void = { [weak self] in
+            await self?.uploadBodyFinished(id)
+        }
+        bridgeStarted = Task {
+            await bridge.start(chunks: chunks) {
+                // Streaming or not is decided by what the gateway says about
+                // the model loaded now, every time: a model changed since the
+                // last dictation is never assumed either way.
+                try await client.negotiatedRecordingTransport(
+                    sessionID: id, language: language, style: style,
+                    sampleRate: Int(CaptureFormat.sampleRate),
+                    onUploadFinished: uploadFinished
+                )
+            }
+        }
     }
 
     /// The microphone did not start: nothing was saved, so vocaphone takes the
@@ -296,30 +333,8 @@ final class KeyboardDictation {
             metadata: .keyboardCaptureStarted(milliseconds: Self.milliseconds(since: current.tappedAt), warm: warm)
         )
 
-        let (chunks, continuation) = AsyncStream.makeStream(
-            of: Data.self, bufferingPolicy: .bufferingOldest(Self.streamBacklogChunks)
-        )
-        current.chunks = continuation
         dictation = current
         let id = record.sessionID
-        let client = current.gateway.client
-        let attemptStream = KeyboardGatewayAccess.shouldAttemptStreaming(for: current.gateway.baseURL)
-        let language = record.language
-        let style = record.style
-        let bridge = current.bridge
-        let uploadFinished: @Sendable () async -> Void = { [weak self] in
-            await self?.uploadBodyFinished(id)
-        }
-        bridgeStarted = Task {
-            await bridge.start(chunks: chunks) {
-                try await client.recordingTransport(
-                    sessionID: id, language: language, style: style,
-                    sampleRate: Int(CaptureFormat.sampleRate),
-                    attemptTranscriptionStream: attemptStream,
-                    onUploadFinished: uploadFinished
-                )
-            }
-        }
 
         let cap = RecordingLengthLimit.effectiveSeconds(
             choice: KeyboardPreferences.maximumRecordingLength,

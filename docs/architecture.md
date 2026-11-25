@@ -320,10 +320,15 @@ While the user speaks, the keyboard streams to the gateway exactly as the app
 does, through the app's own `StreamingAudioBridge` and `GatewayClient` (the
 four `VocaPhoneApp/Networking` files are compiled into the keyboard target):
 the incremental WebSocket when the model decodes as it hears, otherwise the
-streamed WAV PUT with `?finish=true`. Whether to try the WebSocket follows
-`GatewayStreamingPolicy` on the capability the app mirrors into
-`KeyboardGatewayAccess`. Finish therefore only closes the stream; the gateway
-already has the audio. The keyboard buffers at most about 30 seconds of audio
+streamed WAV PUT with `?finish=true`. The transport opens at the Dictate tap,
+alongside the microphone starting, and audio waits in the stream until it is
+ready. Which one is decided per dictation by
+`GatewayClient.negotiatedRecordingTransport`: the health request the upload
+needs anyway also says whether the loaded model streams, so a batch model
+skips the WebSocket attempt it would refuse, and a model changed on the
+gateway is followed by the next dictation — nothing is cached. A gateway too
+old to say tries the socket first, as before. Finish therefore only closes the
+stream; the gateway already has the audio. The keyboard buffers at most about 30 seconds of audio
 for a slow network, then abandons the stream for the file, as does any stream
 failure. The transport opens once the microphone has started, so a short
 dictation can end before its handshake does; Finish then waits up to three

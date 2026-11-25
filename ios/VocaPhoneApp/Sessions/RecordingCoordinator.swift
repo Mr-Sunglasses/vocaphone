@@ -807,17 +807,9 @@ final class RecordingCoordinator {
     /// so it needs the address the app uses; the token is already in the
     /// shared keychain group.
     private func publishGatewayToKeyboard(_ baseURL: URL) {
-        let defaults = UserDefaults.standard
-        let streamingKnown = defaults.bool(forKey: GatewayStatusPreferences.streamingSupportKnownKey)
-            && defaults.string(forKey: GatewayStatusPreferences.streamingSupportBaseURLKey)
-                == baseURL.absoluteString
         KeyboardGatewayAccess.publish(
             baseURL: baseURL,
-            maximumDurationSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: baseURL),
-            streamingSupported: streamingKnown
-                ? defaults.bool(forKey: GatewayStatusPreferences.streamingSupportedKey) : nil,
-            streamingCheckedAt: streamingKnown
-                ? defaults.object(forKey: GatewayStatusPreferences.streamingSupportCheckedAtKey) as? Date : nil
+            maximumDurationSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: baseURL)
         )
     }
 

@@ -11,8 +11,6 @@ enum KeyboardGatewayAccess {
     static let baseURLKey = "keyboardGatewayBaseURL"
     static let maximumDurationKey = "keyboardGatewayMaximumDurationSeconds"
     static let enabledKey = "keyboardRecordsForGateway"
-    static let streamingSupportedKey = "keyboardGatewayStreamingSupported"
-    static let streamingCheckedAtKey = "keyboardGatewayStreamingCheckedAt"
 
     nonisolated(unsafe) private static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -39,43 +37,18 @@ enum KeyboardGatewayAccess {
         return seconds > 0 ? seconds : nil
     }
 
-    /// Whether to open the incremental-decoding WebSocket before falling back
-    /// to the streamed upload, by the same rule the app uses
-    /// (``GatewayStreamingPolicy``): only a fresh "not supported" skips it.
-    static func shouldAttemptStreaming(for baseURL: URL, now: Date = Date()) -> Bool {
-        let known = defaults?.object(forKey: streamingSupportedKey) as? Bool
-        return GatewayStreamingPolicy.shouldAttemptStreaming(
-            supported: known,
-            checkedAt: defaults?.object(forKey: streamingCheckedAtKey) as? Date,
-            cachedBaseURL: Self.baseURL?.absoluteString,
-            currentBaseURL: baseURL,
-            now: now
-        )
-    }
-
-    static func publish(
-        baseURL: URL,
-        maximumDurationSeconds: Int?,
-        streamingSupported: Bool? = nil,
-        streamingCheckedAt: Date? = nil
-    ) {
+    static func publish(baseURL: URL, maximumDurationSeconds: Int?) {
         if defaults?.string(forKey: baseURLKey) != baseURL.absoluteString {
             defaults?.removeObject(forKey: maximumDurationKey)
-            defaults?.removeObject(forKey: streamingSupportedKey)
-            defaults?.removeObject(forKey: streamingCheckedAtKey)
         }
         defaults?.set(baseURL.absoluteString, forKey: baseURLKey)
         if let maximumDurationSeconds, maximumDurationSeconds > 0 {
             defaults?.set(maximumDurationSeconds, forKey: maximumDurationKey)
         }
-        if let streamingSupported, let streamingCheckedAt {
-            defaults?.set(streamingSupported, forKey: streamingSupportedKey)
-            defaults?.set(streamingCheckedAt, forKey: streamingCheckedAtKey)
-        }
     }
 
     static func clear() {
-        for key in [baseURLKey, maximumDurationKey, streamingSupportedKey, streamingCheckedAtKey] {
+        for key in [baseURLKey, maximumDurationKey] {
             defaults?.removeObject(forKey: key)
         }
     }

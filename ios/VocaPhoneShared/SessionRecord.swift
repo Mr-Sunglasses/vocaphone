@@ -495,6 +495,13 @@ enum SessionPollingPolicy {
 enum GatewayStreamingPolicy {
     static let capabilityFreshnessInterval: TimeInterval = 5 * 60
 
+    /// From a health response read just now: try the WebSocket unless the
+    /// gateway says its loaded model cannot stream. Silence (an older
+    /// gateway) still negotiates on the socket.
+    static func attemptsStream(reported supported: Bool?) -> Bool {
+        supported != false
+    }
+
     static func shouldAttemptStreaming(
         supported: Bool?,
         checkedAt: Date?,

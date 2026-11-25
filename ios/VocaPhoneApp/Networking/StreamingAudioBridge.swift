@@ -51,6 +51,35 @@ extension GatewayClient {
         )
         return RecordingUploadTransport(upload: upload, client: self, sessionID: sessionID)
     }
+
+    /// The transport the gateway's *current* model can take, asked fresh: one
+    /// health request, which the upload path needs anyway, says whether the
+    /// engine is ready and whether it decodes as it hears. Streaming is tried
+    /// only when it says so, or says nothing (a gateway older than the field);
+    /// a batch model goes straight to the upload, skipping the WebSocket
+    /// attempt it would refuse. Nothing is cached, so changing the model on
+    /// the gateway is followed by the very next dictation.
+    func negotiatedRecordingTransport(
+        sessionID: UUID, language: String, style: String, sampleRate: Int,
+        onUploadFinished: @escaping @Sendable () async -> Void = {}
+    ) async throws -> any GatewayRecordingTransport {
+        let health = try await health()
+        guard health.engineReady else { throw GatewayError.api(status: 503, code: "engine_not_ready") }
+        if GatewayStreamingPolicy.attemptsStream(reported: health.streamingSupported) {
+            do {
+                return try await startAudioStream(
+                    sessionID: sessionID, language: language, style: style, sampleRate: sampleRate
+                )
+            } catch {
+                try Task.checkCancellation()
+            }
+        }
+        let upload = try await startRecordingUpload(
+            sessionID: sessionID, language: language, style: style,
+            checkHealth: false, onUploadFinished: onUploadFinished
+        )
+        return RecordingUploadTransport(upload: upload, client: self, sessionID: sessionID)
+    }
 }
 
 /// One bounded, ordered consumer for either incremental recognition or HTTP
