@@ -482,11 +482,9 @@ internal fun VocaPhoneKeyboard(
         val swipeUndo = heldMs == 0L && swipeArmed
         if (heldMs == 0L) {
             val before = editorText.before
-            val composing = keyboardState.composing
             deleteHoldBefore[0] = when {
-                // The read can predate the word being typed; the word is ours.
-                composing.isNotEmpty() && !before.endsWith(composing) -> before + composing
                 before.isNotEmpty() -> before
+                keyboardState.composing.isNotEmpty() -> keyboardState.composing
                 else -> ""
             }
             swipeChoices = emptyList()
@@ -527,9 +525,11 @@ internal fun VocaPhoneKeyboard(
 
     /** Delete slid left: [steps] words deleted from where the press left the text. */
     fun handleDeleteSlide(steps: Int) {
-        // A fresh read when the slide starts, not the cached window with the
-        // composing word appended: that merge could double part of the word.
-        val slide = deleteSlide[0] ?: DeleteSlide(readTextBeforeCursor() ?: deleteHoldBefore[0]).also {
+        // A fresh read when the slide starts: the cached window can predate
+        // the word being typed, and a slide counted against it would delete
+        // text the user never meant and type back words they never wrote. If
+        // the editor will not say, the slide does nothing rather than guess.
+        val slide = deleteSlide[0] ?: DeleteSlide(readTextBeforeCursor() ?: return).also {
             deleteSlide[0] = it
             clearSwipe()
             learnedUndo[0] = null
