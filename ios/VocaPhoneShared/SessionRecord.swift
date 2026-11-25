@@ -175,6 +175,12 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// send the file as if it were the whole recording. Optional so records
     /// written before this field still decode.
     var fileIncompleteUntold: Bool?
+    /// Set when the keyboard recorded this session itself and sends it to the
+    /// gateway without vocaphone (`KeyboardDictation`). The app never claims,
+    /// finishes or uploads such a session: the keyboard is its only writer
+    /// until it ends. Optional so records written before this field still
+    /// decode.
+    var capturedInKeyboard: Bool?
 
     init(
         sessionID: UUID = UUID(),
@@ -203,6 +209,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         insertionInterrupted = nil
         recordedSeconds = nil
         fileIncompleteUntold = nil
+        capturedInKeyboard = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {
@@ -239,7 +246,9 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// stopped replying — and without a way out the record stays non-terminal
     /// for the life of the install. See `SessionExpiryPolicy`.
     private static let allowedTransitions: [SessionState: Set<SessionState>] = [
-        .idle: [.launchingApp, .canceled],
+        // Straight to recording when the keyboard records the session itself:
+        // there is no app to launch.
+        .idle: [.launchingApp, .recording, .canceled],
         // A dictation can also be known impossible before it records: on-device
         // transcription is selected and its model is not on this iPhone. Failing
         // there keeps the microphone closed rather than recording audio that

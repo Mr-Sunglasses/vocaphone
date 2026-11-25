@@ -29,6 +29,20 @@
   <string>$(MARKETING_VERSION)</string>
   <key>CFBundleVersion</key>
   <string>$(CURRENT_PROJECT_VERSION)</string>
+  <!-- The keyboard records gateway dictations itself through WebKit
+       (KeyboardMicrophoneCapture); WebKit refuses getUserMedia in a bundle
+       without this string. The permission itself is vocaphone's. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>vocaphone records your dictation and turns it into text on this iPhone or on a gateway you run. Audio is deleted once the transcript is saved.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Only to reach a gateway on your network. Skip this if you transcribe on this iPhone.</string>
+  <!-- Same as the app: GatewayEndpoint.isPrivateNetworkHost is the real gate
+       for plain HTTP, and ATS has no CIDR exception for tailnet addresses. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+  </dict>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionAttributes</key>

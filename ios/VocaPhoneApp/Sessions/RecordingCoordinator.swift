@@ -649,6 +649,9 @@ final class RecordingCoordinator {
         guard var record = activeRecord, record.canRetry else { return }
         do {
             record.error = nil
+            // The app takes a keyboard recording over: from here it is the
+            // only writer, and no keyboard may treat it as its own or orphaned.
+            record.capturedInKeyboard = nil
             try record.transition(to: .uploading)
             try commit(&record)
             activeRecord = record
@@ -797,6 +800,25 @@ final class RecordingCoordinator {
 
     func updateGateway(baseURL: URL, token: String) {
         gatewayClient = GatewayClient(baseURL: baseURL, token: token)
+        publishGatewayToKeyboard(baseURL)
+    }
+
+    /// The keyboard records gateway dictations itself (`KeyboardDictation`),
+    /// so it needs the address the app uses; the token is already in the
+    /// shared keychain group.
+    private func publishGatewayToKeyboard(_ baseURL: URL) {
+        let defaults = UserDefaults.standard
+        let streamingKnown = defaults.bool(forKey: GatewayStatusPreferences.streamingSupportKnownKey)
+            && defaults.string(forKey: GatewayStatusPreferences.streamingSupportBaseURLKey)
+                == baseURL.absoluteString
+        KeyboardGatewayAccess.publish(
+            baseURL: baseURL,
+            maximumDurationSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: baseURL),
+            streamingSupported: streamingKnown
+                ? defaults.bool(forKey: GatewayStatusPreferences.streamingSupportedKey) : nil,
+            streamingCheckedAt: streamingKnown
+                ? defaults.object(forKey: GatewayStatusPreferences.streamingSupportCheckedAtKey) as? Date : nil
+        )
     }
 
     /// A gateway configured last week may be unreachable today, so the setup
@@ -817,6 +839,7 @@ final class RecordingCoordinator {
             GatewayStatusPreferences.storeLanguageSupport(nil)
             GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
             GatewayStatusPreferences.clearMaximumDuration()
+            KeyboardGatewayAccess.clear()
             return
         }
         let client = GatewayClient(baseURL: baseURL, token: token)
@@ -837,6 +860,7 @@ final class RecordingCoordinator {
                 for: baseURL
             )
             GatewayStatusPreferences.storeMaximumDuration(health, for: baseURL)
+            publishGatewayToKeyboard(baseURL)
         } catch let GatewayError.api(status, _) where status == 401 {
             GatewayStatusPreferences.store(
                 message: "Gateway reachable, but the pairing token was rejected.",
@@ -1354,12 +1378,17 @@ final class RecordingCoordinator {
     }
 
     private func retrySession(id: UUID) {
-        guard let record = try? store.load(id),
+        guard var record = try? store.load(id),
               record.state == .uploading,
               record.localAudioReference != nil
         else {
             message = "The preserved recording is no longer retryable."
             return
+        }
+        if record.capturedInKeyboard == true {
+            // Taken over by the app, as in `retryPreservedRecording`.
+            record.capturedInKeyboard = nil
+            try? commit(&record)
         }
         activeRecord = record
         startPipeline(record)
@@ -1467,6 +1496,7 @@ final class RecordingCoordinator {
     }
 
     private func finalizeAndTranscribe(_ incoming: SessionRecord) async {
+        let finishStarted = ContinuousClock.now
         // Finishing usually runs with this app behind whatever the user is
         // typing into, and once Quick Dictation stops standing by, the audio
         // session is released below — after which nothing keeps the process
@@ -1640,6 +1670,7 @@ final class RecordingCoordinator {
                 try commit(&record)
                 activeRecord = record
                 DiagnosticLog.record(.transcriptReady)
+                Self.recordGatewayTiming(since: finishStarted, audioSentEarly: true)
                 UserDefaults.standard.set(
                     "Gateway and speech-to-text model are ready.",
                     forKey: GatewayStatusPreferences.healthMessageKey
@@ -1721,6 +1752,7 @@ final class RecordingCoordinator {
             try commit(&record)
             activeRecord = record
             DiagnosticLog.record(.transcriptReady)
+            Self.recordGatewayTiming(since: finishStarted, audioSentEarly: false)
             UserDefaults.standard.set(
                 "Gateway and model are ready.",
                 forKey: GatewayStatusPreferences.healthMessageKey
@@ -1772,6 +1804,18 @@ final class RecordingCoordinator {
                     : "Check your gateway and its selected model, then retry. Your recording is kept."
             )
         }
+    }
+
+    /// Finish to transcript on the gateway route, comparable with the same
+    /// line the keyboard writes when it records a dictation itself.
+    private static func recordGatewayTiming(since start: ContinuousClock.Instant, audioSentEarly: Bool) {
+        DiagnosticLog.record(
+            .gatewayTranscriptionTimed,
+            metadata: .gatewayTranscriptionTimed(
+                milliseconds: Int((ContinuousClock.now - start) / .milliseconds(1)),
+                audioSentEarly: audioSentEarly
+            )
+        )
     }
 
     /// The recording file was cut short and nothing whole could stand in for it.
@@ -2416,11 +2460,14 @@ final class RecordingCoordinator {
         guard let shared = try? store.load(current.sessionID) else { return }
         if shared != current { activeRecord = shared }
 
+        // The keyboard records and uploads its own sessions; finishing or
+        // sending one of those here would upload it twice.
+        let keyboardOwned = shared.capturedInKeyboard == true
         switch shared.state {
-        case .finalizing:
+        case .finalizing where !keyboardOwned:
             liveActivity.update(status: "Finishing recording", canFinish: false)
             startPipeline(shared)
-        case .uploading where !recorder.isRecording && pipelineSessionID == nil:
+        case .uploading where !keyboardOwned && !recorder.isRecording && pipelineSessionID == nil:
             startPipeline(shared)
         // Expiry is the keyboard acting as watchdog for an app that stopped
         // answering. It has to tear down exactly as far as a cancel does:
@@ -2545,8 +2592,12 @@ final class RecordingCoordinator {
               let baseURL = GatewayEndpoint.validatedURL(from: value),
               let token = try? KeychainStore.loadToken(),
               !token.isEmpty
-        else { return }
+        else {
+            KeyboardGatewayAccess.clear()
+            return
+        }
         gatewayClient = GatewayClient(baseURL: baseURL, token: token)
+        publishGatewayToKeyboard(baseURL)
     }
 
     private func redactedErrorCode(_ error: Error) -> String {

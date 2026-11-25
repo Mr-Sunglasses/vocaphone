@@ -30,6 +30,18 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case quickDictationArmed
     case quickDictationStopped
     case quickDictationStale
+    /// The keyboard recorded a dictation itself, for the gateway, without
+    /// opening vocaphone: how long the microphone took to start after the tap,
+    /// and whether the capture page was already loaded.
+    case keyboardCaptureStarted
+    /// A gateway dictation finished: how long the user waited from Finish to
+    /// the transcript, and whether the audio had already been sent while they
+    /// spoke. Recorded by whichever process ran it — the app or the keyboard —
+    /// so the two paths can be compared on one phone.
+    case gatewayTranscriptionTimed
+    /// The keyboard could not record itself and opened vocaphone instead, or
+    /// lost its recording part-way.
+    case keyboardCaptureFailed
     /// The loaded speech model was dropped, with how much room that left.
     case localEngineReleased
     /// "Fix grammar" could not load its model, so dictation went on without
@@ -221,6 +233,11 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
     let decodedEarly: Bool?
     /// Trailing non-speech left out of a decode, in whole milliseconds.
     let trimmedMilliseconds: Int?
+    /// Whether the gateway already had the audio when Finish was tapped
+    /// (streamed during the recording) rather than receiving it afterwards.
+    let audioSentEarly: Bool?
+    /// Whether the keyboard's capture page was already loaded at the tap.
+    let captureWarm: Bool?
 
     static let empty = DiagnosticMetadata()
 
@@ -240,7 +257,9 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         windowIndex: Int? = nil,
         windowCount: Int? = nil,
         decodedEarly: Bool? = nil,
-        trimmedMilliseconds: Int? = nil
+        trimmedMilliseconds: Int? = nil,
+        audioSentEarly: Bool? = nil,
+        captureWarm: Bool? = nil
     ) {
         self.state = state
         self.reason = reason
@@ -258,6 +277,16 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         self.windowCount = windowCount
         self.decodedEarly = decodedEarly
         self.trimmedMilliseconds = trimmedMilliseconds
+        self.audioSentEarly = audioSentEarly
+        self.captureWarm = captureWarm
+    }
+
+    static func gatewayTranscriptionTimed(milliseconds: Int, audioSentEarly: Bool) -> DiagnosticMetadata {
+        DiagnosticMetadata(milliseconds: milliseconds, audioSentEarly: audioSentEarly)
+    }
+
+    static func keyboardCaptureStarted(milliseconds: Int, warm: Bool) -> DiagnosticMetadata {
+        DiagnosticMetadata(milliseconds: milliseconds, captureWarm: warm)
     }
 
     static func state(_ state: SessionState) -> DiagnosticMetadata {

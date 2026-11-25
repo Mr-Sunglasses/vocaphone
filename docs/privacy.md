@@ -30,6 +30,29 @@ this upload and use the complete local WAV for the compressed batch fallback.
 Only audio from the explicit dictation is sent, never Quick Dictation standby
 buffers. The existing gateway authentication, limits, and retention still apply.
 
+### Recording in the keyboard (gateway route)
+
+With a gateway configured and **Record in the keyboard** on (Settings ›
+Dictation; on by default), a Dictate tap while Quick Dictation is not standing
+by records in the keyboard extension instead of opening vocaphone. iOS gives
+keyboards no microphone of their own, so the keyboard records through a hidden
+WebKit view (`getUserMedia`); iOS attributes the recording to vocaphone's
+microphone permission and shows the orange indicator as usual. It records only
+after that tap and only while the keyboard is on screen, never in standby.
+
+The keyboard writes the dictation as mono 16 kHz WAV to the same App Group
+`pending-audio` directory the app uses and sends it, with the app's bearer
+token, to the gateway address the app shared with it — no other host. To make
+that possible, the app keeps the gateway token in the App Group's keychain
+access group (readable by vocaphone's own app and keyboard, nothing else) and
+mirrors the gateway address into the App Group defaults. The recording is
+deleted once the transcript is ready; a failed upload keeps it for Retry, and
+the app's orphaned-audio sweep removes it an hour after its session ends. Words
+from the text around the cursor are used for spelling in the keyboard only and
+are never sent. The keyboard makes no other network request and reports no
+telemetry. On-device transcription never runs in the keyboard; that route
+always records in the app.
+
 When Quick Dictation is enabled, the containing app may keep microphone input
 active so later keyboard actions do not need another app handoff. The window is
 the user's choice — 10 minutes by default, 20 minutes, or until vocaphone is

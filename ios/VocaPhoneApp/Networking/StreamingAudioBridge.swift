@@ -61,7 +61,20 @@ actor StreamingAudioBridge {
     private var generation = UUID()
     private var failed = false
     private var ready = false
+    private var opening = false
     private var fallbackRecorded = false
+
+    /// Waits up to `timeout` for a transport that is still opening, so a short
+    /// dictation finished before its handshake completed can still use it:
+    /// every sample is buffered, and sending them is much cheaper than the
+    /// complete-file fallback that ``finish(droppedChunks:)`` otherwise takes.
+    /// Returns at once when nothing is opening.
+    func waitUntilOpen(timeout: Duration) async {
+        let deadline = ContinuousClock.now + timeout
+        while opening, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+    }
 
     func start(
         chunks: AsyncStream<Data>,
@@ -69,6 +82,7 @@ actor StreamingAudioBridge {
     ) {
         cancel()
         let token = generation
+        opening = true
         DiagnosticLog.record(.streamHandshakeStarted)
         pump = Task { [weak self] in
             do {
@@ -138,18 +152,21 @@ actor StreamingAudioBridge {
         stream = nil
         failed = false
         ready = false
+        opening = false
     }
 
     private func attach(_ opened: any GatewayRecordingTransport, token: UUID) -> Bool {
         guard token == generation else { return false }
         stream = opened
         ready = true
+        opening = false
         return true
     }
 
     private func openingFailed(token: UUID) {
         guard token == generation else { return }
         failed = true
+        opening = false
         recordFallbackIfNeeded()
     }
 

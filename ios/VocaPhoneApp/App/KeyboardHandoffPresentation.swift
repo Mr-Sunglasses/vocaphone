@@ -37,7 +37,10 @@ struct KeyboardHandoffPresentation: Equatable {
     static func shouldPresent(_ record: SessionRecord?) -> Bool {
         guard let record,
               record.sourceDocumentID != "in-app-test",
-              record.startedInContainingApp != true
+              record.startedInContainingApp != true,
+              // Recorded by the keyboard in the app the user is in: nothing
+              // to swipe back to.
+              record.capturedInKeyboard != true
         else { return false }
 
         // The wait for the app to come up belongs to the hand-off, not to the

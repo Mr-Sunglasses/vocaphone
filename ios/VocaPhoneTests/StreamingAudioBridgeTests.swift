@@ -70,6 +70,43 @@ struct StreamingAudioBridgeTests {
         #expect(current.state.withLock { $0.chunks } == [Data([2])])
     }
 
+    /// A short dictation ends before its handshake: Finish waits for the open
+    /// instead of throwing the stream away for the slower file.
+    @Test func finishCanWaitForAStreamStillOpening() async throws {
+        let bridge = StreamingAudioBridge()
+        let transport = FakeTransport()
+        let gate = OpenGate()
+        let (chunks, continuation) = AsyncStream<Data>.makeStream()
+        await bridge.start(chunks: chunks) {
+            await gate.wait()
+            return transport
+        }
+        continuation.yield(Data([1]))
+        continuation.finish()
+        try await waitUntil { await gate.isWaiting }
+        let waiting = Task { await bridge.waitUntilOpen(timeout: .seconds(5)) }
+        await gate.release()
+        await waiting.value
+        #expect(await bridge.finish(droppedChunks: 0) == "finished")
+        #expect(transport.state.withLock { $0.chunks } == [Data([1])])
+    }
+
+    @Test func waitingForAnOpenIsBounded() async throws {
+        let bridge = StreamingAudioBridge()
+        let gate = OpenGate()
+        let (chunks, _) = AsyncStream<Data>.makeStream()
+        await bridge.start(chunks: chunks) {
+            await gate.wait()
+            return FakeTransport()
+        }
+        try await waitUntil { await gate.isWaiting }
+        let started = ContinuousClock.now
+        await bridge.waitUntilOpen(timeout: .milliseconds(100))
+        #expect(ContinuousClock.now - started < .seconds(2))
+        #expect(await bridge.finish(droppedChunks: 0) == nil)
+        await gate.release()
+    }
+
     private func waitUntil(_ condition: () async -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(5)
         while !(await condition()) {
