@@ -128,6 +128,19 @@ class WritingAutoFixTest {
     }
 
     @Test
+    fun `a fix the user undid twice, or to a held-back word, is not made`() = scope.runTest {
+        type("I recieve it. ")
+        pause()
+        val report = session.report.value!!
+        assertNotNull(autoFixCandidate(report, undoPending = false))
+        val memory = AutocorrectMemory.EMPTY.withRejection("recieve", "receive")
+        assertNotNull(autoFixCandidate(report, undoPending = false) { typed, fix -> !memory.isRejected(typed, fix) })
+        val twice = memory.withRejection("Recieve", "Receive")
+        assertNull(autoFixCandidate(report, undoPending = false) { typed, fix -> !twice.isRejected(typed, fix) })
+        assertNull(autoFixCandidate(report, undoPending = false) { _, fix -> fix != "receive" })
+    }
+
+    @Test
     fun `a report older than the text after the typo makes no fix`() = scope.runTest {
         type("I recieve it. ")
         pause()

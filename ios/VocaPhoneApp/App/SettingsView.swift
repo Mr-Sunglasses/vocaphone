@@ -194,6 +194,14 @@ struct KeyboardSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var learnAsITypeEnabled = KeyboardDefaults.learnAsIType
     @AppStorage(
+        KeyboardPreferences.suggestSwearWordsKey,
+        store: KeyboardPreferences.defaults
+    ) private var suggestSwearWords = KeyboardDefaults.suggestSwearWords
+    @AppStorage(
+        KeyboardPreferences.quickAccentsKey,
+        store: KeyboardPreferences.defaults
+    ) private var quickAccentsEnabled = KeyboardDefaults.quickAccents
+    @AppStorage(
         KeyboardPreferences.smartPunctuationKey,
         store: KeyboardPreferences.defaults
     ) private var smartPunctuationEnabled = KeyboardDefaults.smartPunctuation
@@ -259,7 +267,11 @@ struct KeyboardSettingsView: View {
             KeyboardLanguagesSheet(enabledLayoutIDs: $enabledLayoutIDs)
         }
         .sheet(item: $learnMore) { LearnMoreSheet(topic: $0) }
-        .task { learnedCount = learnedStore.snapshot().count }
+        .task {
+            // Words and typo fixes alike: Reset forgets both.
+            let learned = learnedStore.snapshot()
+            learnedCount = learned.count + learned.learnedFixCount
+        }
         .confirmationDialog(
             "Forget \(learnedCount) learned word\(learnedCount == 1 ? "" : "s")?",
             isPresented: $isConfirmingLearnedReset,
@@ -387,6 +399,10 @@ struct KeyboardSettingsView: View {
                 .disabled(!suggestionsEnabled)
             Toggle("Predict the next word", isOn: $predictionEnabled)
                 .disabled(!suggestionsEnabled)
+            Toggle(isOn: $suggestSwearWords) {
+                SettingLabel("Suggest swear words", detail: "Slurs are never suggested.")
+            }
+            .disabled(!suggestionsEnabled)
         } header: {
             LearnMoreHeader(title: "Typing", topic: SettingsHelp.typing, presented: $learnMore)
         } footer: {
@@ -399,7 +415,10 @@ struct KeyboardSettingsView: View {
     private var learningSection: some View {
         Section {
             Toggle(isOn: $learnAsITypeEnabled) {
-                SettingLabel("Learn as I type", detail: "Stops correcting words you keep typing.")
+                SettingLabel(
+                    "Learn as I type",
+                    detail: "Stops correcting words you keep typing, and fixes a typo the way you fixed it twice."
+                )
             }
             Button(role: .destructive) {
                 isConfirmingLearnedReset = true
@@ -425,6 +444,9 @@ struct KeyboardSettingsView: View {
             }
             Toggle(isOn: $swipeTypingEnabled) {
                 SettingLabel("Swipe to type", detail: "Slide from letter to letter.")
+            }
+            Toggle(isOn: $quickAccentsEnabled) {
+                SettingLabel("Quick accents", detail: "Hold a letter to type its main accent: e gives é.")
             }
             Toggle(isOn: $spacebarCursorEnabled) {
                 SettingLabel("Space bar cursor", detail: spaceBarHelp)
@@ -487,7 +509,7 @@ struct DictationSettingsView: View {
     @AppStorage(
         KeyboardPreferences.microphonePreferenceKey,
         store: KeyboardPreferences.defaults
-    ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
+    ) private var microphonePreferenceRawValue = MicrophonePreference.default.rawValue
     @AppStorage(
         KeyboardPreferences.recordingSoundsKey,
         store: KeyboardPreferences.defaults

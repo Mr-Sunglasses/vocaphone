@@ -194,6 +194,9 @@ final class KeyboardDictation {
 
     func owns(_ id: UUID) -> Bool { dictation?.sessionID == id }
 
+    /// The dictation in hand, from the tap on — before its record exists.
+    var currentSessionID: UUID? { dictation?.sessionID }
+
     // MARK: Starting
 
     /// Starts the microphone for `template`, an `idle` record the caller built.

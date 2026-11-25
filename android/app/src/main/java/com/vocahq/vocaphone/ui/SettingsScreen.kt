@@ -127,6 +127,15 @@ enum class SettingsPage(val title: String) {
     }
 }
 
+/** The Typing group's newer rows, together so the screen's signature stays readable. */
+data class KeyboardTypingActions(
+    val onQuickAccents: (Boolean) -> Unit = {},
+    val onKeySound: (Boolean) -> Unit = {},
+    val onLearnTypingFixes: (Boolean) -> Unit = {},
+    val onForgetTypingFixes: () -> Unit = {},
+    val onSuggestSwearWords: (Boolean) -> Unit = {},
+)
+
 @Composable
 fun SettingsScreen(
     settings: VocaPhoneSettings,
@@ -163,6 +172,7 @@ fun SettingsScreen(
     writing: WritingSettingsActions = WritingSettingsActions(),
     onNumberKeyHints: (Boolean) -> Unit,
     onLongPressSymbols: (Boolean) -> Unit,
+    typing: KeyboardTypingActions = KeyboardTypingActions(),
     onAutoCapitalize: (Boolean) -> Unit,
     onPersonalDictionary: (String) -> Unit,
     onAddSnippet: (trigger: String, expansion: String) -> Unit,
@@ -479,6 +489,28 @@ fun SettingsScreen(
                     )
                     SettingsDivider()
                     SettingsSwitchRow(
+                        title = "Learn my typing fixes",
+                        supporting = "A typo you fix the same way twice is fixed when you press space. " +
+                            "Only the word pairs are kept, on this phone.",
+                        checked = settings.learnTypingFixes,
+                        onCheckedChange = typing.onLearnTypingFixes,
+                    )
+                    SettingsDivider()
+                    SettingsActionRow(
+                        title = "Forget learned fixes",
+                        supporting = "Also forgets the fixes you undid.",
+                        destructive = true,
+                        onClick = typing.onForgetTypingFixes,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Suggest swear words",
+                        supporting = "Slurs are never suggested.",
+                        checked = settings.suggestSwearWords,
+                        onCheckedChange = typing.onSuggestSwearWords,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
                         title = "Capitalize sentences",
                         supporting = "Shift turns on at the start of a sentence.",
                         checked = settings.autoCapitalizeEnabled,
@@ -497,6 +529,20 @@ fun SettingsScreen(
                         supporting = "Slide for accents.",
                         checked = settings.longPressSymbolsEnabled,
                         onCheckedChange = onLongPressSymbols,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Quick accents",
+                        supporting = "Holding a letter picks its main accent. Let go to type it.",
+                        checked = settings.quickAccentsEnabled,
+                        onCheckedChange = typing.onQuickAccents,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Sound on keypress",
+                        supporting = "Uses the system key click.",
+                        checked = settings.keySoundEnabled,
+                        onCheckedChange = typing.onKeySound,
                     )
                     SettingsDivider()
                     SettingsSwitchRow(

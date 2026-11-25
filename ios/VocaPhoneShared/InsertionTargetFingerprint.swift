@@ -40,6 +40,28 @@ enum InsertionTargetFingerprint {
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// The selection a dictation was started over: the selected text itself
+    /// and the text either side of it, hashed with the session so it means
+    /// nothing outside it. Nil when nothing was selected.
+    static func selection(sessionID: UUID, selected: String?, before: String?, after: String?) -> String? {
+        guard let selected, !selected.isEmpty else { return nil }
+        let tail = String((before ?? "").suffix(contextLength))
+        let head = String((after ?? "").prefix(contextLength))
+        let material = [sessionID.uuidString.lowercased(), "selection", selected, tail, head]
+            .joined(separator: "\u{0}")
+        let digest = SHA256.hash(data: Data(material.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Whether inserting now may replace what is selected. Inserting replaces
+    /// the selection, so it may only when it is the very selection the
+    /// dictation was started over; any other selection waits for an explicit
+    /// "Insert here". With nothing selected the words go in at the cursor.
+    static func mayReplaceSelection(recorded: String?, current: String?) -> Bool {
+        guard let current else { return true }
+        return recorded == current
+    }
+
     enum Match: Equatable {
         /// The same field, or a record with no fingerprint to compare — which
         /// keeps the behaviour every earlier record had.
@@ -80,9 +102,19 @@ enum PendingTranscriptPolicy {
     /// button was started with no field at all, so the field the keyboard next
     /// appears in is a guess — it might be a search box — and the transcript
     /// is offered there behind Insert instead.
-    static func autoInserts(_ record: SessionRecord, preference: Bool) -> Bool {
-        preference && !record.isFromShortcut
+    ///
+    /// And only while it is fresh: within ``autoInsertWindow`` of the
+    /// transcript becoming ready. Past that the user has moved on — a
+    /// transcript dropping into the field they came back to minutes later is a
+    /// surprise — so it is offered behind Insert instead, for as long as
+    /// `SessionExpiryPolicy.transcriptOfferWindow` allows.
+    static func autoInserts(_ record: SessionRecord, preference: Bool, now: Date = Date()) -> Bool {
+        preference
+            && !record.isFromShortcut
+            && now.timeIntervalSince(record.readyAt ?? record.updatedAt) <= autoInsertWindow
     }
+
+    static let autoInsertWindow: TimeInterval = 30
 
     /// - Parameters:
     ///   - target: the fingerprint comparison, or `.same` once this appearance

@@ -60,8 +60,14 @@ internal sealed interface KeyboardCommand {
      * [CommitText] can land first and leave `2@` from a hold on `2`.
      */
     data class ReplaceLastCommitted(val text: String) : KeyboardCommand
+    /**
+     * Delete [length] characters before the cursor and type [text] in one
+     * batch: a learned fix taken back ("the " back to "teh").
+     */
+    data class ReplaceBeforeCursor(val length: Int, val text: String) : KeyboardCommand
     data object PerformEditorAction : KeyboardCommand
-    data class MoveCursor(val positions: Int) : KeyboardCommand
+    /** [positions] characters right (negative: left) and [lines] lines down (negative: up). */
+    data class MoveCursor(val positions: Int, val lines: Int = 0) : KeyboardCommand
     data object DoubleSpacePeriod : KeyboardCommand
     data object FinishComposing : KeyboardCommand
     data object CycleSelectionCase : KeyboardCommand
@@ -155,6 +161,51 @@ internal object DeleteHold {
         KeyboardCommand.DeleteBackward -> before.dropLast(1)
         is KeyboardCommand.DeleteSurrounding -> before.dropLast(command.before)
         else -> before
+    }
+}
+
+/**
+ * Delete slid left: each key width the finger travels left of where it went
+ * down deletes one more word, Option-Delete style (the spaces and punctuation
+ * before the cursor go with the word before them). Sliding back right types
+ * those words back, newest first; lifting keeps what is deleted.
+ *
+ * Works on [before], the text before the cursor the delete hold already
+ * keeps, so a step never waits for an editor read.
+ */
+internal class DeleteSlide(before: String) {
+    private val buffer = StringBuilder(before)
+    private val deleted = ArrayList<String>()
+
+    val steps: Int get() = deleted.size
+
+    /** What is left before the cursor. */
+    val before: String get() = buffer.toString()
+
+    /** The edits that take the slide to [target] words deleted. */
+    fun moveTo(target: Int): List<KeyboardCommand> {
+        val wanted = target.coerceAtLeast(0)
+        val commands = ArrayList<KeyboardCommand>()
+        while (deleted.size < wanted) {
+            val count = SuggestionEngine.wordWithSeparatorsBefore(buffer)
+            if (count <= 0) break
+            val start = buffer.length - count
+            deleted.add(buffer.substring(start))
+            buffer.setLength(start)
+            commands.add(KeyboardCommand.DeleteSurrounding(count, 0))
+        }
+        while (deleted.size > wanted) {
+            val word = deleted.removeAt(deleted.lastIndex)
+            buffer.append(word)
+            commands.add(KeyboardCommand.CommitText(word))
+        }
+        return commands
+    }
+
+    companion object {
+        /** Words deleted for a finger [travelPx] left of where it went down, on keys [keyWidthPx] wide. */
+        fun stepsFor(travelPx: Float, keyWidthPx: Float): Int =
+            if (keyWidthPx <= 0f || travelPx <= 0f) 0 else (travelPx / keyWidthPx).toInt()
     }
 }
 

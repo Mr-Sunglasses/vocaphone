@@ -36,6 +36,7 @@ internal fun commitDictationText(
     composingActive: Boolean,
     selectionStart: Int = -1,
     selectionEnd: Int = -1,
+    collapseTo: Int = -1,
 ): String? {
     if (transcript.isBlank()) return null
     runCatching { connection.beginBatchEdit() }
@@ -46,6 +47,9 @@ internal fun commitDictationText(
                 runCatching { connection.setSelection(selectionStart, selectionEnd) }
             }
         }
+        // A selection that is not the one the dictation was started over is
+        // left alone: the transcript goes in at its end instead of over it.
+        if (collapseTo >= 0) runCatching { connection.setSelection(collapseTo, collapseTo) }
         // These APIs return context outside the selection being replaced. Missing
         // context is allowed; editors that omit it should still accept dictation.
         val before = runCatching { connection.getTextBeforeCursor(1, 0)?.toString() }.getOrNull().orEmpty()
@@ -54,5 +58,52 @@ internal fun commitDictationText(
         return prepared.takeIf { runCatching { connection.commitText(prepared, 1) }.getOrDefault(false) }
     } finally {
         runCatching { connection.endBatchEdit() }
+    }
+}
+
+/**
+ * Dictating over a selection: the transcript replaces it only if the editor
+ * still has that same selection when the transcript arrives.
+ */
+internal object DictationSelection {
+    data class Range(val start: Int, val end: Int, val text: String) {
+        val isEmpty: Boolean get() = start == end
+    }
+
+    sealed interface Target {
+        /** Commit as the editor stands: over the selection it still has, or at a plain cursor. */
+        data object AsIs : Target
+
+        /** Put the cursor at [position] first, leaving the selected text alone. */
+        data class CollapseTo(val position: Int) : Target
+    }
+
+    /** The selection to remember when dictation starts, or null for a plain cursor. */
+    fun remember(start: Int, end: Int, text: String?): Range? {
+        if (start < 0 || end < 0 || start == end || text.isNullOrEmpty()) return null
+        return Range(minOf(start, end), maxOf(start, end), text)
+    }
+
+    /**
+     * Where the transcript goes, given the selection [remembered] at the start
+     * and the one the editor has now ([current], read once at insert time).
+     */
+    fun target(remembered: Range?, current: Range?): Target = when {
+        current == null || current.isEmpty -> Target.AsIs
+        remembered != null && remembered == current -> Target.AsIs
+        else -> Target.CollapseTo(current.end)
+    }
+
+    /**
+     * As [target], from the editor's reported selection [start]..[end] and
+     * its text as read ([text], null when the editor would not say). A
+     * selection whose text cannot be read is never replaced: it might be one
+     * the user made after the dictation started, so the transcript goes in at
+     * its end instead.
+     */
+    fun target(remembered: Range?, start: Int, end: Int, text: String?): Target {
+        if (start < 0 || end < 0 || start == end) return Target.AsIs
+        val current = remember(start, end, text) ?: return Target.CollapseTo(maxOf(start, end))
+        return target(remembered, current)
     }
 }

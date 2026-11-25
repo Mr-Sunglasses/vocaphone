@@ -1,6 +1,7 @@
 import os
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback {
     private let store = SharedStore.shared
@@ -161,6 +162,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     var enableInputClicksWhenVisible: Bool { true }
 
+    /// The keyboard's root view must itself adopt `UIInputViewAudioFeedback`:
+    /// `playInputClick()` plays only for an input view that does, and the
+    /// default `UIInputView` UIKit gives this controller does not — so with
+    /// the protocol on the controller alone every key was silent.
+    override func loadView() {
+        view = KeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
+    }
+
     /// iOS decides whether to add its Face ID dictation button before loading
     /// the keyboard's view, so this must be set during controller creation.
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
@@ -320,6 +329,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 #endif
 
     override func viewWillAppear(_ animated: Bool) {
+        // No rolling words until the keyboard is on screen: see
+        // `TypingRowState.animatesChanges`.
+        dictationSurfaceState.candidatesAnimate = false
         // The instance on screen is the one a dictation's progress refreshes.
         keyboardDictation.onChange = { [weak self] in self?.refresh() }
         // The preference behind this lives in the shared defaults and is
@@ -414,6 +426,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     override func viewDidAppear(_ animated: Bool) {
+        // One frame after appearing, once the field's traits have landed.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isKeyboardVisible else { return }
+            self.dictationSurfaceState.candidatesAnimate = true
+        }
         super.viewDidAppear(animated)
         reportIfLowOnMemory()
         typing.prepareResources()
@@ -471,6 +488,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // the process is still alive, and Retry covers it if iOS ends it first.
         // A microphone still starting is stopped before it records anything.
         keyboardDictation.keyboardWillHide()
+        // Words a delete slide removed here are never typed into another field.
+        slideDeletedWords.removeAll()
         // A held key or an open accent popover must not survive the keyboard
         // being dismissed; iOS does not reliably cancel those touches for us.
         keyGrid.endActiveInteractions()
@@ -736,7 +755,44 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// between words, the typing candidates otherwise. The fixes wait while a
     /// word is being typed.
     private func stripCandidates(_ strip: TypingStrip) -> [TypingCandidate] {
-        guard isWritingCheckAvailable else { return strip.candidates }
+        let candidates = strip.candidates.isEmpty
+            ? fieldOfferCandidates()
+            : strip.candidates
+        guard isWritingCheckAvailable else { return candidates }
+        return writingCandidates() + candidates
+    }
+
+    /// The empty field's chip: Paste after a recent copy, or Apple's keyboard
+    /// for a one-time code or a saved login (`FieldOffer`).
+    private func fieldOfferCandidates() -> [TypingCandidate] {
+        let snapshot = document
+        let fieldIsEmpty = (snapshot.before ?? "").isEmpty && (snapshot.after ?? "").isEmpty
+        guard fieldIsEmpty else { return [] }
+        let pasteboard = hasFullAccess ? UIPasteboard.general : nil
+        let offer = FieldOffer.decide(
+            fieldIsEmpty: true,
+            contentType: textDocumentProxy.textContentType,
+            hasFullAccess: hasFullAccess,
+            hasRecentUnpastedCopy: pasteboard.map {
+                ClipboardWatch.hasRecentUnpastedCopy(changeCount: $0.changeCount, hasStrings: $0.hasStrings)
+            } ?? false
+        )
+        switch offer {
+        case .paste?: return [TypingCandidate(text: FieldOffer.paste.title, kind: .paste)]
+        case let other?: return [TypingCandidate(text: other.title, kind: .nextKeyboard)]
+        case nil: return []
+        }
+    }
+
+    /// Text handed over by the paste button (or read on the older bar's tap).
+    private func paste(_ text: String) {
+        textDocumentProxy.insertText(text)
+        ClipboardWatch.notePasted(changeCount: UIPasteboard.general.changeCount)
+        typing.resetComposition(origin: .suggestion, document: refreshDocument())
+        render(lastRecord)
+    }
+
+    private func writingCandidates() -> [TypingCandidate] {
         let report = writingCheck.report
         var chips: [TypingCandidate] = []
         // The surface leads with the Writing check button; the older bar has
@@ -760,7 +816,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 caption: fix.title, struck: fix.shownOriginal.isEmpty ? nil : fix.shownOriginal
             ))
         }
-        return chips + strip.candidates
+        return chips
     }
 
     // MARK: - Writing check
@@ -1026,6 +1082,49 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
+    /// The push-to-talk session whose finger lifted before it was recording:
+    /// it finishes the moment it is.
+    private var finishWhenRecording: UUID?
+
+    /// A still hold on Dictate. It dictates at once, but only where that does
+    /// not leave the field (the keyboard records itself, or Quick Dictation is
+    /// ready); a hold that would open vocaphone is just the tap it ends as.
+    private func beginPushToTalk() -> Bool {
+        guard activeSessionID == nil, hasFullAccess else { return false }
+        let quickReady = (try? store.loadQuickDictationAvailability())?.isReady() == true
+        guard quickReady || KeyboardDictation.gateway(quickDictationReady: false) != nil else { return false }
+        KeyboardHaptics.shared.action()
+        startSession()
+        pushToTalkPending = true
+        return true
+    }
+
+    /// Set from the hold until the session it started has an ID to follow.
+    private var pushToTalkPending = false
+
+    private func endPushToTalk() {
+        guard pushToTalkPending else { return }
+        pushToTalkPending = false
+        if let id = activeSessionID, let record = try? store.load(id), record.state == .recording {
+            finishRecording()
+        } else {
+            // Still starting: finish the moment it records.
+            finishWhenRecording = activeSessionID ?? keyboardDictation.currentSessionID
+        }
+    }
+
+    /// Finishes a push-to-talk dictation whose finger lifted before it began
+    /// recording.
+    private func finishIfPushToTalkLifted(_ record: SessionRecord) {
+        guard finishWhenRecording == record.sessionID else { return }
+        if record.state == .recording {
+            finishWhenRecording = nil
+            finishRecording()
+        } else if record.state.isTerminal {
+            finishWhenRecording = nil
+        }
+    }
+
     private func finishRecording() {
         guard let id = activeSessionID,
               var record = try? store.load(id),
@@ -1225,7 +1324,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             } else {
                 measured("insertText") { textDocumentProxy.insertText(text) }
                 let document = refreshDocument()
-                measured("typing.insert") { typing.insert(text, document: document) }
+                let tap = keyGrid.takeLastLetterTap()
+                measured("typing.insert") { typing.insert(text, tap: tap, document: document) }
             }
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
@@ -1243,10 +1343,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             deleteWordBackward()
             typing.resetComposition(document: refreshDocument())
             releaseUndoIfDetached()
-        case let .swipeWord(word, alternates):
+        case let .deleteSlideStep(step):
+            if step > 0 {
+                refreshDocument()
+                if let deleted = deleteWordBackward() { slideDeletedWords.append(deleted) }
+            } else if let restored = slideDeletedWords.popLast() {
+                textDocumentProxy.insertText(restored)
+            }
+            typing.resetComposition(document: refreshDocument())
+            releaseUndoIfDetached()
+        case .deleteSlideBegan:
+            slideDeletedWords.removeAll()
+        case .deleteSlideEnded:
+            slideDeletedWords.removeAll()
+            updateAutomaticShift()
+        case let .swipeWord(swiped, swipedAlternates):
             // A swiped word arrives whole. It is never autocorrected — the
             // recogniser already chose from the dictionary — and the losers go
-            // in the strip so one tap can replace it.
+            // in the strip so one tap can replace it. Never a word the keyboard
+            // does not offer: the next reading stands in for it.
+            guard let (word, alternates) = typing.screenedSwipe(swiped, alternates: swipedAlternates)
+            else { break }
             let cased = keyGrid.shiftState.isUppercase
                 ? word.prefix(1).uppercased() + word.dropFirst()
                 : word
@@ -1264,6 +1381,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             settleCursor()
         case let .moveCursor(offset):
             moveCursor(by: offset)
+        case let .moveCursorLines(lines):
+            moveCursor(lines: lines)
         case let .nextLayout(forward):
             guard let next = TypingLayout.next(
                 after: KeyboardPreferences.typingLayout,
@@ -1431,6 +1550,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // applied it — Delete had nothing to restore, and undo-autocorrect,
             // the behaviour people rely on without knowing its name, silently
             // did nothing at all.
+            typing.wordCommitted(replacement)
             typing.insert(boundary, document: refreshDocument())
             typing.noteCorrection(typed: typed, replacement: replacement, boundary: boundary)
             // The correction is the one keyboard action a user may not have
@@ -1442,7 +1562,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             return
         }
         if !boundary.isEmpty { textDocumentProxy.insertText(boundary) }
-        if !typed.isEmpty { typing.noteCompletedWord(typed) }
+        if !typed.isEmpty {
+            typing.noteCompletedWord(typed)
+            typing.wordCommitted(typed)
+        }
         typing.insert(boundary.isEmpty ? " " : boundary, document: refreshDocument())
     }
 
@@ -1527,14 +1650,39 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         /// keep going, because the rest of the document is past it.
         var behind: Int?
         var ahead: Int?
+        /// The text the field shared when the drag began, and where in it
+        /// (UTF-16) the cursor is now — what up and down are laid out against.
+        let text: String
+        var position: Int
 
         init(document: DocumentSnapshot) {
             behind = (document.before ?? "").utf16.count
             ahead = (document.after ?? "").utf16.count
+            text = (document.before ?? "") + (document.after ?? "")
+            position = (document.before ?? "").utf16.count
         }
     }
 
     private var cursorDrag: CursorDrag?
+
+    /// Characters in a row of a full-width field, for the trackpad's up and
+    /// down: the keyboard's width less the field's insets, over an average
+    /// character of the body font.
+    private var estimatedCharactersPerRow: Int {
+        max(10, Int((view.bounds.width - 40) / 8.6))
+    }
+
+    private func moveCursor(lines: Int) {
+        guard let drag = cursorDrag else { return }
+        let offset = CursorLineMove.offset(
+            text: drag.text,
+            position: drag.position,
+            lines: lines,
+            charactersPerRow: estimatedCharactersPerRow
+        )
+        guard offset != 0 else { return }
+        moveCursor(by: offset)
+    }
 
     /// Moves the cursor, stopping only at a known empty side of the document.
     ///
@@ -1569,6 +1717,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     drag.ahead = (drag.ahead ?? 0) - offset
                 }
             }
+            if applied != 0 { drag.position = max(0, drag.position + applied) }
             cursorDrag = drag
         }
         guard applied != 0 else { return }
@@ -1588,11 +1737,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         releaseUndoIfDetached()
     }
 
-    private func deleteWordBackward() {
+    /// Deletes the word before the cursor and the spaces after it, and
+    /// returns what it deleted (nil when the document could not be read).
+    @discardableResult
+    private func deleteWordBackward() -> String? {
         let proxy = textDocumentProxy
         guard let before = document.before, !before.isEmpty else {
             proxy.deleteBackward()
-            return
+            return nil
         }
         var count = 0
         var reachedWord = false
@@ -1603,7 +1755,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             if count >= 40 { break }
         }
         for _ in 0..<max(count, 1) { proxy.deleteBackward() }
+        return String(before.suffix(max(count, 1)))
     }
+
+    /// The words a delete slide has taken, latest last, so sliding back can
+    /// type them back.
+    private var slideDeletedWords: [String] = []
 
     /// Undo only makes sense while the transcript is still the tail of the
     /// document. Typing over it retires the offer rather than leaving a button
@@ -1683,6 +1840,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             before: snapshot.before,
             after: snapshot.after
         )
+        // Dictating over a selection replaces it: remembered so the words
+        // replace this selection and never one made later.
+        record.selectionFingerprint = InsertionTargetFingerprint.selection(
+            sessionID: record.sessionID,
+            selected: textDocumentProxy.selectedText,
+            before: snapshot.before,
+            after: snapshot.after
+        )
         let availability = try? store.loadQuickDictationAvailability()
         if let gateway = KeyboardDictation.gateway(quickDictationReady: availability?.isReady() == true) {
             startInKeyboard(record, gateway: gateway, snapshot: snapshot, availability: availability)
@@ -1699,7 +1864,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         snapshot: DocumentSnapshot,
         availability: QuickDictationAvailability?
     ) {
-        flash("Starting the microphone…")
+        flash(record.selectionFingerprint == nil
+            ? "Starting the microphone…"
+            : "Your words will replace the selected text.")
         keyboardDictation.start(
             record,
             gateway: gateway,
@@ -1711,6 +1878,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self.sessionTargetDocumentID = started.sourceDocumentID
                 self.sessionTargetConfirmed = true
                 self.render(started)
+                self.finishIfPushToTalkLifted(started)
             },
             fallback: { [weak self] in
                 self?.launchThroughApp(record, snapshot: snapshot, availability: availability)
@@ -1822,7 +1990,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         )
     }
 
-    private func insert(_ record: inout SessionRecord, force: Bool = false) {
+    private func insert(_ record: inout SessionRecord, force: Bool = false, automatic: Bool = false) {
         guard !isPerformingInsertion else {
             DiagnosticLog.record(.insertionSkipped, metadata: .reason(.insertionInFlight))
             return
@@ -1841,6 +2009,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 transition(&record, to: .targetContextChanged)
             }
             return
+        }
+        // Inserting replaces whatever is selected. Only the selection this
+        // dictation was started over may go by itself; another one waits for
+        // the user's tap on Insert.
+        if automatic {
+            let current = InsertionTargetFingerprint.selection(
+                sessionID: record.sessionID,
+                selected: textDocumentProxy.selectedText,
+                before: textDocumentProxy.documentContextBeforeInput,
+                after: textDocumentProxy.documentContextAfterInput
+            )
+            guard InsertionTargetFingerprint.mayReplaceSelection(
+                recorded: record.selectionFingerprint,
+                current: current
+            ) else {
+                // Not parked: the field is the right one, only the selection
+                // differs, and parking would bounce against the re-arm on every
+                // refresh. The bar offers Insert, which is the explicit tap.
+                render(record)
+                return
+            }
         }
         isPerformingInsertion = true
         defer { isPerformingInsertion = false }
@@ -2255,6 +2444,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func handle(_ incoming: SessionRecord) {
+        finishIfPushToTalkLifted(incoming)
         var record = incoming
         guard [.readyToInsert, .targetContextChanged].contains(record.state) else {
             render(record)
@@ -2282,7 +2472,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             DiagnosticLog.record(.insertionSkipped, metadata: .reason(.targetFieldChanged))
             transition(&record, to: .targetContextChanged)
         case .insert:
-            insert(&record)
+            insert(&record, automatic: true)
         case .offer:
             render(record)
         }
@@ -2597,6 +2787,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             guard let self, !isPerformingInsertion else { return }
             documentEvent { self.apply(candidate) }
         }
+        dictationSurfaceState.onHoldBegan = { [weak self] in self?.beginPushToTalk() ?? false }
+        dictationSurfaceState.onHoldEnded = { [weak self] in self?.endPushToTalk() }
+        dictationSurfaceState.onSlideMenu = { [weak self] in
+            guard let self, self.activeSessionID == nil else { return }
+            KeyboardHaptics.shared.action()
+            self.dictationSurfaceState.present(.style)
+        }
+        dictationSurfaceState.onPaste = { [weak self] text in
+            guard let self, !isPerformingInsertion else { return }
+            documentEvent { self.paste(text) }
+        }
         dictationSurfaceState.onLanguageChanged = { [weak self] lang in
             KeyboardPreferences.transcriptionLanguage = lang
             self?.refresh()
@@ -2620,6 +2821,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         addChild(host)
         let hostView = host.view!
         hostView.backgroundColor = .clear
+        // Push to talk ends when the finger lifts, and the button that saw it
+        // go down is replaced as the session starts. The hosting view stays,
+        // so it watches for the lift; it never claims a touch itself.
+        let lift = TouchLiftObserver()
+        lift.onAllLifted = { [weak self] in
+            guard let self else { return }
+            self.endPushToTalk()
+            DispatchQueue.main.async { self.dictationSurfaceState.endPressTracking() }
+        }
+        hostView.addGestureRecognizer(lift)
         hostView.translatesAutoresizingMaskIntoConstraints = false
         topBarContainer.addSubview(hostView)
         NSLayoutConstraint.activate([
@@ -3127,6 +3338,11 @@ extension KeyboardViewController: DictationBarViewDelegate {
             for _ in 0..<typed.count { textDocumentProxy.deleteBackward() }
             textDocumentProxy.insertText(candidate.text + " ")
             typing.noteCompletedWord(candidate.text)
+            // A correction picked for a typo, rather than a longer version of
+            // it, is a fix the keyboard can learn.
+            if typing.composer.origin == .typed {
+                typing.notePickedCorrection(typed: typed, picked: candidate.text)
+            }
             typing.resetComposition(origin: .suggestion, document: refreshDocument())
         case .prediction:
             textDocumentProxy.insertText(candidate.text + " ")
@@ -3176,6 +3392,19 @@ extension KeyboardViewController: DictationBarViewDelegate {
             } else if let suggestion = writingCheck.report?.suggestions.first(where: { $0.identity == candidate.payload }) {
                 applyWriting([suggestion])
             }
+        case .paste:
+            // The older bar has no system paste control, so its chip reads
+            // the clipboard itself; iOS may ask first. A refusal says where
+            // the permission lives.
+            if let text = UIPasteboard.general.string, !text.isEmpty {
+                paste(text)
+            } else {
+                flash("To paste without asking, allow Paste from Other Apps in Settings › vocaphone.")
+            }
+        case .nextKeyboard:
+            // Codes from Messages and saved logins go only to Apple's
+            // keyboard, so this hands the field to it.
+            advanceToNextInputMode()
         case .writingReview:
             dictationSurfaceState.present(.writing)
         }
@@ -3251,6 +3480,20 @@ final class KeyboardStack: UIStackView {
             return forwardToGrid("gap")
         }
 
+        // 3. The strip's lower half while the user is typing: a touch there
+        //    within a quarter second of a key is an "e" aimed high, not a
+        //    suggestion read and chosen, so it types the top-row key below.
+        if let bar = topBarContainer?.frame,
+           lateralSpan.contains(point.x),
+           KeyGridView.stripTouchGoesToKeys(
+               y: point.y,
+               bar: bar,
+               isTyping: (keyGrid as? KeyGridView)?.isTypingNow == true
+           )
+        {
+            return forwardToGrid("strip-dead-zone")
+        }
+
         let hit = super.hitTest(point, with: event)
         TouchTrace.note(
             "hit none (\(Int(point.x)),\(Int(point.y))) -> "
@@ -3290,4 +3533,54 @@ private final class SingleShotReply: @unchecked Sendable {
         self.completion = nil
         completion(opened)
     }
+}
+
+/// The keyboard's root view, which is what makes the system key click play.
+final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
+}
+
+/// Reports when the last finger on a view lifts, and does nothing else: it
+/// never recognizes, cancels or delays a touch, and recognizes alongside
+/// every other gesture. Push to talk uses it to finish even when the view the
+/// finger went down on has been swapped out under it.
+final class TouchLiftObserver: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    var onAllLifted: (() -> Void)?
+    private var touchesDown = 0
+
+    init() {
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+        delegate = self
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        touchesDown += touches.count
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        lifted(touches.count)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        lifted(touches.count)
+    }
+
+    private func lifted(_ count: Int) {
+        touchesDown = max(0, touchesDown - count)
+        guard touchesDown == 0 else { return }
+        onAllLifted?()
+        state = .failed
+    }
+
+    override func reset() {
+        touchesDown = 0
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool { true }
 }

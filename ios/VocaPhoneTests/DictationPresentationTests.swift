@@ -566,7 +566,8 @@ struct DictationPresentationTests {
             == .transcriptExpired)
         #expect(DictationNotice.forExpiry(of: Self.ended(.awaitingReturn, age: 125))
             == .handoffTimedOut)
-        #expect(DictationNotice.forExpiry(of: Self.ended(.readyToInsert, transcript: "w", age: 3_700))
+        // Just past the ten minutes a finished transcript is offered for.
+        #expect(DictationNotice.forExpiry(of: Self.ended(.readyToInsert, transcript: "w", age: 700))
             == .transcriptExpired)
     }
 

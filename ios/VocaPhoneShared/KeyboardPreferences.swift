@@ -49,6 +49,12 @@ enum KeyboardDefaults {
     static let autocorrect = true
     static let nextWordPrediction = true
     static let learnAsIType = true
+    /// Off, as on Apple's keyboard and for the App Store's 4+ rating. Slurs are
+    /// never suggested either way.
+    static let suggestSwearWords = false
+    /// Off: holding a letter then opens on its main accent rather than on the
+    /// letter, which changes what a still hold types.
+    static let quickAccents = false
     static let smartPunctuation = true
     static let emojiSuggestions = true
     /// Off, like the system keyboard's own Haptic switch, which iOS ships off.
@@ -313,6 +319,11 @@ enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable
 
     var id: String { rawValue }
 
+    /// The iPhone's own microphone, so a car's or headphones' music keeps
+    /// playing instead of the route dropping into call audio, and the models
+    /// hear full-bandwidth sound rather than a headset's telephone line.
+    static let `default` = MicrophonePreference.iPhone
+
     var displayName: String {
         switch self {
         case .automatic: "Automatic"
@@ -339,7 +350,8 @@ enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable
                 return false
             }())
         case .iPhone:
-            "Always request the microphone built into this iPhone."
+            "Always use the microphone built into this iPhone. Music in your car or "
+                + "headphones keeps playing while you dictate."
         }
     }
 }
@@ -540,6 +552,8 @@ enum KeyboardPreferences {
     static let autocorrectKey = "autocorrectEnabled"
     static let nextWordPredictionKey = "nextWordPredictionEnabled"
     static let learnAsITypeKey = "learnAsITypeEnabled"
+    static let suggestSwearWordsKey = "suggestSwearWords"
+    static let quickAccentsKey = "quickAccentsEnabled"
     static let smartPunctuationKey = "smartPunctuationEnabled"
     static let emojiSuggestionsKey = "emojiSuggestionsEnabled"
     /// Custom tactile feedback for committed typing. Input clicks are governed
@@ -776,6 +790,18 @@ enum KeyboardPreferences {
     static var learnAsITypeEnabled: Bool {
         get { boolean(learnAsITypeKey, default: KeyboardDefaults.learnAsIType) }
         set { defaults?.set(newValue, forKey: learnAsITypeKey) }
+    }
+
+    /// Whether swear words may be suggested (`OffensiveWords`).
+    static var suggestSwearWords: Bool {
+        get { boolean(suggestSwearWordsKey, default: KeyboardDefaults.suggestSwearWords) }
+        set { defaults?.set(newValue, forKey: suggestSwearWordsKey) }
+    }
+
+    /// Whether a held letter opens on its main accent (`KeyAlternativesView`).
+    static var quickAccentsEnabled: Bool {
+        get { boolean(quickAccentsKey, default: KeyboardDefaults.quickAccents) }
+        set { defaults?.set(newValue, forKey: quickAccentsKey) }
     }
 
     /// Curly quotes, em dashes and ellipses. On by default, but the *field*
@@ -1443,7 +1469,7 @@ enum KeyboardPreferences {
         get {
             guard let rawValue = defaults?.string(forKey: microphonePreferenceKey),
                   let preference = MicrophonePreference(rawValue: rawValue)
-            else { return .automatic }
+            else { return .default }
             return preference
         }
         set {

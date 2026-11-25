@@ -185,6 +185,15 @@ final class TypingEngine {
     private var cache = SuggestionCache()
     private var generation = 0
     private var wordList = TypingWordList.empty
+    /// Words never offered (`OffensiveWords`), loaded with the word list.
+    private var offensive = OffensiveWords.empty
+    /// Where each letter of the composition was tapped, one per character
+    /// (`TapSpatialScore`). Realigned after every composer change, so an edit
+    /// the keyboard did not see leaves unknowns rather than misattributed taps.
+    private(set) var tapOffsets: [TapOffset?] = []
+    /// The word as it stood before the user started deleting into it, for
+    /// learning the fix they type in its place (`wordCommitted`).
+    private var erasedWord: String?
     private var lexiconEntries: [LexiconEntry] = []
 
     /// One of the user's own text replacements. A named type rather than a
@@ -283,6 +292,7 @@ final class TypingEngine {
         // Pure Swift, so unlike the checker this may leave the main actor.
         Task.detached(priority: .utility) {
             let loaded = TypingWordList.load(from: Bundle(for: TypingEngine.self))
+            let offensive = OffensiveWords.load(from: Bundle(for: TypingEngine.self))
             // Parse the suggestion table off the main actor too. It is small,
             // but the first keystroke is the wrong moment to notice — and the
             // strip is no longer its only reader, so this warms what dictation
@@ -290,6 +300,7 @@ final class TypingEngine {
             EmojiTable.warmUp()
             let emojiTriggers = EmojiTable.triggers
             await MainActor.run { [weak self] in
+                self?.offensive = offensive
                 self?.installResources(wordList: loaded, emojiTriggers: emojiTriggers)
             }
         }
@@ -401,6 +412,10 @@ final class TypingEngine {
         pendingSwipe = nil
         policy = newPolicy
         composer.reset()
+        // A word erased in one field and a word typed in the next are not a
+        // fix, and taps belong to the word they were made in.
+        erasedWord = nil
+        tapOffsets = []
         precedingWord = nil
         hasDocumentContext = false
         assertedWords.removeAll()
@@ -459,11 +474,21 @@ final class TypingEngine {
 
     // MARK: - Typing
 
-    func insert(_ text: String, origin: WordComposer.Origin = .typed, document: DocumentSnapshot) {
+    func insert(
+        _ text: String,
+        origin: WordComposer.Origin = .typed,
+        tap: TapOffset? = nil,
+        document: DocumentSnapshot
+    ) {
         pendingRevert = nil
         pendingSwipe = nil
         isMidWord = document.isMidWord
+        let before = composer.text
         measured("composer.insert") { composer.insert(text, origin: origin) }
+        if composer.text == before + text, text.count == 1 {
+            tapOffsets.append(tap)
+        }
+        alignTapOffsets()
         refresh(document: document)
     }
 
@@ -471,7 +496,13 @@ final class TypingEngine {
         pendingRevert = nil
         pendingSwipe = nil
         isMidWord = document.isMidWord
+        // The first delete into a typed word marks it as the one being fixed.
+        if erasedWord == nil, composer.origin == .typed, composer.text.count >= 2 {
+            erasedWord = composer.text
+        }
         composer.deleteBackward()
+        if !tapOffsets.isEmpty { tapOffsets.removeLast() }
+        alignTapOffsets()
         refresh(document: document)
     }
 
@@ -479,7 +510,71 @@ final class TypingEngine {
         pendingSwipe = nil
         isMidWord = document.isMidWord
         composer.reset(origin: origin)
+        tapOffsets = []
+        erasedWord = nil
         refresh(document: document)
+    }
+
+    /// Keeps one tap per composed character, dropping the oldest when the
+    /// composer took text the keyboard did not type and padding with unknowns.
+    private func alignTapOffsets() {
+        let count = composer.text.count
+        if tapOffsets.count > count {
+            tapOffsets.removeFirst(tapOffsets.count - count)
+        } else if tapOffsets.count < count {
+            tapOffsets.insert(contentsOf: [TapOffset?](repeating: nil, count: count - tapOffsets.count), at: 0)
+        }
+    }
+
+    /// A typed word was finished by a boundary key, as `final` (after any
+    /// autocorrection). If the user had deleted into an earlier spelling and
+    /// typed this one in its place, and the two are plausibly the same word
+    /// mistyped, that is a fix to learn (`LearnedWords.noteFix`).
+    func wordCommitted(_ final: String) {
+        defer {
+            erasedWord = nil
+            tapOffsets = []
+        }
+        guard let erased = erasedWord,
+              KeyboardPreferences.learnAsITypeEnabled,
+              policy.allowsTypingIntelligence,
+              Self.isSlip(erased, of: final, rows: layout.rows),
+              !offensive.blocks(final, allowSwears: KeyboardPreferences.suggestSwearWords)
+        else { return }
+        learned.update { $0.noteFix(typo: erased, fix: final) }
+    }
+
+    /// The user picked `picked` from the strip for the word they had typed.
+    /// A correction (not a longer version of what was typed) is a fix.
+    func notePickedCorrection(typed: String, picked: String) {
+        guard KeyboardPreferences.learnAsITypeEnabled,
+              policy.allowsTypingIntelligence,
+              typed.count >= 2,
+              !picked.lowercased().hasPrefix(typed.lowercased()),
+              Self.isSlip(typed, of: picked, rows: layout.rows)
+        else { return }
+        learned.update { $0.noteFix(typo: typed, fix: picked) }
+    }
+
+    /// Whether `typo` reads as `word` with a slip of the fingers rather than a
+    /// different word: two letters or more, starting with the same or a
+    /// neighbouring key, and within about one weighted edit per four letters
+    /// (neighbouring keys count less). "Ciry" for "City" is; "Sunda" for
+    /// "Saturday" is a change of mind, and teaches nothing.
+    static func isSlip(_ typo: String, of word: String, rows: [String]) -> Bool {
+        let a = typo.lowercased()
+        let b = word.lowercased()
+        guard a.count >= 2, b.count >= 2, a != b,
+              b.allSatisfy({ $0.isLetter || $0 == "'" || $0 == "\u{2019}" }),
+              let first = a.first, let wordFirst = b.first
+        else { return false }
+        let sameStart = first == wordFirst
+            || KeyProximity.areAdjacent(first, wordFirst, rows: rows)
+            || a.dropFirst().first == wordFirst
+            || b.dropFirst().first == first
+        guard sameStart else { return false }
+        let allowance = max(1.0, Double(b.count) / 4)
+        return KeyProximity.weightedDistance(a, b, maximum: allowance + 1, rows: rows) <= allowance
     }
 
     /// The word the user asserted by tapping their own spelling. It stops being
@@ -523,7 +618,12 @@ final class TypingEngine {
         publish(.none)
         assertedWords.insert(pendingRevert.typed.lowercased())
         if KeyboardPreferences.learnAsITypeEnabled {
-            learned.update { $0.learn(pendingRevert.typed) }
+            let typed = pendingRevert.typed
+            learned.update {
+                $0.learn(typed)
+                // A learned fix taken back is never applied again.
+                $0.rejectFix(typo: typed)
+            }
         }
         return pendingRevert
     }
@@ -547,6 +647,16 @@ final class TypingEngine {
     }
 
     /// The swiped word still standing before the cursor, if there is one.
+    /// A swiped word and its alternates without any the keyboard may not
+    /// offer; the best remaining reading takes the blocked word's place. Nil
+    /// when nothing is left.
+    func screenedSwipe(_ word: String, alternates: [String]) -> (String, [String])? {
+        let allowSwears = KeyboardPreferences.suggestSwearWords
+        let readings = offensive.filter([word] + alternates, after: precedingWord, allowSwears: allowSwears)
+        guard let first = readings.first else { return nil }
+        return (first, Array(readings.dropFirst()))
+    }
+
     var pendingSwipeWord: String? { pendingSwipe?.word }
     var pendingSwipeAlternates: [String] { pendingSwipe?.alternates ?? [] }
 
@@ -821,14 +931,35 @@ final class TypingEngine {
                 .filter { $0.1.hasPrefix(lowered) }
                 .map(\.0)
         context.learnedWords = snapshot.completions(for: composition, limit: 3)
-        context.systemCompletions = Array((checked?.completions ?? []).prefix(8))
+        // Nothing the keyboard may not offer, from any source but the user's
+        // own (lexicon, vocabulary, learned words), which stand as they are.
+        let allowSwears = KeyboardPreferences.suggestSwearWords
+        let blocked = offensive
+        context.systemCompletions = blocked.filter(
+            Array((checked?.completions ?? []).prefix(8)), after: preceding, allowSwears: allowSwears
+        )
         // The checker's guesses first, the list's own near-matches behind them:
         // together they still answer when either one draws a blank.
-        context.systemGuesses = TypingCandidates.merged(
-            Array((checked?.guesses ?? []).prefix(4)),
-            checked?.similar ?? []
+        context.systemGuesses = blocked.filter(
+            TypingCandidates.merged(
+                Array((checked?.guesses ?? []).prefix(4)),
+                checked?.similar ?? []
+            ),
+            after: preceding,
+            allowSwears: allowSwears
         )
-        context.listCompletions = wordList.completions(for: composition, limit: 3)
+        context.listCompletions = blocked.filter(
+            wordList.completions(for: composition, limit: 3), after: preceding, allowSwears: allowSwears
+        )
+        context.typedIsOffensive = !composition.isEmpty
+            && blocked.blocks(composition, after: preceding, allowSwears: allowSwears)
+        if KeyboardPreferences.learnAsITypeEnabled,
+           let fix = snapshot.learnedFix(for: composition),
+           !blocked.blocks(fix, after: preceding, allowSwears: allowSwears)
+        {
+            context.learnedFix = fix
+        }
+        context.tapOffsets = tapOffsets.count == composition.count ? tapOffsets : []
         // One dictionary lookup per guess, half a dozen of them. What it buys is
         // the difference between "both" and "coth" — see `correctionCost`.
         var listRanks: [String: Int] = [:]
@@ -848,7 +979,10 @@ final class TypingEngine {
             }
         }
         context.listRanks = listRanks
-        context.predictions = preceding.map { wordList.nextWords(after: $0, limit: 3) } ?? []
+        context.predictions = preceding.map {
+            blocked.filter(wordList.nextWords(after: $0, limit: 6), after: $0, allowSwears: allowSwears)
+                .prefix(3).map { $0 }
+        } ?? []
         // The same bigrams, but as evidence about the word being typed rather
         // than a guess about the next one. A wider window than the strip shows,
         // because this only has to contain the right answer, not display it.

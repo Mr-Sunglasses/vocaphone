@@ -181,6 +181,15 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// until it ends. Optional so records written before this field still
     /// decode.
     var capturedInKeyboard: Bool?
+    /// A one-way fingerprint of the text selected when the dictation started
+    /// (`InsertionTargetFingerprint.selection`): the transcript replaces that
+    /// selection, and only that one. Optional so older records decode.
+    var selectionFingerprint: String?
+    /// When the transcript first became ready to insert. Parking it in
+    /// another field and re-arming it change `updatedAt`, so the 30-second
+    /// auto-insert window is measured from this instead and never restarts.
+    /// Optional so older records decode.
+    var readyAt: Date?
 
     init(
         sessionID: UUID = UUID(),
@@ -210,6 +219,8 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         recordedSeconds = nil
         fileIncompleteUntold = nil
         capturedInKeyboard = nil
+        selectionFingerprint = nil
+        readyAt = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {
@@ -219,6 +230,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         state = next
         revision += 1
         updatedAt = Self.normalizedTimestamp(now)
+        if next == .readyToInsert, readyAt == nil { readyAt = now }
         if next != .recording {
             meterLevel = 0
         }
@@ -350,6 +362,11 @@ enum SessionExpiryPolicy {
     /// A transcript waiting for a tap stays useful for a while, but not for the
     /// rest of the install — it is offered by whichever field is focused next.
     static let pendingUserActionWindow: TimeInterval = 60 * 60
+    /// A finished transcript is offered in whatever field comes next for this
+    /// long: long enough to switch apps and come back, short enough that an
+    /// old dictation does not turn up in an unrelated field later. Every
+    /// transcript is in History regardless.
+    static let transcriptOfferWindow: TimeInterval = 10 * 60
     /// An insertion takes microseconds inside one keyboard process. Anything
     /// left in `inserting` this long belongs to an extension that ended
     /// mid-insertion, and nothing else will ever move it on.
@@ -363,8 +380,9 @@ enum SessionExpiryPolicy {
             captureWindow
         case .finalizing, .uploading, .transcribing:
             processingWindow
-        case .readyToInsert, .targetContextChanged, .serverUnavailable,
-             .uploadFailedRecoverable, .transcriptionFailedRecoverable:
+        case .readyToInsert, .targetContextChanged:
+            transcriptOfferWindow
+        case .serverUnavailable, .uploadFailedRecoverable, .transcriptionFailedRecoverable:
             pendingUserActionWindow
         case .inserting:
             insertionWindow
@@ -441,7 +459,7 @@ enum InterruptedInsertion {
         if age < gracePeriod { return .wait }
         // A transcript waiting for a tap is offered for this long and no
         // longer; an interrupted one has no claim to more.
-        if age > SessionExpiryPolicy.pendingUserActionWindow { return .notApplicable }
+        if age > SessionExpiryPolicy.transcriptOfferWindow { return .notApplicable }
         return .offerAgain
     }
 

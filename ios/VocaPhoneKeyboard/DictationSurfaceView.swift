@@ -297,8 +297,37 @@ final class DictationSurfaceState: ObservableObject {
         get { typing.onCandidate }
         set { typing.onCandidate = newValue }
     }
+    var onPaste: ((String) -> Void)? {
+        get { typing.onPaste }
+        set { typing.onPaste = newValue }
+    }
+    var candidatesAnimate: Bool {
+        get { typing.animatesChanges }
+        set { typing.animatesChanges = newValue }
+    }
     /// Whatever the trailing button means right now.
     var onPrimary: (() -> Void)?
+    /// Push to talk: the trailing button held still for
+    /// `PushToTalk.holdDelay`, and released. Return whether the hold started a
+    /// dictation; the lift after a hold never also counts as a tap.
+    var onHoldBegan: (() -> Bool)?
+    var onHoldEnded: (() -> Void)?
+    /// The trailing button slid more than `PushToTalk.slideDistance` before
+    /// the hold fired: the styles open instead.
+    var onSlideMenu: (() -> Void)?
+    /// Set when a hold took over the press, so the tap that ends it is eaten.
+    fileprivate var holdOwnsPress = false
+    fileprivate var holdFired = false
+    fileprivate var slideFired = false
+
+    /// The finger lifted somewhere the button could not see it — the session
+    /// starting swaps the row, and the button with its gestures, for another.
+    /// Forgets the press so the next tap is a tap.
+    func endPressTracking() {
+        holdFired = false
+        slideFired = false
+        holdOwnsPress = false
+    }
 
     init() {}
 
@@ -563,7 +592,15 @@ final class TypingRowState: ObservableObject {
         storage = value
     }
     var onCandidate: ((TypingCandidate) -> Void)?
+    /// The text the system paste button handed over, after the user's tap.
+    var onPaste: ((String) -> Void)?
     var hapticsEnabled = true
+    /// Whether a change of words cross-fades. Off from the moment the keyboard
+    /// starts to appear until it is on screen: iOS hands over the field's
+    /// traits as it brings the keyboard in, after the first words were chosen
+    /// without them, and "the" rolling into "The" on every switch read as the
+    /// keyboard changing its mind. Changes before then just show.
+    var animatesChanges = false
 
     /// Choosing a suggestion is the one thing on this surface that buzzes: the
     /// word simply appears in somebody else's text field, with nothing else to
@@ -1644,7 +1681,47 @@ struct DictationSurfaceView: View {
     }
 
     private var trailingActionButton: some View {
+        trailingActionCore
+            // Push to talk and slide-to-styles ride beside the tap rather than
+            // replacing it: a quick tap still does exactly what it did.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard !state.holdFired, !state.slideFired,
+                              hypot(value.translation.width, value.translation.height) > PushToTalk.slideDistance
+                        else { return }
+                        state.slideFired = true
+                        state.holdOwnsPress = true
+                        state.onSlideMenu?()
+                    }
+                    .onEnded { _ in
+                        if state.holdFired { state.onHoldEnded?() }
+                        state.holdFired = false
+                        state.slideFired = false
+                        // The button's own tap, if it fires for this lift, has
+                        // run by now; a later real tap must not be eaten.
+                        DispatchQueue.main.async { state.holdOwnsPress = false }
+                    }
+            )
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: PushToTalk.holdDelay, maximumDistance: PushToTalk.slideDistance)
+                    .onEnded { _ in
+                        guard !state.slideFired else { return }
+                        if state.onHoldBegan?() == true {
+                            state.holdFired = true
+                            state.holdOwnsPress = true
+                        }
+                    }
+            )
+    }
+
+    private var trailingActionCore: some View {
         Button {
+            // The lift that ends a hold or a slide is not a tap.
+            if state.holdOwnsPress {
+                state.holdOwnsPress = false
+                return
+            }
             // Finish, Insert, Retry, Start: the state decides, the surface
             // draws it. `onPrimary` is set for every state the controller
             // drives; the two below are what the lab and the previews use.
@@ -1777,6 +1854,12 @@ private struct CandidateRow: View {
             )
         }
         .frame(maxWidth: .infinity)
+        .animation(
+            state.animatesChanges && !UIAccessibility.isReduceMotionEnabled
+                ? .easeOut(duration: 0.12)
+                : nil,
+            value: state.candidates.map(\.identity)
+        )
     }
 
     private var row: some View {
@@ -1791,6 +1874,21 @@ private struct CandidateRow: View {
                         .frame(height: 20)
                         .padding(.horizontal, 2)
                 }
+                if candidate.kind == .paste {
+                    // The system's own control: it hands the clipboard over
+                    // only on this tap, so iOS asks nothing and nothing reads
+                    // the clipboard before it.
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let text = strings.first, !text.isEmpty else { return }
+                        DispatchQueue.main.async { state.onPaste?(text) }
+                    }
+                    .labelStyle(.titleOnly)
+                    .buttonBorderShape(.capsule)
+                    .tint(state.isDark ? Color.white.opacity(0.18) : Color.white)
+                    .foregroundStyle(state.isDark ? Color.white : Color.black)
+                    .frame(minHeight: Self.rowHeight)
+                    .padding(.horizontal, 6)
+                } else {
                 Button {
                     state.tap()
                     state.onCandidate?(candidate)
@@ -1827,6 +1925,7 @@ private struct CandidateRow: View {
                 }
                 .buttonStyle(CandidateButtonStyle(isDark: state.isDark))
                 .accessibilityLabel(Self.accessibilityLabel(for: candidate))
+                }
             }
         }
     }
@@ -2416,4 +2515,12 @@ struct MeterPlayback {
             min(pow(level, 0.55) * envelope[index], 1)
         }
     }
+}
+
+/// Push to talk on the dictation button, as on Hex and Apple's dictation key:
+/// a still hold starts dictating at once and lifting finishes it; sliding away
+/// first opens the writing styles instead.
+enum PushToTalk {
+    static let holdDelay: Double = 0.35
+    static let slideDistance: CGFloat = 10
 }

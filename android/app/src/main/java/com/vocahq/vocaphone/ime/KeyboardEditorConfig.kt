@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.ime
 
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
+import com.vocahq.vocaphone.core.CorrectionLearningPolicy
 import com.vocahq.vocaphone.core.ImeInputPolicy
 
 internal enum class ReturnKeyKind {
@@ -24,6 +25,12 @@ internal data class KeyboardEditorConfig(
     val sensitive: Boolean,
     val shiftSync: Int = 0,
     val cursorSync: Int = 0,
+    /**
+     * The keyboard may learn typing fixes here: prose the app has not asked
+     * keyboards not to learn from (incognito, a secret's hint), and not a
+     * field that asked for no suggestions.
+     */
+    val learningAllowed: Boolean = false,
 ) {
     companion object {
         fun empty() = KeyboardEditorConfig(
@@ -92,6 +99,13 @@ internal data class KeyboardEditorConfig(
                 leadingPunctuation = leadingPunctuation,
                 dictationAllowed = ImeInputPolicy.acceptsDictation(inputType),
                 sensitive = ImeInputPolicy.isSensitive(inputType),
+                learningAllowed = inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0 &&
+                    CorrectionLearningPolicy.allowsLearning(
+                        inputType,
+                        info?.imeOptions ?: EditorInfo.IME_ACTION_NONE,
+                        info?.hintText,
+                        info?.fieldName,
+                    ),
             )
         }
 

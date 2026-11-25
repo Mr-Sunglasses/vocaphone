@@ -110,4 +110,30 @@ class KeyAccentsTest {
             )
         }
     }
+
+    @Test
+    fun quickAccentsStartLettersOnTheirMainAccent() {
+        val e = KeyboardKey(id = "e", label = "e")
+        val withSymbols = KeyAccents.forKey(e, ShiftState.OFF, longPressSymbols = true)
+        assertEquals("3", withSymbols[0])
+        // Off: the hinted symbol, as hold-and-release always typed.
+        assertEquals(0, KeyAccents.preselectIndex(e, withSymbols, quickAccents = false, longPressSymbols = true))
+        // On: past the symbol, to è.
+        val quick = KeyAccents.preselectIndex(e, withSymbols, quickAccents = true, longPressSymbols = true)
+        assertEquals("è", withSymbols[quick])
+        // Without symbols the first cell is already the accent.
+        val plain = KeyAccents.forKey(e, ShiftState.OFF)
+        assertEquals("è", plain[KeyAccents.preselectIndex(e, plain, quickAccents = true)])
+    }
+
+    @Test
+    fun quickAccentsLeaveDigitsSymbolsAndSymbolOnlyLettersAlone() {
+        val two = KeyboardKey(id = "2", label = "2")
+        assertEquals(0, KeyAccents.preselectIndex(two, KeyAccents.forKey(two, ShiftState.OFF), quickAccents = true))
+        val period = KeyboardKey(id = ".", label = ".")
+        assertEquals(0, KeyAccents.preselectIndex(period, KeyAccents.forKey(period, ShiftState.OFF), quickAccents = true))
+        val q = KeyboardKey(id = "q", label = "q")
+        val qAccents = KeyAccents.forKey(q, ShiftState.OFF, longPressSymbols = true)
+        assertEquals(0, KeyAccents.preselectIndex(q, qAccents, quickAccents = true, longPressSymbols = true))
+    }
 }

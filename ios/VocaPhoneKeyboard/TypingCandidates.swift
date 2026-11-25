@@ -36,6 +36,10 @@ struct TypingCandidate: Equatable {
         /// Writing check's count: opens the panel with every suggestion and
         /// its reason. Only on the older bar; the surface has its own button.
         case writingReview
+        /// The system paste button, in an empty field (`FieldOffer.paste`).
+        case paste
+        /// Switches to Apple's keyboard, for a code or a saved login.
+        case nextKeyboard
     }
 
     let text: String
@@ -138,6 +142,18 @@ enum TypingCandidates {
         var isInWordList = false
         /// Words the user restored after an autocorrect, for this document.
         var assertedWords: Set<String> = []
+        /// What the user has fixed this exact typo to, the same way, twice
+        /// (`LearnedWords.learnedFix`). Applied on space unless the typo is
+        /// itself a word; then only offered first.
+        var learnedFix: String?
+        /// The composition is a word the keyboard may not offer
+        /// (`OffensiveWords`). Typed in full it is left alone, never
+        /// "corrected" into something else.
+        var typedIsOffensive = false
+        /// Where each typed letter's finger landed in its key, one per
+        /// character of ``composition`` (nil where unknown: a pasted or
+        /// restored letter). See ``TapSpatialScore``.
+        var tapOffsets: [TapOffset?] = []
 
         /// The emoji for the word being composed, when there is an obvious one.
         var emojiSuggestion: String?
@@ -247,6 +263,8 @@ enum TypingCandidates {
     /// their surname should not have to scroll past the dictionary to find it.
     static func rankedSuggestions(_ context: Context) -> [String] {
         var ordered: [String] = []
+        // A fix the user has made twice is the likeliest reading of all.
+        if let fix = context.learnedFix { ordered.append(matchingCase(of: context.composition, applyingTo: fix)) }
         ordered.append(contentsOf: context.lexiconEntries)
         ordered.append(contentsOf: context.customWords)
         ordered.append(contentsOf: context.learnedWords)
@@ -324,6 +342,22 @@ enum TypingCandidates {
            expansion.lowercased() != typed.lowercased()
         {
             return .apply(expansion)
+        }
+
+        // A word the keyboard may not offer, typed in full, was typed on
+        // purpose: it is neither offered nor corrected away.
+        guard !context.typedIsOffensive else { return .refused("a word the keyboard does not offer") }
+
+        // A typo the user has fixed the same way twice, and never another
+        // way: their own correction, learned. Never over a real word — that is
+        // only offered (`rankedSuggestions`) — and never in shouted capitals.
+        if let fix = context.learnedFix,
+           !isAllCaps(typed),
+           !context.isInWordList,
+           !context.isKnownToChecker,
+           fix.lowercased() != typed.lowercased()
+        {
+            return .apply(matchingCase(of: typed, applyingTo: fix))
         }
 
         // The curated short-word table, ahead of every guard below it. Each of
@@ -590,6 +624,15 @@ enum TypingCandidates {
         // The shipped list is frequency-ordered and the checker is not, so a
         // guess the list knows is the more likely reading of the two.
         if contains(context.listCompletions, candidate) { cost -= 0.1 }
+        // Where the fingers actually landed: a tap on the edge nearest the
+        // candidate's key makes it the likelier reading, one dead centre on the
+        // typed key the less likely. Same-length words only.
+        cost += TapSpatialScore.adjustment(
+            typed: typed,
+            candidate: candidate,
+            taps: context.tapOffsets,
+            rows: context.layoutRows
+        )
         // And how well it knows it.
         //
         // `UITextChecker` ranks nothing: "coth" comes back beside "both" as an

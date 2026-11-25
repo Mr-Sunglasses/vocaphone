@@ -84,6 +84,26 @@ internal object KeyAccents {
     }
 
     /**
+     * Which cell of [accents] (from [forKey]) a hold starts on, so releasing
+     * without moving types it. "Quick accents" ([quickAccents]) starts a
+     * letter on its main accent, past the hinted symbol "Hold for digits and
+     * symbols" puts first; otherwise, and for digits and symbols, the first.
+     */
+    fun preselectIndex(
+        key: KeyboardKey,
+        accents: List<String>,
+        quickAccents: Boolean,
+        longPressSymbols: Boolean = false,
+        numberRow: Boolean = false,
+    ): Int {
+        if (!quickAccents || accents.size < 2 || key.type != KeyboardKeyType.CHARACTER) return 0
+        val base = key.output.lowercase(Locale.ROOT)
+        if (base.length != 1 || !base[0].isLetter()) return 0
+        val symbol = letterSymbol(base, longPressSymbols, numberRow) ?: return 0
+        return if (accents[0] == symbol) 1 else 0
+    }
+
+    /**
      * Light corner mark. Digits keep `!` on `1` when number-key hints are on.
      * Letters show a `?123` / `#+=` symbol when long-press-for-symbols is on.
      * q-p show `1`-`0` unless the number row is already there, then the
