@@ -93,4 +93,17 @@ internal object DictationSelection {
         remembered != null && remembered == current -> Target.AsIs
         else -> Target.CollapseTo(current.end)
     }
+
+    /**
+     * As [target], from the editor's reported selection [start]..[end] and
+     * its text as read ([text], null when the editor would not say). A
+     * selection whose text cannot be read is never replaced: it might be one
+     * the user made after the dictation started, so the transcript goes in at
+     * its end instead.
+     */
+    fun target(remembered: Range?, start: Int, end: Int, text: String?): Target {
+        if (start < 0 || end < 0 || start == end) return Target.AsIs
+        val current = remember(start, end, text) ?: return Target.CollapseTo(maxOf(start, end))
+        return target(remembered, current)
+    }
 }

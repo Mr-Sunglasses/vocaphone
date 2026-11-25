@@ -185,6 +185,11 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// (`InsertionTargetFingerprint.selection`): the transcript replaces that
     /// selection, and only that one. Optional so older records decode.
     var selectionFingerprint: String?
+    /// When the transcript first became ready to insert. Parking it in
+    /// another field and re-arming it change `updatedAt`, so the 30-second
+    /// auto-insert window is measured from this instead and never restarts.
+    /// Optional so older records decode.
+    var readyAt: Date?
 
     init(
         sessionID: UUID = UUID(),
@@ -215,6 +220,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         fileIncompleteUntold = nil
         capturedInKeyboard = nil
         selectionFingerprint = nil
+        readyAt = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {
@@ -224,6 +230,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         state = next
         revision += 1
         updatedAt = Self.normalizedTimestamp(now)
+        if next == .readyToInsert, readyAt == nil { readyAt = now }
         if next != .recording {
             meterLevel = 0
         }

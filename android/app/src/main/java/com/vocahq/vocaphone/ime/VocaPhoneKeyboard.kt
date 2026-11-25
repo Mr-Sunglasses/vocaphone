@@ -195,6 +195,7 @@ internal fun VocaPhoneKeyboard(
     onRejectFix: (typed: String, fix: String) -> Unit = { _, _ -> },
     onMicHoldStart: () -> Unit = {},
     onMicHoldEnd: () -> Unit = {},
+    readTextBeforeCursor: () -> String? = { null },
     inlineSuggestions: List<View> = emptyList(),
     replacesSelection: Boolean = false,
     viewShown: Int = 0,
@@ -526,7 +527,9 @@ internal fun VocaPhoneKeyboard(
 
     /** Delete slid left: [steps] words deleted from where the press left the text. */
     fun handleDeleteSlide(steps: Int) {
-        val slide = deleteSlide[0] ?: DeleteSlide(deleteHoldBefore[0]).also {
+        // A fresh read when the slide starts, not the cached window with the
+        // composing word appended: that merge could double part of the word.
+        val slide = deleteSlide[0] ?: DeleteSlide(readTextBeforeCursor() ?: deleteHoldBefore[0]).also {
             deleteSlide[0] = it
             clearSwipe()
             learnedUndo[0] = null

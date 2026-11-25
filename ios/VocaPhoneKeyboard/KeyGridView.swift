@@ -6,6 +6,9 @@ enum KeyboardOutput {
     case newline
     case deleteBackward
     case deleteWord
+    /// A delete slide took over the press: whatever an earlier slide left to
+    /// type back is forgotten.
+    case deleteSlideBegan
     /// Delete held and slid left: `+1` deletes one more word, `-1` types the
     /// last one deleted back (`DeleteWordSlide`).
     case deleteSlideStep(Int)
@@ -906,6 +909,11 @@ final class KeyGridView: UIView {
     /// dismissed, and a popover left behind reappears over the next field.
     func endActiveInteractions() {
         endDeleteRepeat()
+        // A slide whose touch is dropped here ends like a lift: nothing it
+        // could type back may outlive it.
+        if tracked.contains(where: { $0.isDeleteSliding }) {
+            delegate?.keyGrid(self, didProduce: .deleteSlideEnded)
+        }
         releaseTouches()
     }
 
@@ -1741,6 +1749,7 @@ final class KeyGridView: UIView {
         if !item.isDeleteSliding {
             guard wanted > 0 else { return false }
             item.isDeleteSliding = true
+            delegate?.keyGrid(self, didProduce: .deleteSlideBegan)
             endDeleteRepeat()
             item.isEngaged = true
             setHighlight(true, on: item.key)

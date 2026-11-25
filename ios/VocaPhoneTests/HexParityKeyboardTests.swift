@@ -236,6 +236,23 @@ struct HexParityKeyboardTests {
         #expect(SessionExpiryPolicy.window(for: .uploadFailedRecoverable) == SessionExpiryPolicy.pendingUserActionWindow)
     }
 
+    @Test func parkingAndRearmingDoNotRestartTheAutoInsertWindow() throws {
+        let start = Date()
+        var record = SessionRecord(now: start)
+        record.capturedInKeyboard = true
+        try record.transition(to: .recording, now: start)
+        try record.transition(to: .finalizing, now: start)
+        try record.transition(to: .uploading, now: start)
+        try record.transition(to: .readyToInsert, now: start)
+        // Parked in another field, back a few minutes later: re-armed now.
+        try record.transition(to: .targetContextChanged, now: start.addingTimeInterval(60))
+        try record.transition(to: .readyToInsert, now: start.addingTimeInterval(300))
+        #expect(record.readyAt == start)
+        #expect(!PendingTranscriptPolicy.autoInserts(
+            record, preference: true, now: start.addingTimeInterval(301)
+        ))
+    }
+
     @Test func onlyTheSelectionADictationStartedOverIsReplaced() {
         let id = UUID()
         let recorded = InsertionTargetFingerprint.selection(

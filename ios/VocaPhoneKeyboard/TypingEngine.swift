@@ -412,6 +412,10 @@ final class TypingEngine {
         pendingSwipe = nil
         policy = newPolicy
         composer.reset()
+        // A word erased in one field and a word typed in the next are not a
+        // fix, and taps belong to the word they were made in.
+        erasedWord = nil
+        tapOffsets = []
         precedingWord = nil
         hasDocumentContext = false
         assertedWords.removeAll()

@@ -111,7 +111,7 @@ enum PendingTranscriptPolicy {
     static func autoInserts(_ record: SessionRecord, preference: Bool, now: Date = Date()) -> Bool {
         preference
             && !record.isFromShortcut
-            && now.timeIntervalSince(record.updatedAt) <= autoInsertWindow
+            && now.timeIntervalSince(record.readyAt ?? record.updatedAt) <= autoInsertWindow
     }
 
     static let autoInsertWindow: TimeInterval = 30

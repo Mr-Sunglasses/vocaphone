@@ -1,6 +1,7 @@
 import os
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback {
     private let store = SharedStore.shared
@@ -487,6 +488,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // the process is still alive, and Retry covers it if iOS ends it first.
         // A microphone still starting is stopped before it records anything.
         keyboardDictation.keyboardWillHide()
+        // Words a delete slide removed here are never typed into another field.
+        slideDeletedWords.removeAll()
         // A held key or an open accent popover must not survive the keyboard
         // being dismissed; iOS does not reliably cancel those touches for us.
         keyGrid.endActiveInteractions()
@@ -1349,6 +1352,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             typing.resetComposition(document: refreshDocument())
             releaseUndoIfDetached()
+        case .deleteSlideBegan:
+            slideDeletedWords.removeAll()
         case .deleteSlideEnded:
             slideDeletedWords.removeAll()
             updateAutomaticShift()
@@ -2816,6 +2821,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         addChild(host)
         let hostView = host.view!
         hostView.backgroundColor = .clear
+        // Push to talk ends when the finger lifts, and the button that saw it
+        // go down is replaced as the session starts. The hosting view stays,
+        // so it watches for the lift; it never claims a touch itself.
+        let lift = TouchLiftObserver()
+        lift.onAllLifted = { [weak self] in
+            guard let self else { return }
+            self.endPushToTalk()
+            DispatchQueue.main.async { self.dictationSurfaceState.endPressTracking() }
+        }
+        hostView.addGestureRecognizer(lift)
         hostView.translatesAutoresizingMaskIntoConstraints = false
         topBarContainer.addSubview(hostView)
         NSLayoutConstraint.activate([
@@ -3523,4 +3538,49 @@ private final class SingleShotReply: @unchecked Sendable {
 /// The keyboard's root view, which is what makes the system key click play.
 final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
     var enableInputClicksWhenVisible: Bool { true }
+}
+
+/// Reports when the last finger on a view lifts, and does nothing else: it
+/// never recognizes, cancels or delays a touch, and recognizes alongside
+/// every other gesture. Push to talk uses it to finish even when the view the
+/// finger went down on has been swapped out under it.
+final class TouchLiftObserver: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    var onAllLifted: (() -> Void)?
+    private var touchesDown = 0
+
+    init() {
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+        delegate = self
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        touchesDown += touches.count
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        lifted(touches.count)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        lifted(touches.count)
+    }
+
+    private func lifted(_ count: Int) {
+        touchesDown = max(0, touchesDown - count)
+        guard touchesDown == 0 else { return }
+        onAllLifted?()
+        state = .failed
+    }
+
+    override func reset() {
+        touchesDown = 0
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool { true }
 }

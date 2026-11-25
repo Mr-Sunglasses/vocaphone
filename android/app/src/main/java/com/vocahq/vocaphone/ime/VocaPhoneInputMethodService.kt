@@ -380,6 +380,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onRejectFix = ::rejectTypingFix,
                 onMicHoldStart = ::startPushToTalk,
                 onMicHoldEnd = ::finishPushToTalk,
+                readTextBeforeCursor = ::readTextBeforeCursorForSlide,
                 inlineSuggestions = inline,
                 replacesSelection = overSelection,
                 viewShown = shown,
@@ -660,16 +661,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             // Over a selection only if it is the one the dictation started
             // over; any other selection is left alone and the transcript goes
             // in at its end. One read, and only when there is a selection.
-            val current = if (lastSelStart >= 0 && lastSelEnd >= 0 && lastSelStart != lastSelEnd) {
-                DictationSelection.remember(
-                    lastSelStart,
-                    lastSelEnd,
-                    runCatching { connection.getSelectedText(0)?.toString() }.getOrNull(),
-                )
+            val hasSelection = lastSelStart >= 0 && lastSelEnd >= 0 && lastSelStart != lastSelEnd
+            val selectedText = if (hasSelection) {
+                runCatching { connection.getSelectedText(0)?.toString() }.getOrNull()
             } else {
                 null
             }
-            val target = DictationSelection.target(dictationSelection, current)
+            val target = DictationSelection.target(dictationSelection, lastSelStart, lastSelEnd, selectedText)
             dictationSelection = null
             replacesSelection.value = false
             val committedText = commitDictationText(
@@ -1500,6 +1498,16 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     /** The finger lifted after push-to-talk: finish, exactly as tapping Stop does. */
+    /**
+     * The text before the cursor, read fresh once when a delete slide starts.
+     * One blocking read per slide, never per press: the cached window and the
+     * composing word cannot be merged reliably (a stale read can already hold
+     * part of the word), and a slide that miscounts deletes text the user
+     * never meant and types back words they never wrote.
+     */
+    private fun readTextBeforeCursorForSlide(): String? =
+        runCatching { currentInputConnection?.getTextBeforeCursor(DELETE_SLIDE_CONTEXT, 0)?.toString() }.getOrNull()
+
     private fun finishPushToTalk() {
         when {
             lastState.phase == DictationPhase.LISTENING -> {
@@ -1855,6 +1863,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private companion object {
         const val MAX_CURSOR_STEPS_PER_EVENT = 12
+        /** Enough text for the words a delete slide can reach. */
+        const val DELETE_SLIDE_CONTEXT = 1_000
 
         /**
          * Long enough that a burst of typing collapses into one read, short

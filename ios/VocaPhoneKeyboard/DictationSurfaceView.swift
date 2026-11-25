@@ -320,6 +320,15 @@ final class DictationSurfaceState: ObservableObject {
     fileprivate var holdFired = false
     fileprivate var slideFired = false
 
+    /// The finger lifted somewhere the button could not see it — the session
+    /// starting swaps the row, and the button with its gestures, for another.
+    /// Forgets the press so the next tap is a tap.
+    func endPressTracking() {
+        holdFired = false
+        slideFired = false
+        holdOwnsPress = false
+    }
+
     init() {}
 
     func appendMeterLevels(_ levels: [Float]) { meter.append(levels) }

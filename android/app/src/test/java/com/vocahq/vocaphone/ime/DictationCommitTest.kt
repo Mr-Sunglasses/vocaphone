@@ -207,4 +207,13 @@ class DictationCommitTest {
         assertEquals(null, DictationSelection.remember(3, 3, ""))
         assertEquals(null, DictationSelection.remember(-1, 4, "text"))
     }
+
+    @Test
+    fun `a selection whose text cannot be read is never replaced`() {
+        val started = DictationSelection.remember(4, 9, "quick")
+        assertEquals(DictationSelection.Target.CollapseTo(9), DictationSelection.target(started, 4, 9, null))
+        assertEquals(DictationSelection.Target.CollapseTo(20), DictationSelection.target(null, 20, 15, null))
+        assertEquals(DictationSelection.Target.AsIs, DictationSelection.target(started, 4, 9, "quick"))
+        assertEquals(DictationSelection.Target.AsIs, DictationSelection.target(started, 7, 7, null))
+    }
 }
