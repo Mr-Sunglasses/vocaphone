@@ -4,6 +4,9 @@ import UIKit
 
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback {
     private let store = SharedStore.shared
+    /// Records and sends a gateway dictation without opening vocaphone. One
+    /// per process: it outlives this controller when iOS recreates it.
+    private var keyboardDictation: KeyboardDictation { .shared }
     private var activeSessionID: UUID?
     private var pollingTimer: Timer?
     private var pollingInterval: TimeInterval?
@@ -285,6 +288,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         healthyMemorySamples = 0
         typing.reduceMemoryUsage()
         keyGrid.discardHiddenPlanes()
+        keyboardDictation.releaseIdleResources()
         guard !isMemoryConstrained else { return }
         isMemoryConstrained = true
         VocaPhoneDarwinCenter.post(.keyboardLowOnMemory)
@@ -316,6 +320,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 #endif
 
     override func viewWillAppear(_ animated: Bool) {
+        // The instance on screen is the one a dictation's progress refreshes.
+        keyboardDictation.onChange = { [weak self] in self?.refresh() }
         // The preference behind this lives in the shared defaults and is
         // changed in the app, which the user reaches by leaving the keyboard.
         // Coming back is the moment it can have changed under us.
@@ -461,6 +467,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         darwinObservations.forEach { $0.invalidate() }
         darwinObservations.removeAll()
         appLaunchFallbackTask?.cancel()
+        // Recording in the keyboard ends with it: what was said is sent while
+        // the process is still alive, and Retry covers it if iOS ends it first.
+        // A microphone still starting is stopped before it records anything.
+        keyboardDictation.keyboardWillHide()
         // A held key or an open accent popover must not survive the keyboard
         // being dismissed; iOS does not reliably cancel those touches for us.
         keyGrid.endActiveInteractions()
@@ -485,6 +495,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // this instance or a new one reads the file; bounded, and the keyboard
         // has already gone.
         let learnedWordsLanded = typing.flushPendingWrites()
+        // The capture page stays loaded between dictations only while the
+        // keyboard is on screen; one still sending lets go when it ends.
+        keyboardDictation.releaseIdleResources()
         recycleIfBloated(learnedWordsLanded: learnedWordsLanded)
     }
 
@@ -495,6 +508,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// insertion target are in the App Group, and a recreated keyboard already
     /// adopts them — that is the path every jetsam kill of this extension took.
     private func recycleIfBloated(learnedWordsLanded: Bool) {
+        // A dictation the keyboard is still sending ends with the process.
+        guard !keyboardDictation.isBusy else { return }
         guard let available = recycling.headroomIfRecycling(
             isVisible: isKeyboardVisible,
             isInserting: isPerformingInsertion
@@ -1017,6 +1032,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
               record.state == .recording
         else { return }
         DiagnosticLog.record(.finishRequested)
+        if record.capturedInKeyboard == true, keyboardDictation.owns(id) {
+            keyboardDictation.finish()
+            return
+        }
         transition(&record, to: .finalizing)
     }
 
@@ -1048,6 +1067,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let keepsTranscript = [.readyToInsert, .targetContextChanged].contains(record.state)
             && record.transcript?.isEmpty == false
         transition(&record, to: .canceled)
+        if record.capturedInKeyboard == true, record.state == .canceled {
+            if keyboardDictation.owns(id) {
+                keyboardDictation.cancel(id)
+            } else {
+                KeyboardDictation.discardAudio(of: record)
+            }
+        }
         if keepsTranscript, record.state == .canceled {
             flash("Dismissed. It's saved in Transcripts in vocaphone.")
         }
@@ -1077,6 +1103,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
               var record = try? store.load(id),
               record.canRetry
         else { return }
+        if record.capturedInKeyboard == true {
+            retryKeyboardRecording(record)
+            return
+        }
         record.error = nil
         transition(&record, to: .uploading)
         guard let url = URL(
@@ -1093,6 +1123,28 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     "Open vocaphone to retry the preserved recording."
                 )
             }
+        }
+    }
+
+    /// A keyboard recording is retried from the keyboard: the file is in the
+    /// App Group and the gateway is reachable from here, so there is no reason
+    /// to leave the app the user is in.
+    private func retryKeyboardRecording(_ record: SessionRecord) {
+        guard !keyboardDictation.isBusy else {
+            flash("Still sending the last dictation.")
+            return
+        }
+        // Resending a saved file needs only the gateway: not the microphone,
+        // and not the setting that governs recording here.
+        guard let gateway = KeyboardDictation.credentials() else {
+            flash("Open vocaphone and check the gateway, then retry.")
+            return
+        }
+        guard keyboardDictation.retry(record, gateway: gateway) else {
+            var gone = record
+            transition(&gone, to: .canceled)
+            flash("The recording is no longer on this iPhone.")
+            return
         }
     }
 
@@ -1582,6 +1634,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         do {
             try parked.transition(to: .canceled)
             try store.save(parked)
+            KeyboardDictation.discardAudio(of: parked)
             activeSessionID = nil
             sessionTargetDocumentID = nil
             sessionTargetConfirmed = false
@@ -1630,8 +1683,48 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             before: snapshot.before,
             after: snapshot.after
         )
-        saveCursorContextTerms(for: record.sessionID, from: snapshot)
         let availability = try? store.loadQuickDictationAvailability()
+        if let gateway = KeyboardDictation.gateway(quickDictationReady: availability?.isReady() == true) {
+            startInKeyboard(record, gateway: gateway, snapshot: snapshot, availability: availability)
+            return
+        }
+        launchThroughApp(record, snapshot: snapshot, availability: availability)
+    }
+
+    /// Records here and sends the audio to the gateway, without opening
+    /// vocaphone. A microphone that does not start falls back to the app.
+    private func startInKeyboard(
+        _ record: SessionRecord,
+        gateway: KeyboardDictation.Gateway,
+        snapshot: DocumentSnapshot,
+        availability: QuickDictationAvailability?
+    ) {
+        flash("Starting the microphone…")
+        keyboardDictation.start(
+            record,
+            gateway: gateway,
+            contextTerms: cursorContextTerms(from: snapshot),
+            host: view,
+            started: { [weak self] started in
+                guard let self else { return }
+                self.activeSessionID = started.sessionID
+                self.sessionTargetDocumentID = started.sourceDocumentID
+                self.sessionTargetConfirmed = true
+                self.render(started)
+            },
+            fallback: { [weak self] in
+                self?.launchThroughApp(record, snapshot: snapshot, availability: availability)
+            }
+        )
+    }
+
+    private func launchThroughApp(
+        _ incoming: SessionRecord,
+        snapshot: DocumentSnapshot,
+        availability: QuickDictationAvailability?
+    ) {
+        var record = incoming
+        saveCursorContextTerms(for: record.sessionID, from: snapshot)
         record.prefersQuickDictation = availability?.isReady() == true
         do {
             try record.transition(to: .launchingApp)
@@ -1662,17 +1755,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// off — passwords, one-time codes, card numbers, number pads — and never
     /// with "Use nearby text" off.
     private func saveCursorContextTerms(for sessionID: UUID, from snapshot: DocumentSnapshot) {
+        let terms = cursorContextTerms(from: snapshot)
+        guard !terms.isEmpty else { return }
+        try? store.saveCursorContextTerms(terms, for: sessionID)
+    }
+
+    /// A keyboard recording spells with these in this process; they are never
+    /// written anywhere or sent to the gateway.
+    private func cursorContextTerms(from snapshot: DocumentSnapshot) -> [String] {
         guard LocalTranscriptionPreferences.usesNearbyText,
               TypingFieldPolicy.resolve(for: textDocumentProxy).allowsTypingIntelligence
-        else { return }
+        else { return [] }
         // Until the word list has loaded, every capitalized word would look
         // like a name; treating them all as ordinary keeps only the shapes.
         let hasWordList = typing.hasWordList
-        let terms = ContextTerms.extract(before: snapshot.before, after: snapshot.after) { word in
+        return ContextTerms.extract(before: snapshot.before, after: snapshot.after) { word in
             !hasWordList || self.typing.isListedWord(word)
         }
-        guard !terms.isEmpty else { return }
-        try? store.saveCursorContextTerms(terms, for: sessionID)
     }
 
     /// Says why Dictate cannot start, with the button that fixes it. A failure
@@ -1980,7 +2079,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 appLaunchFallbackTask?.cancel()
                 appLaunchFallbackTask = nil
             }
-            let record = recoverInterruptedInsertion(loaded)
+            let record = recoverOrphanedKeyboardRecording(recoverInterruptedInsertion(loaded))
+            keyboardDictation.observe(record)
             guard !expireIfStale(record) else { return }
             guard !reportEndedSession(record) else { return }
             latchSessionTarget()
@@ -2005,7 +2105,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Before expiry: an insertion interrupted a minute ago is still a
         // transcript the user wants offered, and `inserting` has the shortest
         // window of all.
-        let recent = recoverInterruptedInsertion(mostRecent)
+        let recent = recoverOrphanedKeyboardRecording(recoverInterruptedInsertion(mostRecent))
         // Adoption is how a session survives the keyboard being torn down for
         // the hand-off, so it must not also resurrect one nobody is waiting for.
         guard !expireIfStale(recent) else { return }
@@ -2017,6 +2117,40 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         sessionTargetDocumentID = currentDocumentID
         sessionTargetConfirmed = false
         handle(recent)
+    }
+
+    /// A keyboard recording no live keyboard is working on: iOS ended the
+    /// extension mid-recording or mid-upload. The audio written so far is in
+    /// the App Group, so the session becomes a Retry instead of waiting for an
+    /// expiry that would throw it away.
+    private func recoverOrphanedKeyboardRecording(_ record: SessionRecord) -> SessionRecord {
+        guard record.capturedInKeyboard == true,
+              [.recording, .finalizing, .uploading, .transcribing].contains(record.state),
+              !keyboardDictation.owns(record.sessionID),
+              // A keyboard in another app may still be sending it.
+              !KeyboardDictation.isAlive(record.sessionID)
+        else { return record }
+        KeyboardDictation.forgetHeartbeat(record.sessionID)
+        var recovered = record
+        do {
+            if recovered.state == .recording { try recovered.transition(to: .finalizing) }
+            let next = KeyboardDictation.failureState(.uploadFailedRecoverable, from: recovered.state)
+            recovered.error = SessionFailure(
+                code: "keyboard_capture_interrupted",
+                message: "This dictation was interrupted. Retry to send what was recorded.",
+                recoverable: true
+            )
+            try recovered.transition(to: next)
+            // Only over the copy this decision was made from. An owner that
+            // resumed in the meantime and saved its transcript wins: a blind
+            // write here turned a finished `readyToInsert` into a failure, and
+            // the owner, having saved, then deleted the recording behind it.
+            return try store.save(recovered, expectingRevision: record.revision)
+        } catch SharedStoreError.revisionConflict {
+            return (try? store.load(record.sessionID)) ?? record
+        } catch {
+            return record
+        }
     }
 
     /// An `inserting` record this keyboard is not inserting belongs to an
@@ -2061,6 +2195,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// rendering a record they have just made terminal.
     private func expireIfStale(_ record: SessionRecord) -> Bool {
         guard let expired = SessionExpiryPolicy.expireIfStale(record, in: store) else { return false }
+        KeyboardDictation.discardAudio(of: expired)
         if activeSessionID == record.sessionID {
             forgetActiveSession()
         }

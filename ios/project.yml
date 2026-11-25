@@ -143,6 +143,13 @@ targets:
     sources:
       - VocaPhoneKeyboard
       - VocaPhoneShared
+      # A gateway dictation recorded in the keyboard goes through the app's own
+      # gateway client and streaming bridge, so both send audio while the user
+      # is still speaking and cannot drift apart (KeyboardDictation).
+      - path: VocaPhoneApp/Networking/GatewayClient.swift
+      - path: VocaPhoneApp/Networking/GatewayRecordingUpload.swift
+      - path: VocaPhoneApp/Networking/GatewayUploadAudio.swift
+      - path: VocaPhoneApp/Networking/StreamingAudioBridge.swift
     # One copy in the repository, shared with the Android keyboard, which reaches
     # the same two files through `sourceSets` in android/app/build.gradle.kts.
     # Two hand-maintained word lists drift, and nothing notices until the
@@ -224,6 +231,11 @@ targets:
       # the App Group, and the keyboard asking.
       - path: VocaPhoneApp/Models/TypedGrammarResponder.swift
       - path: VocaPhoneKeyboard/WritingCheckClient.swift
+      # The keyboard's own gateway dictation: its WAV and 16 kHz chunks, and
+      # the rules it follows (failure states, liveness, audio cleanup).
+      - path: VocaPhoneKeyboard/KeyboardRecordingFile.swift
+      - path: VocaPhoneKeyboard/KeyboardDictation.swift
+      - path: VocaPhoneKeyboard/KeyboardMicrophoneCapture.swift
       # Apple's checkers for the Writing check screen: where their edits land.
       - path: VocaPhoneApp/App/AppleProofreading.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift

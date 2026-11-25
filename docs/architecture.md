@@ -17,6 +17,9 @@ FastAPI gateway (VocaHQ/vocagateway submodule at gateway/)
                                   or whisper.cpp
 ```
 
+On the gateway route the keyboard can also record a dictation itself and talk
+to the gateway directly; see [Keyboard recording](#keyboard-recording-ios-gateway-route).
+
 The gateway implementation and its ops docs live in
 [vocagateway](https://github.com/VocaHQ/vocagateway); this repository vendors a
 pinned revision under `gateway/`.
@@ -281,6 +284,86 @@ interrupted insertion may itself have changed the text around the cursor, so
 the warning takes precedence over "Insert here". `inserting` also expires after 30 seconds, and only
 counts as having an active writer within that window, so delete, Delete all and
 storage pruning can reclaim a record no keyboard came back for.
+
+## Keyboard recording (iOS, gateway route)
+
+A keyboard extension may not open the microphone (`audiomxd` refuses a bundle
+without the record-audio entitlement), but WebKit's media capture runs in its
+own process under the containing app's permission. `KeyboardMicrophoneCapture`
+loads a one-page `WKWebView` on a secure origin, calls `getUserMedia` with
+echo cancellation, noise suppression and gain control off, and posts 16-bit
+PCM chunks to Swift. `KeyboardRecordingFile` resamples them to mono 16 kHz and
+writes a WAV to the App Group's `pending-audio`, named after the session.
+
+`KeyboardDictation` takes a Dictate tap when all of these hold, and otherwise
+the hand-off below runs unchanged:
+
+- the gateway is the route (`LocalTranscriptionPreferences.enabled` is off);
+- Quick Dictation is not standing by (its streaming path is faster);
+- **Record in the keyboard** is on (`KeyboardGatewayAccess.enabled`);
+- vocaphone already has microphone permission;
+- the app has shared the gateway: `KeyboardGatewayAccess.baseURL` (mirrored by
+  the app whenever it loads, saves or checks the gateway, cleared when the
+  gateway or token goes away) and the token in the App Group keychain access
+  group (`KeychainStore.loadSharedToken`). Older builds kept the token in the
+  app's own access group; the app moves it on its next read.
+
+The session record is saved only once audio flows, straight from `idle` to
+`recording`, with `capturedInKeyboard`, `processingLocation = gateway` and the
+WAV as `localAudioReference`. A web view that fails or stays silent for four
+seconds leaves nothing behind and opens vocaphone instead. The page stays
+loaded between dictations while the keyboard is on screen, so only the first
+dictation pays for starting WebKit; it is dropped when the keyboard leaves the
+screen or runs low on memory.
+
+While the user speaks, the keyboard streams to the gateway exactly as the app
+does, through the app's own `StreamingAudioBridge` and `GatewayClient` (the
+four `VocaPhoneApp/Networking` files are compiled into the keyboard target):
+the incremental WebSocket when the model decodes as it hears, otherwise the
+streamed WAV PUT with `?finish=true`. The transport opens at the Dictate tap,
+alongside the microphone starting, and audio waits in the stream until it is
+ready. Which one is decided per dictation by
+`GatewayClient.negotiatedRecordingTransport`: the health request the upload
+needs anyway also says whether the loaded model streams, so a batch model
+skips the WebSocket attempt it would refuse, and a model changed on the
+gateway is followed by the next dictation — nothing is cached. A gateway too
+old to say tries the socket first, as before. Finish therefore only closes the
+stream; the gateway already has the audio. The keyboard buffers at most about 30 seconds of audio
+for a slow network, then abandons the stream for the file, as does any stream
+failure. The transport opens once the microphone has started, so a short
+dictation can end before its handshake does; Finish then waits up to three
+seconds for it (`StreamingAudioBridge.waitUntilOpen`), since sending buffered
+samples on an open stream is far quicker than the file. When the stream is
+abandoned the keyboard closes the WAV, creates the session (idempotent),
+uploads it as compressed M4A with `?finish=true`, and calls `/finish` only for
+an older gateway: the app's complete-file fallback.
+
+Either way the keyboard runs `DictatedTranscript.finished` with the cursor
+terms it kept in memory, deletes the WAV and writes `readyToInsert`; insertion
+is the ordinary keyboard path. The keyboard and the app both write
+`gatewayTranscriptionTimed` (Finish to transcript, and whether the audio was
+streamed) so the two paths can be compared, and the keyboard writes
+`keyboardCaptureStarted` with how long the microphone took to start. The
+app's figure starts when it begins finishing, so it leaves out the moment the
+keyboard's Finish takes to reach it.
+
+The app never claims, finalizes or uploads a `capturedInKeyboard` session and
+shows no swipe-back screen for one; its own Retry of such a session clears the
+flag and takes it over. In the keyboard, one `KeyboardDictation` serves the
+whole process, so a controller iOS recreates mid-dictation picks the session
+up instead of mistaking it for abandoned. Across processes — a keyboard in
+another app — the owner touches `keyboard-dictation-<session>.alive` in the
+App Group every two seconds (a file, not a lock: iOS terminates a suspended
+process holding a lock in a shared container). A keyboard that finds such a
+session in `recording`, `finalizing`, `uploading` or `transcribing` with no
+owner in its process and no heartbeat for eight seconds turns it into a
+recoverable failure, and Retry resends the saved WAV from the keyboard; a
+transcript that arrives after that still lands. Records are written with a
+compare-and-swap, the WAV is deleted only once the transcript is saved, and a
+keyboard session cancelled, expired or put away from any keyboard has its WAV
+deleted there too. The keyboard does not recycle its process while it is
+recording or sending, and a keyboard hidden while its microphone is still
+starting stops it rather than record off screen.
 
 ## Transcript post-processing
 

@@ -504,6 +504,10 @@ struct DictationSettingsView: View {
         LocalTranscriptionPreferences.enabledKey,
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var localTranscriptionEnabled = false
+    @AppStorage(
+        KeyboardGatewayAccess.enabledKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var keyboardRecordsForGateway = true
     @AppStorage("gatewayURL") private var gatewayURL = ""
     @AppStorage(GatewayStatusPreferences.maximumDurationKey)
     private var gatewayMaximumDuration = 0
@@ -621,6 +625,16 @@ struct DictationSettingsView: View {
                 .onChange(of: quickDictationDurationRawValue) { _, rawValue in
                     guard let duration = QuickDictationDuration(rawValue: rawValue) else { return }
                     coordinator.setQuickDictationDuration(duration)
+                }
+            }
+            // Only the gateway route: on-device models do not fit in a keyboard.
+            if !localTranscriptionEnabled {
+                Toggle(isOn: $keyboardRecordsForGateway) {
+                    SettingLabel(
+                        "Record in the keyboard",
+                        detail: "When Quick Dictation isn't ready, the keyboard records and sends "
+                            + "your dictation to your gateway without opening vocaphone."
+                    )
                 }
             }
             Picker("Microphone", selection: $microphonePreferenceRawValue) {

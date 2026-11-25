@@ -51,6 +51,35 @@ extension GatewayClient {
         )
         return RecordingUploadTransport(upload: upload, client: self, sessionID: sessionID)
     }
+
+    /// The transport the gateway's *current* model can take, asked fresh: one
+    /// health request, which the upload path needs anyway, says whether the
+    /// engine is ready and whether it decodes as it hears. Streaming is tried
+    /// only when it says so, or says nothing (a gateway older than the field);
+    /// a batch model goes straight to the upload, skipping the WebSocket
+    /// attempt it would refuse. Nothing is cached, so changing the model on
+    /// the gateway is followed by the very next dictation.
+    func negotiatedRecordingTransport(
+        sessionID: UUID, language: String, style: String, sampleRate: Int,
+        onUploadFinished: @escaping @Sendable () async -> Void = {}
+    ) async throws -> any GatewayRecordingTransport {
+        let health = try await health()
+        guard health.engineReady else { throw GatewayError.api(status: 503, code: "engine_not_ready") }
+        if GatewayStreamingPolicy.attemptsStream(reported: health.streamingSupported) {
+            do {
+                return try await startAudioStream(
+                    sessionID: sessionID, language: language, style: style, sampleRate: sampleRate
+                )
+            } catch {
+                try Task.checkCancellation()
+            }
+        }
+        let upload = try await startRecordingUpload(
+            sessionID: sessionID, language: language, style: style,
+            checkHealth: false, onUploadFinished: onUploadFinished
+        )
+        return RecordingUploadTransport(upload: upload, client: self, sessionID: sessionID)
+    }
 }
 
 /// One bounded, ordered consumer for either incremental recognition or HTTP
@@ -61,7 +90,20 @@ actor StreamingAudioBridge {
     private var generation = UUID()
     private var failed = false
     private var ready = false
+    private var opening = false
     private var fallbackRecorded = false
+
+    /// Waits up to `timeout` for a transport that is still opening, so a short
+    /// dictation finished before its handshake completed can still use it:
+    /// every sample is buffered, and sending them is much cheaper than the
+    /// complete-file fallback that ``finish(droppedChunks:)`` otherwise takes.
+    /// Returns at once when nothing is opening.
+    func waitUntilOpen(timeout: Duration) async {
+        let deadline = ContinuousClock.now + timeout
+        while opening, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+    }
 
     func start(
         chunks: AsyncStream<Data>,
@@ -69,6 +111,7 @@ actor StreamingAudioBridge {
     ) {
         cancel()
         let token = generation
+        opening = true
         DiagnosticLog.record(.streamHandshakeStarted)
         pump = Task { [weak self] in
             do {
@@ -138,18 +181,21 @@ actor StreamingAudioBridge {
         stream = nil
         failed = false
         ready = false
+        opening = false
     }
 
     private func attach(_ opened: any GatewayRecordingTransport, token: UUID) -> Bool {
         guard token == generation else { return false }
         stream = opened
         ready = true
+        opening = false
         return true
     }
 
     private func openingFailed(token: UUID) {
         guard token == generation else { return }
         failed = true
+        opening = false
         recordFallbackIfNeeded()
     }
 

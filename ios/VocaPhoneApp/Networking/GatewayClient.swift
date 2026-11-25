@@ -237,9 +237,10 @@ struct GatewayClient: Sendable {
 
     func startRecordingUpload(
         sessionID: UUID, language: String, style: String,
+        checkHealth: Bool = true,
         onUploadFinished: @escaping @Sendable () async -> Void = {}
     ) async throws -> GatewayRecordingUpload {
-        guard try await health().engineReady else {
+        if checkHealth, !(try await health().engineReady) {
             throw GatewayError.api(status: 503, code: "engine_not_ready")
         }
         _ = try await createSession(id: sessionID, language: language, style: style)

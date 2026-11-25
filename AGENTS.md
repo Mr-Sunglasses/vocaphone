@@ -182,11 +182,32 @@ when the checked-in project is stale.
 | Previews | `just ios lint-previews` (`ios/tools/check-preview-isolation.py`). Preview-only code stays behind `#if DEBUG` |
 | Signing | Ship identifiers: `com.vocahq.vocaphone` (+ `.keyboard`, `.liveactivity`), App Group `group.com.vocahq`, team `92962VK378`. Personal bundle-id / team edits for a free Apple ID stay local — do not commit them |
 
-The keyboard extension **cannot use the microphone**. The containing app
-records; the keyboard shares versioned App Group session state and inserts
-through `UITextDocumentProxy`. Full Access is for coordination with the app,
-not for recording or keylogging. Do not add mic capture, network calls, or
-telemetry to the keyboard target.
+The keyboard extension has no microphone entitlement of its own. Normally the
+containing app records, shares versioned App Group session state with the
+keyboard, and the keyboard inserts through `UITextDocumentProxy`.
+
+One exception, for the **gateway route only**: when Quick Dictation is not
+standing by, the keyboard may record a dictation itself through a hidden
+`WKWebView` (`getUserMedia`, under vocaphone's microphone permission;
+`KeyboardMicrophoneCapture.swift`). It then sends that one recording to the
+**user's own gateway**, the address and token the app shared through the App
+Group and the shared keychain group (`KeyboardDictation.swift`,
+`KeyboardGatewayAccess`). Rules for that path:
+
+- Record only after an explicit Dictate tap, and only while the keyboard is
+  visible. Never stand by, never record in the background.
+- Network calls from the keyboard go only to the configured gateway, only to
+  send a dictation the user started. No other hosts, no analytics, no
+  telemetry.
+- Audio stays in the App Group's `pending-audio` and is deleted on success,
+  exactly as in the app.
+- Never run on-device models in the keyboard (memory limit); the on-device
+  route always records in the app.
+- Any failure to start falls back to opening the app, as before. The user can
+  turn this off in Settings ("Record in the keyboard").
+
+Full Access is for coordination with the app and this gateway path, never for
+keylogging. Do not add telemetry to the keyboard target.
 
 ## Web and shared assets
 
