@@ -47,6 +47,26 @@ class MicrophoneInterruptedException(
 ) : IllegalStateException(message)
 
 /**
+ * The audio focus a dictation asks for.
+ *
+ * Recording from the phone's own microphone (what Automatic prefers, even
+ * with a Bluetooth headset connected) leaves the headset playing: it asks
+ * for focus that lets other audio duck rather than pause, so the music keeps
+ * going quieter under the dictation. A Bluetooth headset microphone puts the
+ * headset into call mode, where playback cannot continue anyway, and keeps
+ * the exclusive focus it always had. Either way a call or an assistant that
+ * takes focus still ends the capture.
+ */
+internal object CaptureFocus {
+    fun gain(communicationRoute: Boolean): Int =
+        if (communicationRoute) {
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
+        } else {
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+        }
+}
+
+/**
  * Microphone capture on its own high-priority thread. The read loop only copies
  * samples and hands them to [onFrame]; every slow operation — file writes,
  * network sends — happens on the caller's side of that callback.
@@ -253,14 +273,18 @@ class AudioCapture(
     }
 
     /**
-     * Capturing speech asks for transient exclusive focus, which is how a call
-     * or a voice assistant announces itself mid-dictation. Whether the request
-     * is granted is deliberately not acted on: focus is advisory, and the
-     * microphone is frequently usable without it.
+     * Capturing speech asks for transient focus, which is how a call or a
+     * voice assistant announces itself mid-dictation. Whether the request is
+     * granted is deliberately not acted on: focus is advisory, and the
+     * microphone is frequently usable without it. Which focus is
+     * [CaptureFocus.gain]'s: music ducks under the phone's own microphone
+     * and pauses only for a Bluetooth headset in call mode.
      */
     private fun requestAudioFocus() {
         val manager = audioManager ?: return
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+        val communicationRoute = runCatching { InputDevices.communicationMatch(manager, preference) != null }
+            .getOrDefault(InputDevices.requestsCommunicationRoute(preference))
+        val request = AudioFocusRequest.Builder(CaptureFocus.gain(communicationRoute))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)

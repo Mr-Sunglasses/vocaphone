@@ -478,6 +478,13 @@ fun VocaPhoneApp(
                 ),
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
                 onLongPressSymbols = { viewModel.setLongPressSymbolsEnabled(it) },
+                typing = KeyboardTypingActions(
+                    onQuickAccents = { viewModel.setQuickAccentsEnabled(it) },
+                    onKeySound = { viewModel.setKeySoundEnabled(it) },
+                    onLearnTypingFixes = { viewModel.setLearnTypingFixes(it) },
+                    onForgetTypingFixes = { viewModel.forgetTypingFixes() },
+                    onSuggestSwearWords = { viewModel.setSuggestSwearWords(it) },
+                ),
                 onAutoCapitalize = { viewModel.setAutoCapitalizeEnabled(it) },
                 onPersonalDictionary = { viewModel.setPersonalDictionary(it) },
                 onAddSnippet = { trigger, expansion -> viewModel.addSnippet(trigger, expansion) },

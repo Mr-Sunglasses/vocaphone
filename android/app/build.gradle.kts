@@ -293,6 +293,9 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.zxing.core)
+    // Inline autofill chips in the suggestion strip: the style a password
+    // manager or the SMS code filler renders its suggestions with.
+    implementation(libs.androidx.autofill)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

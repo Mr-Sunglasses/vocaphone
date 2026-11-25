@@ -38,7 +38,10 @@ Do not rewrite the IME in Views unless traces still show Compose pointer
 and skip missing the frame after measurement.
 
 Known leftover: each special key still has its own `pointerInput`. Do not
-add more. A single parent pointer stream is the next cut if Choreographer
+add more. The key area also has one shared pointer observer (`KeyTouchClock`,
+for the strip's dead zone); it only records a timestamp and a count, and must
+stay that cheap. The suggestion strip cross-fades changes (`Crossfade`, 120 ms)
+only once the keyboard has been on screen for two frames. A single parent pointer stream is the next cut if Choreographer
 p95 climbs again.
 
 ## InputConnection

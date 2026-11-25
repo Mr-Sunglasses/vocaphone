@@ -23,6 +23,8 @@ import android.content.res.AssetManager
 internal class SuggestionDictionary(
     private val words: List<String>,
     private val bigrams: Map<String, List<String>>,
+    /** Words the strip never offers on its own; see [NeverSuggest]. */
+    val neverSuggest: NeverSuggest = NeverSuggest.EMPTY,
 ) {
     private val known = words.toHashSet()
 
@@ -72,7 +74,7 @@ internal class SuggestionDictionary(
 
     fun isKnown(word: String): Boolean = known.contains(word.lowercase())
 
-    fun complete(prefix: String, limit: Int = 3): List<String> {
+    fun complete(prefix: String, limit: Int = 3, allowed: (String) -> Boolean = ALLOW_ALL): List<String> {
         if (prefix.isEmpty()) return emptyList()
         val lower = prefix.lowercase()
         val bucket = prefixIndex[lower.take(PREFIX_KEY_LENGTH)] ?: return emptyList()
@@ -80,37 +82,53 @@ internal class SuggestionDictionary(
         for (index in bucket) {
             val word = words[index]
             if (lengths[index] <= lower.length || !word.startsWith(lower)) continue
+            if (!allowed(word)) continue
             matches.add(SuggestionEngine.matchCase(prefix, word))
             if (matches.size == limit) break
         }
         return matches
     }
 
-    fun next(previousWord: String, limit: Int = 3): List<String> {
+    fun next(previousWord: String, limit: Int = 3, allowed: (String) -> Boolean = ALLOW_ALL): List<String> {
         if (previousWord.isEmpty()) return emptyList()
-        return bigrams[previousWord.lowercase()].orEmpty().take(limit)
+        return bigrams[previousWord.lowercase()].orEmpty().filter(allowed).take(limit)
     }
 
     fun correct(
         typed: String,
         limit: Int = 3,
         shouldAbort: () -> Boolean = { false },
+        taps: FloatArray? = null,
+        previousWord: String = "",
+        allowed: (String) -> Boolean = ALLOW_ALL,
     ): List<String> {
         val lower = typed.lowercase()
         if (lower.length < 2 || isKnown(lower)) return emptyList()
-        return similar(typed, limit, shouldAbort)
+        return similar(typed, limit, shouldAbort, taps, previousWord, allowed)
     }
 
+    /**
+     * Words within two edits of [typed], best first. Without [taps] that is
+     * a neighbouring-key substitution, then one edit, then two, in frequency
+     * order. With them (where each letter's finger landed, see [TapTrace]) a
+     * wider pool is ranked by [TapRanking], which also favours a word the
+     * bigram table predicts after [previousWord].
+     */
     fun similar(
         typed: String,
         limit: Int = 3,
         shouldAbort: () -> Boolean = { false },
+        taps: FloatArray? = null,
+        previousWord: String = "",
+        allowed: (String) -> Boolean = ALLOW_ALL,
     ): List<String> {
         val lower = typed.lowercase()
         if (lower.length < 2) return emptyList()
-        val neighbor = ArrayList<String>(limit)
-        val distance1 = ArrayList<String>(limit)
-        val distance2 = ArrayList<String>(limit)
+        val ranked = taps != null
+        val pool = if (ranked) maxOf(limit, RANK_POOL) else limit
+        val neighbor = ArrayList<Int>(pool)
+        val distance1 = ArrayList<Int>(pool)
+        val distance2 = ArrayList<Int>(pool)
         val minLen = (lower.length - 2).coerceAtLeast(1)
         val maxLen = lower.length + 2
         val typedMask = letterMask(lower)
@@ -124,16 +142,26 @@ internal class SuggestionDictionary(
             val word = words[index]
             if (word == lower) continue
             val distance = SuggestionEngine.editDistance(lower, word, max = 2, scratch = scratch)
+            if (distance !in 1..2 || !allowed(word)) continue
             when (distance) {
                 1 -> {
-                    if (SuggestionEngine.isNeighborSubstitution(lower, word)) neighbor.add(word)
-                    else distance1.add(word)
+                    if (SuggestionEngine.isNeighborSubstitution(lower, word)) neighbor.add(index)
+                    else distance1.add(index)
                 }
-                2 -> if (distance2.size < limit) distance2.add(word)
+                2 -> if (distance2.size < pool) distance2.add(index)
             }
-            if (neighbor.size >= limit) break
+            if (neighbor.size >= pool) break
         }
-        return (neighbor + distance1 + distance2)
+        if (!ranked) {
+            return (neighbor + distance1 + distance2)
+                .take(limit)
+                .map { SuggestionEngine.matchCase(typed, words[it]) }
+        }
+        val candidates = neighbor.map { TapRanking.Candidate(words[it], 0, it) } +
+            distance1.take(pool).map { TapRanking.Candidate(words[it], 1, it) } +
+            distance2.map { TapRanking.Candidate(words[it], 2, it) }
+        val predicted = if (previousWord.isEmpty()) emptySet() else bigrams[previousWord.lowercase()].orEmpty().toHashSet()
+        return TapRanking.order(lower, candidates, taps, predicted)
             .take(limit)
             .map { SuggestionEngine.matchCase(typed, it) }
     }
@@ -145,18 +173,46 @@ internal class SuggestionDictionary(
         correctionsEnabled: Boolean,
         personalRaw: String = "",
         shouldAbort: () -> Boolean = { false },
+        options: StripOptions = StripOptions.DEFAULT,
     ): SuggestionStrip {
         val token = composing.ifEmpty { SuggestionEngine.lastWordForEmoji(before).orEmpty() }
         val emojis = EmojiSuggestions.glyphs(token)
+        val personal = personalSet(personalRaw)
         if (composing.isNotEmpty()) {
+            // The editor read can already hold the word being typed.
+            val previous = SuggestionEngine.lastWord(before.removeSuffix(composing)).orEmpty()
+            val allowed = gate(previous, options.allowSwears, personal)
             val personalHits = PersonalDictionary.completions(personalRaw, composing)
-            val completions = complete(composing)
-            val corrections = if (correctionsEnabled) {
-                correct(composing, shouldAbort = shouldAbort)
+            val completions = complete(composing, allowed = allowed)
+            // A held-back word the user typed in full stays as typed.
+            val typedHeldBack = isHeldBack(composing, options.allowSwears, personal)
+            val corrections = if (correctionsEnabled && !typedHeldBack) {
+                correct(
+                    composing,
+                    shouldAbort = shouldAbort,
+                    taps = options.taps,
+                    previousWord = previous,
+                    allowed = allowed,
+                )
             } else {
                 emptyList()
             }
-            val words = (personalHits + completions + corrections).distinct().take(3)
+            val learned = if (options.learnedFixes && !typedHeldBack) {
+                LearnedFixes.fixFor(
+                    typed = composing,
+                    memory = options.memory,
+                    isWord = { false },
+                    blocked = { !allowed(it) },
+                    personalSpelling = { fix -> PersonalDictionary.terms(personalRaw).firstOrNull { it.equals(fix, ignoreCase = true) } },
+                )
+            } else {
+                null
+            }
+            val words = (listOfNotNull(learned) + personalHits + completions + corrections)
+                .distinct()
+                // A fix the user undid twice is never the first offer.
+                .sortedBy { options.memory.isRejected(composing, it) }
+                .take(3)
             val save = saveCandidate(
                 word = composing,
                 personalRaw = personalRaw,
@@ -173,19 +229,36 @@ internal class SuggestionDictionary(
         )
         if (correctionsEnabled) {
             val span = SuggestionEngine.wordSpan(before, after)
-            if (span != null && span.word.length >= 2) {
-                val nearby = similar(span.word, shouldAbort = shouldAbort)
+            if (span != null && span.word.length >= 2 && !isHeldBack(span.word, options.allowSwears, personal)) {
+                val previous = SuggestionEngine.lastWord(before.dropLast(span.beforeLength)).orEmpty()
+                val nearby = similar(
+                    span.word,
+                    shouldAbort = shouldAbort,
+                    allowed = gate(previous, options.allowSwears, personal),
+                ).sortedBy { options.memory.isRejected(span.word, it) }
                 if (nearby.isNotEmpty()) {
                     return SuggestionStrip(nearby, emojis, replacesWord = true, saveWord = save)
                 }
             }
         }
+        val previous = SuggestionEngine.lastWord(before).orEmpty()
         return SuggestionStrip(
-            next(SuggestionEngine.lastWord(before).orEmpty()),
+            next(previous, allowed = gate(previous, options.allowSwears, personal)),
             emojis,
             saveWord = save,
         )
     }
+
+    /** Whether the strip may offer [word] after [previous]; the user's own words always. */
+    fun allows(word: String, previous: String?, allowSwears: Boolean, personal: Set<String>): Boolean =
+        word.lowercase() in personal || !neverSuggest.blocks(word, previous, allowSwears)
+
+    /** [word] is one the keyboard never offers, and not one of the user's. */
+    fun isHeldBack(word: String, allowSwears: Boolean, personal: Set<String>): Boolean =
+        neverSuggest.blocks(word, allowSwears) && word.lowercase() !in personal
+
+    private fun gate(previous: String?, allowSwears: Boolean, personal: Set<String>): (String) -> Boolean =
+        { word -> allows(word, previous, allowSwears, personal) }
 
     private fun saveCandidate(
         word: String,
@@ -204,13 +277,14 @@ internal class SuggestionDictionary(
         shouldAbort: () -> Boolean = { false },
         points: FloatArray = FloatArray(0),
         previousWord: String = "",
+        allowed: (String) -> Boolean = ALLOW_ALL,
     ): List<String> {
         val keys = SuggestionEngine.collapseLetters(path)
         if (keys.length < 2) return emptyList()
         return if (points.size >= 4) {
-            swipeGeometric(keys, points, previousWord, limit, shouldAbort)
+            swipeGeometric(keys, points, previousWord, limit, shouldAbort, allowed)
         } else {
-            swipeFromKeys(keys, limit, shouldAbort)
+            swipeFromKeys(keys, limit, shouldAbort, allowed)
         }
     }
 
@@ -223,6 +297,7 @@ internal class SuggestionDictionary(
         keys: String,
         limit: Int,
         shouldAbort: () -> Boolean,
+        allowed: (String) -> Boolean,
     ): List<String> {
         val gesture = SuggestionEngine.SwipeGesture(keys)
         val scored = ArrayList<Pair<String, Float>>()
@@ -238,8 +313,11 @@ internal class SuggestionDictionary(
         }
         return scored
             .sortedByDescending { it.second }
-            .take(limit)
+            .asSequence()
             .map { it.first }
+            .filter(allowed)
+            .take(limit)
+            .toList()
     }
 
     /**
@@ -253,6 +331,7 @@ internal class SuggestionDictionary(
         previousWord: String,
         limit: Int,
         shouldAbort: () -> Boolean,
+        allowed: (String) -> Boolean,
     ): List<String> {
         val gesture = SwipeLayout.Gesture(keys, points)
         val predicted = if (previousWord.isEmpty()) {
@@ -298,8 +377,11 @@ internal class SuggestionDictionary(
         }
         return scored
             .sortedByDescending { it.second }
-            .take(limit)
+            .asSequence()
             .map { it.first }
+            .filter(allowed)
+            .take(limit)
+            .toList()
     }
 
     companion object {
@@ -312,6 +394,14 @@ internal class SuggestionDictionary(
 
         /** See [letterMasks]: two edits can move at most four distinct letters. */
         private const val MAX_LETTER_DIFFERENCE = 4
+
+        /** Candidates [TapRanking] chooses among when it knows where the taps landed. */
+        private const val RANK_POOL = 8
+
+        val ALLOW_ALL: (String) -> Boolean = { true }
+
+        fun personalSet(personalRaw: String): Set<String> =
+            if (personalRaw.isBlank()) emptySet() else PersonalDictionary.terms(personalRaw).mapTo(HashSet()) { it.lowercase() }
 
         private fun letterMask(word: String): Int {
             var mask = 0
@@ -350,6 +440,7 @@ internal class SuggestionDictionary(
             bigrams = parseBigrams(
                 assets.open("en-bigrams.txt").bufferedReader().readLines(),
             ),
+            neverSuggest = runCatching { NeverSuggest.load(assets) }.getOrDefault(NeverSuggest.EMPTY),
         )
 
         fun parseBigrams(lines: List<String>): Map<String, List<String>> = buildMap {
@@ -366,6 +457,22 @@ internal class SuggestionDictionary(
                 if (continuations.isNotEmpty()) put(word, continuations)
             }
         }
+    }
+}
+
+/**
+ * What else shapes one strip besides the text: the swear-word setting, the
+ * autocorrect memory, and where the taps of the composing word landed.
+ */
+internal class StripOptions(
+    val allowSwears: Boolean = false,
+    val memory: AutocorrectMemory = AutocorrectMemory.EMPTY,
+    /** "Learn my typing fixes": a learned fix leads the strip. */
+    val learnedFixes: Boolean = false,
+    val taps: FloatArray? = null,
+) {
+    companion object {
+        val DEFAULT = StripOptions()
     }
 }
 
@@ -431,6 +538,18 @@ internal object SuggestionEngine {
             }
         }
         return before.length - index
+    }
+
+    /**
+     * Option-Delete: the word before the cursor together with the spaces and
+     * punctuation between it and the cursor ("world. " in "hello world. ").
+     */
+    fun wordWithSeparatorsBefore(before: CharSequence): Int {
+        val first = wordBefore(before)
+        if (first == 0 || first == before.length) return first
+        val chunk = before.subSequence(before.length - first, before.length)
+        if (chunk.any(::isWordChar)) return first
+        return first + wordBefore(before.subSequence(0, before.length - first))
     }
 
     fun lineBefore(before: CharSequence): Int {

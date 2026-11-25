@@ -167,11 +167,36 @@ final class KeyAlternativesView: UIView {
         )
     }
 
-    func show(_ options: [String], palette: KeyboardPalette, metrics: KeyboardMetrics) {
+    /// Quick accents: the option selected when the row opens, kept until the
+    /// finger moves into a different cell than the one it opened over.
+    private var preselectedIndex: Int?
+    private var openCell: Int?
+
+    /// The index a held key opens on. The key's own character, unless Quick
+    /// accents is on and the key is a letter with accents, then its main
+    /// accent — the first after the base — so lifting where the finger landed
+    /// types it. Symbols keep their own.
+    static func initialIndex(for options: [String], quickAccents: Bool) -> Int {
+        guard quickAccents, options.count > 1,
+              options[0].count == 1, options[0].first?.isLetter == true,
+              options[1].first?.isLetter == true
+        else { return 0 }
+        return 1
+    }
+
+    func show(
+        _ options: [String],
+        palette: KeyboardPalette,
+        metrics: KeyboardMetrics,
+        quickAccents: Bool = false
+    ) {
         self.palette = palette
         self.metrics = metrics
         self.options = options
-        highlightedIndex = 0
+        let initial = Self.initialIndex(for: options, quickAccents: quickAccents)
+        highlightedIndex = initial
+        preselectedIndex = initial == 0 ? nil : initial
+        openCell = nil
         backgroundColor = palette.raisedKey
         layer.cornerRadius = metrics.cornerRadius + 5
 
@@ -262,6 +287,13 @@ final class KeyAlternativesView: UIView {
         let step = Self.optionWidth + Self.optionSpacing
         let raw = Int(((x - Self.padding) / step).rounded(.down))
         let clamped = min(max(raw, 0), options.count - 1)
+        // A preselected accent stands while the finger stays in the cell it
+        // opened over; moving into another cell picks that one as before.
+        if preselectedIndex != nil {
+            if openCell == nil { openCell = clamped }
+            if clamped == openCell { return false }
+            preselectedIndex = nil
+        }
         guard clamped != highlightedIndex else { return false }
         highlightedIndex = clamped
         applyHighlight()

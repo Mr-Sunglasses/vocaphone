@@ -59,6 +59,9 @@ class AppContainer(context: Context) {
     /** Spellings learned from the user's fixes to dictated text; pairs only. */
     val correctionLearning = CorrectionLearningStore(context, settings)
 
+    /** The keyboard's typed → fix pairs: learned fixes and undone ones. */
+    internal val typingFixes = com.vocahq.vocaphone.settings.TypingFixStore(context)
+
     val dictationCues = DictationTonePlayer(context)
 
     private val database = Room

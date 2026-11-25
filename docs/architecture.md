@@ -693,6 +693,60 @@ Three constraints shape the design:
    state lives in the App Group, so a recreated keyboard adopts it the same way
    it does after a jetsam kill.
 
+Keyboard behaviours brought over from Hex's iPhone keyboard (both platforms
+unless noted):
+
+- **Key clicks (iOS).** The root view is a `UIInputView` subclass that adopts
+  `UIInputViewAudioFeedback`; with the protocol only on the controller,
+  `playInputClick()` was silent.
+- **Learned fixes.** `LearnedWords.noteFix` counts (typed, fixed) pairs from
+  strip corrections and from deleting into a word and retyping a near spelling
+  (`TypingEngine.isSlip`). A pair seen twice and never contradicted becomes
+  `Context.learnedFix`, applied on space unless the typed word is a word.
+  Taking a correction back still learns the typed word, so a turned-down
+  correction never returns.
+- **Tap-aware ranking.** `KeyGridView` records each letter's tap offset in its
+  key; `TypingEngine` keeps one per composed character and
+  `TapSpatialScore.adjustment` adds a Gaussian-likelihood term (σ 0.35 key,
+  bounded ±0.6 edits per letter) to `TypingCandidates.correctionCost` for
+  candidates of the same length, next to the existing bigram and frequency
+  terms.
+- **Never-suggest list.** `assets/keyboard/never-suggest.tsv` (`*` and `en`
+  rows) filters every suggestion source except the user's own words, swipe
+  readings included, and refuses to correct a blocked word typed in full.
+- **Strip dead zone.** For 0.25 s after a key goes down or up, the lower half
+  of a compact strip types the top-row key below (`KeyGridView.isTypingNow`).
+- **Delete slide.** Holding Delete and sliding left deletes a word per key
+  width; sliding back types them back (`DeleteWordSlide`).
+- **Trackpad.** A still 0.35 s hold on space arms it; a slide before that is
+  still a space. Up and down move between rows of the text the field shared
+  (`CursorLineMove`, rows estimated from the keyboard width).
+- **Quick accents.** Optional: a held letter opens on its main accent.
+- **Empty-field chips (iOS).** `FieldOffer`: the system Paste button after a
+  recent copy, and Apple's keyboard for one-time codes and saved logins.
+- **Push to talk (iOS).** A still 0.35 s hold on Dictate starts at once and
+  lifting finishes; sliding opens the styles. Only where dictation does not
+  leave the field.
+- **Transcript offers (iOS).** A finished transcript inserts itself only
+  within 30 s (`PendingTranscriptPolicy.autoInsertWindow`) and is offered for
+  10 minutes (`SessionExpiryPolicy.transcriptOfferWindow`).
+- **Dictating over a selection (iOS).** `SessionRecord.selectionFingerprint`:
+  the transcript replaces that selection only; another one waits for a tap.
+- **Strip animation (iOS).** Words cross-fade only once the keyboard is on
+  screen, so the field's traits landing never visibly rolls "the" to "The".
+
+On Android the same behaviours live in `ime/AutocorrectMemory.kt` (with
+`settings/TypingFixStore.kt`), `ime/TapRanking.kt`, `ime/NeverSuggest.kt`,
+`ime/KeyboardTouch.kt` (key clicks, strip dead zone), `DeleteSlide` and
+`SpacebarGesture` in the IME, `MicPress` in `MicDictationControl.kt`,
+`KeyAccents.preselectIndex`, `DictationSelection` in `DictationCommit.kt` and
+`ime/InlineAutofill.kt` (inline autofill chips, API 30+). Android has no
+space-bar autocorrect of its own, so learned fixes are the only correction
+space applies there, and tap positions rank the strip's corrections. Dictation
+from the phone microphone requests `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, so
+music ducks instead of pausing; a Bluetooth headset microphone keeps exclusive
+focus. A focus loss still ends capture.
+
 The word list, the bigram table, the emoji catalog and the emoji suggestion
 table live once at `assets/keyboard/` in the repository root. The iOS keyboard
 target references that directory from `project.yml`; the Android build merges

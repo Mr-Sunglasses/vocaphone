@@ -262,6 +262,8 @@ final class TypingStripView: UIScrollView {
         case .revert: "Undoes the autocorrect and restores what you typed."
         case .writingFix: "Applies this Writing check suggestion."
         case .writingReview: "Shows every suggestion with its reason."
+        case .paste: "Pastes what you copied."
+        case .nextKeyboard: "Switches to Apple's keyboard, which can fill this in."
         }
     }
 

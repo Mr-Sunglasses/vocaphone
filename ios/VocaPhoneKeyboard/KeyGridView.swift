@@ -6,7 +6,14 @@ enum KeyboardOutput {
     case newline
     case deleteBackward
     case deleteWord
+    /// Delete held and slid left: `+1` deletes one more word, `-1` types the
+    /// last one deleted back (`DeleteWordSlide`).
+    case deleteSlideStep(Int)
+    /// The slide's finger lifted: what is deleted stays deleted.
+    case deleteSlideEnded
     case moveCursor(Int)
+    /// The trackpad moved up (negative) or down a number of lines.
+    case moveCursorLines(Int)
     /// The space bar has become a trackpad, and has stopped being one.
     ///
     /// Split out because the expensive part of a cursor step was never the
@@ -62,6 +69,23 @@ enum CursorTrackpad {
     /// that exists in the arithmetic and not in the fingers.
     static let slowSpeed: CGFloat = 40
     static let fastSpeed: CGFloat = 600
+
+    /// A line of text is a line of finger at a crawl, as on Apple's keyboard,
+    /// and less finger the faster it goes (`lineGain`).
+    static let pointsPerLine: CGFloat = 20
+
+    /// How much further a fast finger carries the cursor between lines: 1× at
+    /// a crawl, 1.4× at 400 pt/s, 2× at 1,000 and 2.6× at 2,000.
+    static func lineGain(atSpeed speed: CGFloat) -> CGFloat {
+        let points: [(CGFloat, CGFloat)] = [(0, 1), (400, 1.4), (1000, 2), (2000, 2.6)]
+        guard speed > 0 else { return 1 }
+        for index in 1..<points.count where speed <= points[index].0 {
+            let (s0, g0) = points[index - 1]
+            let (s1, g1) = points[index]
+            return g0 + (g1 - g0) * (speed - s0) / (s1 - s0)
+        }
+        return points.last!.1
+    }
 
     /// What one character of travel is worth at this finger speed.
     static func pointsPerCharacter(atSpeed speed: CGFloat) -> CGFloat {
@@ -281,6 +305,48 @@ final class KeyGridView: UIView {
     /// When the run of fast typing this keyboard is in last produced a letter,
     /// or `nil` if it is not in one. See ``isInFastTyping``.
     private var lastLetterCommitAt: Date?
+    /// When a key last went down or came up, for the strip's dead zone
+    /// (``isTypingNow``).
+    private var lastKeyActivityAt: CFTimeInterval = 0
+    /// Where the finger that typed the last letter landed in its key, until
+    /// the controller takes it for the word being composed.
+    private var lastLetterTap: TapOffset?
+    private var pendingLetterTap: TapOffset?
+
+    /// How long after a key goes down or up the strip's lower half still
+    /// belongs to the keys: nobody reads a new suggestion and taps it that
+    /// fast, while an "e" aimed high lands there all the time.
+    static let stripDeadZoneWindow: CFTimeInterval = 0.25
+
+    /// A key is down, or one went down or came up within
+    /// ``stripDeadZoneWindow``.
+    var isTypingNow: Bool {
+        !tracked.isEmpty || CACurrentMediaTime() - lastKeyActivityAt < Self.stripDeadZoneWindow
+    }
+
+    /// Whether a touch at `y` belongs to the keys rather than the strip: the
+    /// lower half of a compact bar, while a key is down or within
+    /// ``stripDeadZoneWindow`` of one. An expanded bar (a panel is open) is
+    /// never taken over.
+    static func stripTouchGoesToKeys(y: CGFloat, bar: CGRect, isTyping: Bool) -> Bool {
+        guard isTyping, bar.height > 0, bar.height <= 64 else { return false }
+        return y >= bar.midY && y < bar.maxY
+    }
+
+    /// The tap behind the letter just produced, once.
+    func takeLastLetterTap() -> TapOffset? {
+        defer { lastLetterTap = nil }
+        return lastLetterTap
+    }
+
+    /// `point`'s offset from the centre of `frame`, in key widths and heights.
+    static func tapOffset(of point: CGPoint, in frame: CGRect) -> TapOffset? {
+        guard frame.width > 0, frame.height > 0 else { return nil }
+        return TapOffset(
+            dx: Double((point.x - frame.midX) / frame.width),
+            dy: Double((point.y - frame.midY) / frame.height)
+        )
+    }
 
     private final class TrackedTouch: @unchecked Sendable {
         let touch: UITouch
@@ -332,9 +398,15 @@ final class KeyGridView: UIView {
         /// character at the instant the mode engaged.
         var cursorPoint: CGPoint?
         var cursorTime: TimeInterval = 0
+        /// Words deleted by sliding left from Delete (`DeleteWordSlide`).
+        var deleteSlideSteps = 0
+        var isDeleteSliding = false
         /// Characters and lines owed to the finger but not yet whole. Kept as
         /// a fraction so that tremor never adds up to a move.
         var cursorCarry: CGFloat = 0
+        /// Lines owed to vertical travel, likewise kept as a fraction.
+        var cursorLineCarry: CGFloat = 0
+        var cursorLineSpeed: CGFloat = 0
         /// Finger speed, smoothed. One frame's speed is a distance divided by
         /// whatever interval UIKit happened to deliver — about eight
         /// milliseconds at 120Hz, and not the same eight each time — so the raw
@@ -934,6 +1006,7 @@ final class KeyGridView: UIView {
             if key.spec.cap == .newline, !returnKeyIsEnabled { continue }
             let item = TrackedTouch(touch: touch, key: key, keyIndex: index, initialPoint: point)
             tracked.append(item)
+            lastKeyActivityAt = CACurrentMediaTime()
             key.isHighlighted = true
             // The click belongs to the press, not to the commit: the system
             // keyboard sounds a key as the finger lands, and every key here
@@ -995,6 +1068,14 @@ final class KeyGridView: UIView {
             {
                 item.longPressTimer?.invalidate()
                 item.longPressTimer = nil
+            }
+
+            // Delete held and slid left deletes by word: one per key width of
+            // travel, and sliding back types them back.
+            if item.key.spec.cap == .delete,
+               handleDeleteSlide(item, point: point)
+            {
+                continue
             }
 
             guard item.allowsSlide else {
@@ -1159,6 +1240,12 @@ final class KeyGridView: UIView {
             recycle(item.preview)
             item.preview = nil
             if item.key.spec.cap == .delete { endDeleteRepeat() }
+            if item.isDeleteSliding {
+                item.isDeleteSliding = false
+                item.deleteSlideSteps = 0
+                delegate?.keyGrid(self, didProduce: .deleteSlideEnded)
+                continue
+            }
             if item.isSwiping {
                 let path = item.swipePath
                 item.swipePath = []
@@ -1186,10 +1273,13 @@ final class KeyGridView: UIView {
                 if shiftState == .on { shiftState = .off }
                 continue
             }
+            lastKeyActivityAt = CACurrentMediaTime()
+            pendingLetterTap = Self.tapOffset(of: item.initialPoint, in: item.key.frame)
             let didCommit = completeKeyInteraction(
                 item.key,
                 shouldCommit: shouldCommit && !item.key.spec.cap.actsOnTouchDown
             )
+            pendingLetterTap = nil
             // Typing a symbol this way returns to the plane the finger came
             // from; lifting on the plane key itself commits nothing and stays.
             if didCommit, let origin = item.planeToRestore { planeToRestore = origin }
@@ -1251,6 +1341,7 @@ final class KeyGridView: UIView {
         case let .character(base):
             guard let text = key.previewText else { return false }
             recordTyping(isLetter: base.first?.isLetter == true)
+            lastLetterTap = base.first?.isLetter == true ? pendingLetterTap : nil
             feedback.textCommitted()
             delegate?.keyGrid(self, didProduce: .text(text))
             // Also what ends a slide off Shift: one capital, then back to
@@ -1310,7 +1401,7 @@ final class KeyGridView: UIView {
         // driving — after which every step re-reads the document.
         guard !tracked.contains(where: { $0 !== item && $0.isCursorTracking }) else { return }
         spaceTrackpadTimer?.invalidate()
-        spaceTrackpadTimer = Self.scheduleTimer(after: 0.32) { [weak self, weak item] in
+        spaceTrackpadTimer = Self.scheduleTimer(after: Self.trackpadHoldDelay) { [weak self, weak item] in
             guard let self,
                   let item,
                   self.tracked.contains(where: { $0 === item }),
@@ -1320,6 +1411,8 @@ final class KeyGridView: UIView {
             item.cursorTime = item.touch.timestamp
             item.cursorCarry = 0
             item.cursorSpeed = 0
+            item.cursorLineCarry = 0
+            item.cursorLineSpeed = 0
             self.refreshCapsVisibility()
             self.delegate?.keyGrid(self, didProduce: .beginCursorDrag)
             self.feedback.selectionChanged()
@@ -1329,6 +1422,10 @@ final class KeyGridView: UIView {
 
     /// Whether the spacebar becomes a trackpad at all. A setting now, and the
     /// same answer in every language.
+    /// A still hold this long turns the space bar into a trackpad, as on
+    /// Apple's keyboard. A tap that slides before then is still a space.
+    static let trackpadHoldDelay: TimeInterval = 0.35
+
     var offersCursorTrackpad = true {
         didSet { if offersCursorTrackpad != oldValue { releaseTouches() } }
     }
@@ -1386,8 +1483,11 @@ final class KeyGridView: UIView {
                 return
             }
 
-            item.isEngaged = stillHolds(item.key, at: point)
-            setHighlight(item.isEngaged, on: item.key)
+            // Still a space, however far the finger slid before the hold
+            // armed: Apple's keyboard types one too, and a slide that typed
+            // nothing read as a missed space key.
+            item.isEngaged = true
+            setHighlight(true, on: item.key)
             return
         }
 
@@ -1431,9 +1531,22 @@ final class KeyGridView: UIView {
         ))
         item.cursorCarry += travel / rate
         let steps = Int(item.cursorCarry.rounded(.towardZero))
-        guard steps != 0 else { return }
-        item.cursorCarry -= CGFloat(steps)
-        delegate?.keyGrid(self, didProduce: .moveCursor(steps))
+        if steps != 0 {
+            item.cursorCarry -= CGFloat(steps)
+            delegate?.keyGrid(self, didProduce: .moveCursor(steps))
+        }
+
+        // Up and down move between lines, the second dimension of Apple's
+        // trackpad: a line per line-height of finger, further when faster.
+        let rise = point.y - previous.y
+        let riseSample = elapsed > 0 ? abs(rise) / CGFloat(elapsed) : 0
+        item.cursorLineSpeed = item.cursorLineSpeed * 0.6 + riseSample * 0.4
+        let perLine = CursorTrackpad.pointsPerLine / CursorTrackpad.lineGain(atSpeed: item.cursorLineSpeed)
+        item.cursorLineCarry += rise / perLine
+        let lines = Int(item.cursorLineCarry.rounded(.towardZero))
+        guard lines != 0 else { return }
+        item.cursorLineCarry -= CGFloat(lines)
+        delegate?.keyGrid(self, didProduce: .moveCursorLines(lines))
     }
 
     /// Hands the controller back the document it stopped reading while the
@@ -1580,7 +1693,12 @@ final class KeyGridView: UIView {
             alternativesView = created
             return created
         }()
-        popover.show(options, palette: palette, metrics: metrics)
+        popover.show(
+            options,
+            palette: palette,
+            metrics: metrics,
+            quickAccents: KeyboardPreferences.quickAccentsEnabled
+        )
 
         let size = popover.size(for: options)
         let frame = item.key.frame
@@ -1602,6 +1720,42 @@ final class KeyGridView: UIView {
         if popover.highlightOption(atX: local.x) {
             feedback.selectionChanged()
         }
+    }
+
+    /// A letter key's width, the distance one word of a delete slide takes.
+    private var letterKeyWidth: CGFloat {
+        let letter = keyViews.first {
+            if case let .character(base) = $0.spec.cap { return base.first?.isLetter == true }
+            return false
+        }
+        return max(letter?.frame.width ?? 32, 12)
+    }
+
+    /// Returns whether the slide owns this movement. It starts once the finger
+    /// is a key width left of where it went down, which also stops the hold's
+    /// repeat; from then on the number of words deleted follows the finger.
+    private func handleDeleteSlide(_ item: TrackedTouch, point: CGPoint) -> Bool {
+        let wanted = DeleteWordSlide.wordsWanted(
+            startX: item.initialPoint.x, x: point.x, step: letterKeyWidth
+        )
+        if !item.isDeleteSliding {
+            guard wanted > 0 else { return false }
+            item.isDeleteSliding = true
+            endDeleteRepeat()
+            item.isEngaged = true
+            setHighlight(true, on: item.key)
+        }
+        while item.deleteSlideSteps < wanted {
+            item.deleteSlideSteps += 1
+            feedback.keyPressed()
+            delegate?.keyGrid(self, didProduce: .deleteSlideStep(1))
+        }
+        while item.deleteSlideSteps > wanted {
+            item.deleteSlideSteps -= 1
+            feedback.selectionChanged()
+            delegate?.keyGrid(self, didProduce: .deleteSlideStep(-1))
+        }
+        return true
     }
 
     private func dismissAlternatives() {
@@ -1934,5 +2088,15 @@ private extension KeyCap {
         // defaulting into firing on touch-down.
         case .character, .space, .newline, .blank: false
         }
+    }
+}
+
+/// Press and hold Delete, then slide left: each key width the finger travels
+/// left of where it went down deletes one more word, sliding back right types
+/// those words back, and lifting keeps what is deleted.
+enum DeleteWordSlide {
+    static func wordsWanted(startX: CGFloat, x: CGFloat, step: CGFloat) -> Int {
+        guard step > 0 else { return 0 }
+        return max(0, Int(((startX - x) / step).rounded(.down)))
     }
 }

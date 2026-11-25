@@ -27,12 +27,20 @@ internal fun writingFixesFor(
  * last finished one before the cursor the check saw. None while an earlier
  * automatic fix still offers Undo ([undoPending]): one fix per Undo, so Undo
  * always puts back the word it names.
+ *
+ * [allowed] vetoes a fix: one the user undid twice ([AutocorrectMemory]),
+ * one to a word the keyboard never offers, or one of a word typed in full
+ * that it never corrects away ([NeverSuggest]).
  */
-internal fun autoFixCandidate(report: WritingCheckSession.Report, undoPending: Boolean): WritingSuggestion? {
+internal fun autoFixCandidate(
+    report: WritingCheckSession.Report,
+    undoPending: Boolean,
+    allowed: (typed: String, fix: String) -> Boolean = { _, _ -> true },
+): WritingSuggestion? {
     if (undoPending) return null
     return report.suggestions.filter {
         it.source == WritingSuggestion.Source.RULE && it.kind in AUTO_FIX_KINDS && it.isActionable &&
-            it.end < report.field.cursor
+            it.end < report.field.cursor && allowed(it.original, it.replacement.orEmpty())
     }.maxByOrNull { it.start }
 }
 

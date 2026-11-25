@@ -26,7 +26,7 @@ final class AudioRecorder: NSObject {
     var onMaximumDuration: (() -> Void)?
     var onInputRouteChanged: ((String?) -> Void)?
     var onAudioSessionLifecycleEvent: ((AudioSessionLifecycleEvent) -> Void)?
-    var microphonePreference: MicrophonePreference = .automatic
+    var microphonePreference: MicrophonePreference = .default
 
     /// Chunks of float32 PCM at the transcription sample rate, in order. Backed
     /// by a bounded buffer: if the transport cannot keep up the stream is
@@ -341,6 +341,12 @@ final class AudioRecorder: NSObject {
             .mixWithOthers,
             .defaultToSpeaker,
         ]
+        if microphonePreference == .iPhone {
+            // The iPhone's own microphone, and Bluetooth for output only (A2DP):
+            // a car or headphones keep playing music instead of switching to
+            // their hands-free microphone, which pauses it and stalls the start.
+            categoryOptions.insert(.allowBluetoothA2DP)
+        } else {
 #if compiler(>=6.2)
         categoryOptions.insert(.allowBluetoothHFP)
         // HFP is the telephone profile: a narrowband signal the on-device
@@ -354,6 +360,7 @@ final class AudioRecorder: NSObject {
 #else
         categoryOptions.insert(.allowBluetooth)
 #endif
+        }
         try audioSession.setCategory(
             .playAndRecord,
             mode: .default,

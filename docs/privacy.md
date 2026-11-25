@@ -466,6 +466,33 @@ The iOS keyboard completes, corrects and predicts entirely on the device.
   capped at 2 000 and evicted least-recently-used. They are never written to the
   system-wide dictionary that other apps read, never listed in the interface
   beyond a count, and are erased by "Reset learned words" or by deleting the app.
+- **Learned typo fixes.** With Learn as I type on, a word the user fixes by
+  hand — picking a correction in the suggestion row, or deleting into a word
+  and retyping it as a near spelling — is stored as the pair (typed, fixed) in
+  the same App Group file, capped at 500 pairs. A typo fixed the same way twice
+  is then fixed on space; one fixed two ways, or whose fix the user took back,
+  never is. Only those word pairs are kept, never the text around them, and
+  "Reset learned words" erases them with the words.
+- **Where the fingers landed.** While a word is being typed, the keyboard keeps
+  where each letter's tap landed inside its key (an offset from the key's
+  centre) to rank corrections. It is held in memory for the current word only
+  and is never stored or logged.
+- **Clipboard.** The keyboard never reads the clipboard to decide anything. In
+  an empty field it checks only whether the clipboard changed recently
+  (`UIPasteboard.changeCount`) and whether it holds text, and then offers the
+  system Paste button, which hands the clipboard to the keyboard only when the
+  user taps it — so iOS shows no "Allow Paste" prompt. The change count of the
+  last copy seen and pasted is kept in the App Group, never what was copied.
+- **Android: learned fixes and autofill.** The Android keyboard keeps the same
+  kind of typo→fix word pairs (picked from the strip, or undone) in its own
+  DataStore on the phone, never the text around them; Settings › Keyboard ›
+  "Forget learned fixes" clears them. Its inline autofill chips (one-time codes,
+  saved logins) are drawn by the user's autofill service; VocaPhone does not
+  read their contents.
+- **Words never suggested.** Slurs are never suggested, completed, predicted,
+  swiped or autocorrected to; swear words only with Suggest swear words on (off
+  by default). The list is `assets/keyboard/never-suggest.tsv` (LDNOOBW, CC BY
+  4.0, as curated by Hex) and is matched on the device.
 - **Diagnostics.** No typed character, candidate, or learned word is written to
   the diagnostic log or included in an export. The log's vocabulary is a closed
   set of state and lifecycle events with no free-text field, and a test asserts

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
-    android:supportsSwitchingToNextInputMethod="true">
+    android:supportsSwitchingToNextInputMethod="true"
+    android:supportsInlineSuggestions="true">
     <!-- API 34+: keep both subtypes (never collapse). Keyboard still overrides
          so VocaPhone stays a normal IME. Voice omits
          overridesImplicitlyEnabledSubtype so AOSP can show voice_input_label

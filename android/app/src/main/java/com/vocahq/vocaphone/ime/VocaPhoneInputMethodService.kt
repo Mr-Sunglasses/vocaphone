@@ -4,11 +4,17 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Size
 import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
 import android.view.inputmethod.InputMethodManager
@@ -165,6 +171,26 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     /** "Fixed: teh → the", with what Undo needs, until the next edit. */
     private val autoFixed = MutableStateFlow<AutoFix?>(null)
 
+    /** Learned and undone typing fixes ([AutocorrectMemory]), kept current from their store. */
+    private val typingMemory = MutableStateFlow(AutocorrectMemory.EMPTY)
+
+    /** Autofill's inline chips for this field (passwords, one-time codes), at most three. */
+    private val inlineViews = MutableStateFlow<List<View>>(emptyList())
+    private var inlineGeneration = 0
+
+    /** Counts `onStartInputView`, so the strip knows when the keyboard came up. */
+    private val viewShows = MutableStateFlow(0)
+
+    /**
+     * The selection a dictation started over. The transcript replaces it only
+     * if the editor still has that same selection when it arrives.
+     */
+    private var dictationSelection: DictationSelection.Range? = null
+    private val replacesSelection = MutableStateFlow(false)
+
+    /** Push-to-talk let go before the dictation was listening: finish once it is. */
+    private var pushToTalkFinishPending = false
+
     /**
      * Writing check: the rules everywhere, and the app's own grammar model
      * ([com.vocahq.vocaphone.grammar.GrammarCorrector], shared with
@@ -222,8 +248,23 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         container.dictation.imeInserter = this
         scope.launch {
             container.dictation.state.collect { state ->
+                val wasBusy = lastState.phase.isBusy
                 lastState = state
                 visibleDictationState.value = state
+                if (wasBusy && !state.phase.isBusy) {
+                    dictationSelection = null
+                    replacesSelection.value = false
+                }
+                if (pushToTalkFinishPending) {
+                    when {
+                        state.phase == DictationPhase.LISTENING -> {
+                            pushToTalkFinishPending = false
+                            container.diagnostics.recordAction("finish", DictationSource.IME.name)
+                            finishImeDictation()
+                        }
+                        state.phase != DictationPhase.IDLE && !state.phase.isBusy -> pushToTalkFinishPending = false
+                    }
+                }
                 if (!state.phase.isBusy) startedImeDictation = false
                 if (voiceShortcutOwnedSession && state.phase != DictationPhase.IDLE) {
                     voiceShortcutLeftIdle = true
@@ -252,6 +293,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             writingCheck.report.collect { report -> if (report != null) maybeAutoFix(report) }
         }
         scope.launch {
+            container.typingFixes.memory.collect { typingMemory.value = it }
+        }
+        scope.launch {
             container.correctionLearning.enabled.collect { enabled ->
                 learnsFromCorrections = enabled
                 if (!enabled) stopFollowingDictation()
@@ -276,6 +320,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onRetry = ::retryImeDictation,
                 onInsertSaved = ::insertSavedTranscript,
                 onReadyToListen = ::scheduleVoiceShortcutDictation,
+                onMicHoldStart = ::startPushToTalk,
+                onMicHoldEnd = ::finishPushToTalk,
             )
         } else {
             val clipboard by visibleClipboard.collectAsState()
@@ -285,6 +331,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val writingReport by writingCheck.report.collectAsState()
             val writingChecking by writingCheck.checking.collectAsState()
             val writingAutoFix by autoFixed.collectAsState()
+            val memory by typingMemory.collectAsState()
+            val inline by inlineViews.collectAsState()
+            val overSelection by replacesSelection.collectAsState()
+            val shown by viewShows.collectAsState()
             // The button is there in every field it can check, whether or not
             // "Check while typing" is on; that setting only decides whether
             // the check also runs by itself.
@@ -325,6 +375,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onWritingCheckNow = ::checkWritingNow,
                 onWritingUndoAutoFix = ::undoAutoFix,
                 onWritingOpenApp = ::openWritingEditor,
+                typingMemory = memory,
+                onLearnPick = ::learnTypingPick,
+                onRejectFix = ::rejectTypingFix,
+                onMicHoldStart = ::startPushToTalk,
+                onMicHoldEnd = ::finishPushToTalk,
+                inlineSuggestions = inline,
+                replacesSelection = overSelection,
+                viewShown = shown,
             )
         }
     }
@@ -336,7 +394,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val identity = EditorIdentity.of(attribute)
         val sameEditor = EditorRestart.keepsSession(editorIdentity, identity)
         editorIdentity = identity
-        if (!sameEditor) editorSession += 1
+        if (!sameEditor) {
+            editorSession += 1
+            clearInlineSuggestions()
+        }
         lastCandidatesStart = -1
         lastCandidatesEnd = -1
         lastSelStart = attribute?.initialSelStart ?: -1
@@ -384,6 +445,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        viewShows.value += 1
         applyVoiceShortcutSubtype(currentSubtype())
         if (!voiceShortcutActive) {
             startClipboardWatch()
@@ -543,6 +605,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         mainHandler.removeCallbacks(editorTextRefresh)
         writingCheck.reset()
         autoFixed.value = null
+        clearInlineSuggestions()
+        dictationSelection = null
+        replacesSelection.value = false
+        pushToTalkFinishPending = false
         editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
     }
@@ -591,12 +657,28 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
+            // Over a selection only if it is the one the dictation started
+            // over; any other selection is left alone and the transcript goes
+            // in at its end. One read, and only when there is a selection.
+            val current = if (lastSelStart >= 0 && lastSelEnd >= 0 && lastSelStart != lastSelEnd) {
+                DictationSelection.remember(
+                    lastSelStart,
+                    lastSelEnd,
+                    runCatching { connection.getSelectedText(0)?.toString() }.getOrNull(),
+                )
+            } else {
+                null
+            }
+            val target = DictationSelection.target(dictationSelection, current)
+            dictationSelection = null
+            replacesSelection.value = false
             val committedText = commitDictationText(
                 connection,
                 cleaned,
                 composingRegionActive,
-                lastSelStart,
-                lastSelEnd,
+                selectionStart = if (target == DictationSelection.Target.AsIs) lastSelStart else -1,
+                selectionEnd = if (target == DictationSelection.Target.AsIs) lastSelEnd else -1,
+                collapseTo = (target as? DictationSelection.Target.CollapseTo)?.position ?: -1,
             )
             val committed = committedText != null
             // The composing region was finished before the commit, so the
@@ -640,6 +722,15 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 connection?.setComposingText(command.text, 1)
                 composingRegionActive = command.text.isNotEmpty()
             }
+            is KeyboardCommand.ReplaceBeforeCursor -> {
+                if (connection == null) return
+                connection.beginBatchEdit()
+                if (composingRegionActive) connection.finishComposingText()
+                if (command.length > 0) connection.deleteSurroundingText(command.length, 0)
+                connection.commitText(command.text, 1)
+                connection.endBatchEdit()
+                composingRegionActive = false
+            }
             KeyboardCommand.FinishComposing -> {
                 if (composingRegionActive) connection?.finishComposingText()
                 composingRegionActive = false
@@ -667,6 +758,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 if (composingRegionActive) connection?.finishComposingText()
                 composingRegionActive = false
                 moveCursor(command.positions)
+                moveLines(command.lines)
             }
             is KeyboardCommand.ReplaceLastCommitted -> {
                 if (connection == null) return
@@ -696,6 +788,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                     )
                 }
             }
+        }
+        // Typing has started: autofill's chips have had their moment.
+        if (command is KeyboardCommand.SetComposingText || command is KeyboardCommand.CommitText) {
+            if (inlineViews.value.isNotEmpty()) clearInlineSuggestions()
         }
         // Composing lives in keyboard state; the strip does not need a
         // round-trip into the editor until a word is committed or the cursor
@@ -1142,7 +1238,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // One fix per Undo. The fix's edit republishes the report, still
         // holding any other typos; it is collected once this call has
         // recorded the Undo, and waits until that offer ends.
-        val candidate = autoFixCandidate(report, undoPending = autoFixed.value != null) ?: return
+        val candidate = autoFixCandidate(report, undoPending = autoFixed.value != null, allowed = autoFixAllowed()) ?: return
         val connection = currentInputConnection ?: return
         val fresh = readWritingField() ?: return
         // Checked against where the cursor is now, before anything is edited.
@@ -1161,9 +1257,45 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val undo = fix.undoIn(field) ?: return
         val commit = commitWritingFixes(connection, listOf(undo), field.offset + field.cursor, composingRegionActive)
         composingRegionActive = false
-        // Undone means "I meant that": the same fix is not made again here.
-        if (commit.applied.isNotEmpty()) writingCheck.dismissKey(fix.key)
+        // Undone means "I meant that": the same fix is not made again here,
+        // and undone twice it is not made again anywhere.
+        if (commit.applied.isNotEmpty()) {
+            writingCheck.dismissKey(fix.key)
+            rejectTypingFix(fix.typed, fix.wrote)
+        }
         scheduleEditorTextRefresh()
+    }
+
+    /**
+     * Which typo fixes may be made without a tap: not one the user undid
+     * twice, not to a word the keyboard never offers, and not of one typed
+     * in full that it never corrects away.
+     */
+    private fun autoFixAllowed(): (String, String) -> Boolean {
+        val memory = typingMemory.value
+        val dictionary = suggestionDictionary.value
+        val settings = visibleSettings.value
+        val personal = SuggestionDictionary.personalSet(settings.personalDictionary)
+        return { typed, fix ->
+            !memory.isRejected(typed, fix) && (
+                dictionary == null || (
+                    !dictionary.isHeldBack(typed.trim(), settings.suggestSwearWords, personal) &&
+                        fix.split(' ').none { dictionary.isHeldBack(it, settings.suggestSwearWords, personal) }
+                    )
+                )
+        }
+    }
+
+    /** A correction picked from the strip for a typed word: counted toward a learned fix. */
+    private fun learnTypingPick(typed: String, picked: String) {
+        if (!visibleSettings.value.learnTypingFixes || !editorConfig.learningAllowed || editorConfig.sensitive) return
+        scope.launch { container.typingFixes.recordPick(typed, picked) }
+    }
+
+    /** An automatic fix taken back: undone twice, it is not made again. */
+    private fun rejectTypingFix(typed: String, fix: String) {
+        if (!editorConfig.learningAllowed || editorConfig.sensitive) return
+        scope.launch { container.typingFixes.recordRejection(typed, fix) }
     }
 
     /** "Open in app": the field's text in VocaPhone's Writing check screen. */
@@ -1318,6 +1450,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         repeat(abs(positions).coerceAtMost(MAX_CURSOR_STEPS_PER_EVENT)) { sendKey(keyCode) }
     }
 
+    /** Line steps from the space-bar trackpad: the editor moves by its own lines. */
+    private fun moveLines(lines: Int) {
+        if (lines == 0) return
+        val keyCode = if (lines > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
+        repeat(abs(lines).coerceAtMost(MAX_CURSOR_STEPS_PER_EVENT)) { sendKey(keyCode) }
+    }
+
     private fun sendKey(keyCode: Int) {
         val connection = currentInputConnection ?: return
         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
@@ -1351,6 +1490,24 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 MicDictationAction.NONE -> Unit
                 MicDictationAction.START -> startImeDictation()
             }
+        }
+    }
+
+    /** Mic held still while idle: push-to-talk starts, as a tap would. */
+    private fun startPushToTalk() {
+        if (MicDictationControl.tap(lastState.phase) != MicDictationAction.START) return
+        toggleDictation()
+    }
+
+    /** The finger lifted after push-to-talk: finish, exactly as tapping Stop does. */
+    private fun finishPushToTalk() {
+        when {
+            lastState.phase == DictationPhase.LISTENING -> {
+                container.diagnostics.recordAction("finish", DictationSource.IME.name)
+                finishImeDictation()
+            }
+            // Still starting: finish the moment it is listening.
+            startedImeDictation && !lastState.phase.isBusy -> pushToTalkFinishPending = true
         }
     }
 
@@ -1402,6 +1559,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val sessionId = state.sessionId ?: return
         if (!ImeInputPolicy.acceptsDictation(currentInputType)) return
         container.diagnostics.recordAction("retry", DictationSource.IME.name)
+        rememberDictationSelection()
         startedImeDictation = true
         dictationEditorSession = editorSession
         if (voiceShortcutActive) {
@@ -1437,6 +1595,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // The next dictation is the moment VocaMac compares too: the fixes to
         // the last one are done by now.
         stopFollowingDictation()
+        pushToTalkFinishPending = false
+        rememberDictationSelection()
         if (lastState.phase == DictationPhase.FAILED ||
             lastState.phase == DictationPhase.READY_TO_INSERT ||
             lastState.phase == DictationPhase.INSERTED
@@ -1455,6 +1615,23 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         } else {
             container.dictation.start(DictationSource.IME)
         }
+    }
+
+    /**
+     * A dictation starting over a selection remembers it (one read, only when
+     * there is one), and the bar says "Replaces selection" while it records.
+     */
+    private fun rememberDictationSelection() {
+        dictationSelection = if (lastSelStart >= 0 && lastSelEnd >= 0 && lastSelStart != lastSelEnd) {
+            DictationSelection.remember(
+                lastSelStart,
+                lastSelEnd,
+                runCatching { currentInputConnection?.getSelectedText(0)?.toString() }.getOrNull(),
+            )
+        } else {
+            null
+        }
+        replacesSelection.value = dictationSelection != null
     }
 
     /**
@@ -1616,6 +1793,46 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (!switchToPreviousInputMethod()) {
             voiceShortcutReturned = false
         }
+    }
+
+    /**
+     * Inline autofill: password managers and the SMS one-time-code filler
+     * offer their suggestions as chips in the strip. Not for the voice
+     * shortcut, which has no strip.
+     */
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
+        if (voiceShortcutActive) return null
+        return runCatching { InlineAutofill.request(this) }.getOrNull()
+    }
+
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        val suggestions = response.inlineSuggestions.take(InlineAutofill.MAX_SUGGESTIONS)
+        val generation = ++inlineGeneration
+        if (suggestions.isEmpty()) {
+            inlineViews.value = emptyList()
+            return true
+        }
+        val views = arrayOfNulls<View>(suggestions.size)
+        var waiting = suggestions.size
+        fun landed(index: Int, view: View?) {
+            if (destroyed || generation != inlineGeneration) return
+            views[index] = view
+            waiting -= 1
+            if (waiting == 0) inlineViews.value = views.filterNotNull()
+        }
+        val size = Size(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        suggestions.forEachIndexed { index, suggestion ->
+            val inflated = runCatching {
+                suggestion.inflate(this, size, mainExecutor) { view -> landed(index, view) }
+            }
+            if (inflated.isFailure) landed(index, null)
+        }
+        return true
+    }
+
+    private fun clearInlineSuggestions() {
+        inlineGeneration += 1
+        inlineViews.value = emptyList()
     }
 
     /** Space bar long-press: the system list of enabled keyboards (#402). */

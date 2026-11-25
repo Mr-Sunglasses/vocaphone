@@ -355,6 +355,17 @@ data class VocaPhoneSettings(
     val typoAutoFix: Boolean = false,
     val numberKeyHintsEnabled: Boolean = true,
     val longPressSymbolsEnabled: Boolean = false,
+    /** "Quick accents": a held letter starts on its main accent, so a still release types it. */
+    val quickAccentsEnabled: Boolean = false,
+    /** "Sound on keypress": the system key click on every key down. */
+    val keySoundEnabled: Boolean = false,
+    /**
+     * "Learn my typing fixes": a typo fixed the same way twice from the strip
+     * is fixed by space from then on. Pairs only, on this phone.
+     */
+    val learnTypingFixes: Boolean = true,
+    /** "Suggest swear words": swear words may be suggested; slurs never are. */
+    val suggestSwearWords: Boolean = false,
     /** Arm shift at the start of a field and after a sentence ends. */
     val autoCapitalizeEnabled: Boolean = true,
     /**
@@ -703,6 +714,14 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLongPressSymbolsEnabled(enabled: Boolean) = put(Keys.LONG_PRESS_SYMBOLS, enabled)
 
+    suspend fun setQuickAccentsEnabled(enabled: Boolean) = put(Keys.QUICK_ACCENTS, enabled)
+
+    suspend fun setKeySoundEnabled(enabled: Boolean) = put(Keys.KEY_SOUND, enabled)
+
+    suspend fun setLearnTypingFixes(enabled: Boolean) = put(Keys.LEARN_TYPING_FIXES, enabled)
+
+    suspend fun setSuggestSwearWords(enabled: Boolean) = put(Keys.SUGGEST_SWEAR_WORDS, enabled)
+
     suspend fun setAutoCapitalizeEnabled(enabled: Boolean) = put(Keys.AUTO_CAPITALIZE, enabled)
 
     suspend fun setPersonalDictionary(words: String) = put(Keys.PERSONAL_DICTIONARY, words)
@@ -1009,6 +1028,10 @@ class SettingsRepository(private val context: Context) {
         typoAutoFix = this[Keys.TYPO_AUTO_FIX] ?: false,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
         longPressSymbolsEnabled = this[Keys.LONG_PRESS_SYMBOLS] ?: false,
+        quickAccentsEnabled = this[Keys.QUICK_ACCENTS] ?: false,
+        keySoundEnabled = this[Keys.KEY_SOUND] ?: false,
+        learnTypingFixes = this[Keys.LEARN_TYPING_FIXES] ?: true,
+        suggestSwearWords = this[Keys.SUGGEST_SWEAR_WORDS] ?: false,
         autoCapitalizeEnabled = this[Keys.AUTO_CAPITALIZE] ?: true,
         personalDictionary = this[Keys.PERSONAL_DICTIONARY].orEmpty(),
         asciiEmojiEnabled = this[Keys.ASCII_EMOJI] ?: true,
@@ -1083,6 +1106,10 @@ class SettingsRepository(private val context: Context) {
         val TYPO_AUTO_FIX = booleanPreferencesKey("typo_auto_fix")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")
         val LONG_PRESS_SYMBOLS = booleanPreferencesKey("keyboard_long_press_symbols")
+        val QUICK_ACCENTS = booleanPreferencesKey("keyboard_quick_accents")
+        val KEY_SOUND = booleanPreferencesKey("keyboard_key_sound")
+        val LEARN_TYPING_FIXES = booleanPreferencesKey("keyboard_learn_typing_fixes")
+        val SUGGEST_SWEAR_WORDS = booleanPreferencesKey("keyboard_suggest_swear_words")
         val AUTO_CAPITALIZE = booleanPreferencesKey("keyboard_auto_capitalize")
         val PERSONAL_DICTIONARY = stringPreferencesKey("keyboard_personal_dictionary")
         val ASCII_EMOJI = booleanPreferencesKey("keyboard_ascii_emoji")

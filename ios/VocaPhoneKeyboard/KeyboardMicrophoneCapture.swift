@@ -78,8 +78,9 @@ final class KeyboardMicrophoneCapture: NSObject, WKNavigationDelegate, WKUIDeleg
             startWhenLoaded = true
             return
         }
-        Self.configureSharedAudioSession()
-        webView.evaluateJavaScript("captureStart()")
+        let builtIn = KeyboardPreferences.microphonePreference == .iPhone
+        Self.configureSharedAudioSession(preferBuiltIn: builtIn)
+        webView.evaluateJavaScript("captureStart(\(builtIn))")
     }
 
     func stop() {
@@ -117,13 +118,22 @@ final class KeyboardMicrophoneCapture: NSObject, WKNavigationDelegate, WKUIDeleg
 
     /// Music and navigation keep playing: the same mixable category the app
     /// records with, rather than WebKit's default, which pauses them.
-    private static func configureSharedAudioSession() {
+    /// With "iPhone Microphone" (the default), the built-in microphone is
+    /// preferred here and in the page, so a car or headset keeps playing
+    /// rather than switching to its hands-free microphone.
+    private static func configureSharedAudioSession(preferBuiltIn: Bool) {
         audioSessionQueue.async {
-            try? AVAudioSession.sharedInstance().setCategory(
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(
                 .playAndRecord,
                 mode: .default,
                 options: [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker]
             )
+            if preferBuiltIn,
+               let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic })
+            {
+                try? session.setPreferredInput(builtIn)
+            }
         }
     }
 
@@ -190,14 +200,23 @@ final class KeyboardMicrophoneCapture: NSObject, WKNavigationDelegate, WKUIDeleg
     <!doctype html><meta charset="utf-8"><script>
     let ctx = null, stream = null, source = null, node = null, running = false, generation = 0;
     const post = (m) => webkit.messageHandlers.capture.postMessage(m);
-    async function captureStart() {
+    async function builtInMicrophone() {
+      try {
+        const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
+        const found = inputs.find((d) => /iphone|ipad|built-in/i.test(d.label));
+        return found ? found.deviceId : null;
+      } catch (e) { return null; }
+    }
+    async function captureStart(preferBuiltIn) {
       if (running) return;
       running = true;
       const mine = ++generation;
       try {
-        const opened = await navigator.mediaDevices.getUserMedia({ audio: {
-          channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false
-        } });
+        const base = { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        const id = preferBuiltIn ? await builtInMicrophone() : null;
+        const opened = await navigator.mediaDevices.getUserMedia({
+          audio: id ? { ...base, deviceId: { exact: id } } : base
+        });
         // Stopped (or restarted) while the microphone was opening: this
         // stream belongs to nobody, so it is closed rather than recorded.
         if (mine !== generation || !running) {

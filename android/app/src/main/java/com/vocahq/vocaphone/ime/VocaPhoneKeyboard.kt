@@ -1,8 +1,17 @@
 package com.vocahq.vocaphone.ime
 
 import android.graphics.BitmapFactory
+import android.media.AudioManager
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.snap
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -181,6 +190,14 @@ internal fun VocaPhoneKeyboard(
     onWritingUndoAutoFix: () -> Unit = {},
     onWritingOpenApp: () -> Unit = {},
     onWritingCheckNow: () -> Unit = {},
+    typingMemory: AutocorrectMemory = AutocorrectMemory.EMPTY,
+    onLearnPick: (typed: String, picked: String) -> Unit = { _, _ -> },
+    onRejectFix: (typed: String, fix: String) -> Unit = { _, _ -> },
+    onMicHoldStart: () -> Unit = {},
+    onMicHoldEnd: () -> Unit = {},
+    inlineSuggestions: List<View> = emptyList(),
+    replacesSelection: Boolean = false,
+    viewShown: Int = 0,
 ) {
     // One set of state holders for the life of the composition, reset when the
     // editor changes rather than rebuilt.
@@ -238,6 +255,31 @@ internal fun VocaPhoneKeyboard(
     val onKeyPreview = remember {
         { preview: KeyPreview? -> keyPreview.value = preview }
     }
+    // Where each letter of the composing word was tapped (TapTrace), and the
+    // offset of the tap the key being pressed reports on its way to handleKey.
+    val tapTrace = remember { TapTrace() }
+    val tapSink = remember { floatArrayOf(Float.NaN, Float.NaN) }
+    // Letter rectangles in root pixels, shared by swipe typing and the strip's
+    // dead zone, and when a key was last touched.
+    val keyBounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
+    val keyTouch = remember { KeyTouchClock() }
+    // A learned fix the space bar just made, which the next delete takes back.
+    val learnedUndo = remember { arrayOfNulls<LearnedFixUndo>(1) }
+    // Delete slid left by words, while that press lasts.
+    val deleteSlide = remember { arrayOfNulls<DeleteSlide>(1) }
+    val context = LocalContext.current
+    val keyFeedback = remember { KeyFeedback(context.getSystemService(AudioManager::class.java)) }
+    SideEffect { keyFeedback.soundOn = settings.keySoundEnabled }
+    // Strip changes cross-fade only once the keyboard has been on screen for a
+    // frame: before that, and in every new field, they apply at once, so the
+    // capital a field starts with never visibly rolls in.
+    var stripAnimates by remember { mutableStateOf(false) }
+    LaunchedEffect(viewShown, editor.sessionId) {
+        stripAnimates = false
+        withFrameNanos { }
+        withFrameNanos { }
+        stripAnimates = true
+    }
 
     // The one place a new editor wipes the keyboard. Replacing the holders did
     // this implicitly and broke the handlers that had closed over them.
@@ -255,6 +297,9 @@ internal fun VocaPhoneKeyboard(
         swipeSeedShift = null
         keyPreview.value = null
         deleteHoldBefore[0] = ""
+        tapTrace.clear()
+        learnedUndo[0] = null
+        deleteSlide[0] = null
     }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
@@ -293,6 +338,8 @@ internal fun VocaPhoneKeyboard(
                 capitalizeAfterSpace = false,
                 lastWasSpace = false,
             )
+            tapTrace.clear()
+            learnedUndo[0] = null
         }
     }
     LaunchedEffect(settings.asciiEmojiEnabled, emojiCategory) {
@@ -330,6 +377,10 @@ internal fun VocaPhoneKeyboard(
             PersonalDictionary.add(acc, word)
         }
     }
+    val personalWords = remember(personalRaw) { SuggestionDictionary.personalSet(personalRaw) }
+    // Learned fixes are learned and made only where suggestions are, and only
+    // in fields that allow learning: never a password, a code or an incognito tab.
+    val learnsFixes = settings.learnTypingFixes && editor.learningAllowed
     // Mid-word the strip is built from [keyboardState.composing]; surrounding
     // editor text is only needed once the word is committed. Keying on
     // editorText during a word ran a second scan ~50ms after every letter.
@@ -341,10 +392,20 @@ internal fun VocaPhoneKeyboard(
         stripEditorText,
         suggestions,
         personalRaw,
+        settings.suggestSwearWords,
+        typingMemory,
+        learnsFixes,
     ) {
         suggestionStrip = if (!composeWords || suggestions == null) {
             SuggestionStrip(emptyList())
         } else {
+            // Read here, on the main thread, before the scan moves off it.
+            val options = StripOptions(
+                allowSwears = settings.suggestSwearWords,
+                memory = typingMemory,
+                learnedFixes = learnsFixes,
+                taps = tapTrace.snapshot(keyboardState.composing),
+            )
             withContext(Dispatchers.Default) {
                 suggestions.strip(
                     composing = keyboardState.composing,
@@ -353,6 +414,7 @@ internal fun VocaPhoneKeyboard(
                     correctionsEnabled = settings.correctionsEnabled,
                     personalRaw = personalRaw,
                     shouldAbort = { !isActive },
+                    options = options,
                 )
             }
         }
@@ -390,6 +452,10 @@ internal fun VocaPhoneKeyboard(
     }
     val writingChipsVisible = !swipeChoicesActive
     val writingAutoFixVisible = keyboardState.composing.isEmpty() && !swipeChoicesActive
+    // Password managers' and one-time-code autofill, only before typing starts.
+    val stripInline = inlineSuggestions.takeIf {
+        !startedTyping && !swipeChoicesActive && keyboardState.composing.isEmpty()
+    }.orEmpty()
 
     fun clearSwipe() {
         swipeChoices = emptyList()
@@ -397,12 +463,29 @@ internal fun VocaPhoneKeyboard(
     }
 
     fun handleDelete(heldMs: Long) {
+        if (heldMs == 0L) {
+            deleteSlide[0] = null
+            // Right after the space bar made a learned fix: put back what was
+            // typed, and count it against the fix.
+            val undo = learnedUndo[0]
+            learnedUndo[0] = null
+            if (undo != null && keyboardState.composing.isEmpty()) {
+                clearSwipe()
+                keyboardState = keyboardState.copy(lastWasSpace = false, capitalizeAfterSpace = false)
+                onCommand(undo.command())
+                onRejectFix(undo.typed, undo.fixed)
+                deleteHoldBefore[0] = ""
+                return
+            }
+        }
         val swipeUndo = heldMs == 0L && swipeArmed
         if (heldMs == 0L) {
             val before = editorText.before
+            val composing = keyboardState.composing
             deleteHoldBefore[0] = when {
+                // The read can predate the word being typed; the word is ours.
+                composing.isNotEmpty() && !before.endsWith(composing) -> before + composing
                 before.isNotEmpty() -> before
-                keyboardState.composing.isNotEmpty() -> keyboardState.composing
                 else -> ""
             }
             swipeChoices = emptyList()
@@ -441,13 +524,51 @@ internal fun VocaPhoneKeyboard(
         onCommand(command)
     }
 
+    /** Delete slid left: [steps] words deleted from where the press left the text. */
+    fun handleDeleteSlide(steps: Int) {
+        val slide = deleteSlide[0] ?: DeleteSlide(deleteHoldBefore[0]).also {
+            deleteSlide[0] = it
+            clearSwipe()
+            learnedUndo[0] = null
+            tapTrace.clear()
+            keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false)
+        }
+        val commands = slide.moveTo(steps)
+        if (commands.isEmpty()) return
+        commands.forEach(onCommand)
+        deleteHoldBefore[0] = slide.before
+    }
+
     val currentEditorText = rememberUpdatedState(editorText)
+
+    /**
+     * The learned fix space should make for the word being typed, or null.
+     * Only for a typo: a word the list or the personal dictionary knows is
+     * typed as it is.
+     */
+    fun learnedFixForSpace(typed: String): String? {
+        if (!learnsFixes || !composeWords || typed.isEmpty()) return null
+        val dictionary = suggestions ?: return null
+        val allowSwears = settings.suggestSwearWords
+        return LearnedFixes.fixFor(
+            typed = typed,
+            memory = typingMemory,
+            isWord = { dictionary.isKnown(it) || it.lowercase() in personalWords },
+            blocked = { !dictionary.allows(it, null, allowSwears, personalWords) },
+            personalSpelling = { fix -> PersonalDictionary.terms(personalRaw).firstOrNull { it.equals(fix, ignoreCase = true) } },
+        )
+    }
 
     fun handleKey(key: KeyboardKey) {
         if (key.type == KeyboardKeyType.DELETE) {
             handleDelete(0L)
             return
         }
+        learnedUndo[0] = null
+        val tapX = tapSink[0]
+        val tapY = tapSink[1]
+        tapSink[0] = Float.NaN
+        tapSink[1] = Float.NaN
         if (
             key.type == KeyboardKeyType.CHARACTER ||
             key.type == KeyboardKeyType.SPACE ||
@@ -457,6 +578,12 @@ internal fun VocaPhoneKeyboard(
         }
         if (key.type == KeyboardKeyType.CHARACTER) {
             swipeSeedShift = keyboardState.shift
+        }
+        // Space after a typo the user has fixed the same way twice fixes it.
+        val typed = keyboardState.composing
+        val fix = if (key.type == KeyboardKeyType.SPACE && !keyboardState.lastWasSpace) learnedFixForSpace(typed) else null
+        if (fix != null && fix != typed) {
+            onCommand(KeyboardCommand.SetComposingText(fix))
         }
         val text = currentEditorText.value
         val reduction = KeyboardReducer.press(
@@ -469,6 +596,15 @@ internal fun VocaPhoneKeyboard(
         )
         keyboardState = reduction.state
         reduction.command?.let(onCommand)
+        if (fix != null && fix != typed && reduction.command == KeyboardCommand.CommitText(" ")) {
+            learnedUndo[0] = LearnedFixUndo(typed = typed, fixed = fix)
+        }
+        val composing = reduction.state.composing
+        if (composing.isEmpty()) {
+            tapTrace.clear()
+        } else if (key.type == KeyboardKeyType.CHARACTER && composing.length == typed.length + 1) {
+            tapTrace.record(composing, tapX, tapY)
+        }
     }
 
     fun undoSwipeSeed() {
@@ -500,6 +636,8 @@ internal fun VocaPhoneKeyboard(
 
     fun applySwipe(matches: List<String>, similar: List<String>) {
         if (matches.isEmpty()) return
+        learnedUndo[0] = null
+        tapTrace.clear()
         KeyboardChrome.swipePrefixCommand(keyboardState.composing)?.let(onCommand)
         val capitalize = keyboardState.shift != ShiftState.OFF
         fun cased(word: String) = if (capitalize) word.replaceFirstChar { it.uppercase() } else word
@@ -537,6 +675,10 @@ internal fun VocaPhoneKeyboard(
         swipePaths.trySend(input.copy(previousWord = previous))
     }
 
+    // Swiped words are held back like typed ones; read on the main thread
+    // before each swipe is matched.
+    val swipeGate by rememberUpdatedState(settings.suggestSwearWords to personalWords)
+
     // The consumer below outlives the composition that started it, so it has to
     // reach the current `applySwipe` rather than the one it closed over: that
     // one still holds the `onCommand` and `onSuggestionPicked` it was handed.
@@ -545,6 +687,7 @@ internal fun VocaPhoneKeyboard(
     LaunchedEffect(suggestions) {
         val dictionary = suggestions ?: return@LaunchedEffect
         for (trace in swipePaths) {
+            val (allowSwears, personal) = swipeGate
             val resolved = withContext(Dispatchers.Default) {
                 val abort = { !isActive }
                 val matches = dictionary.swipe(
@@ -552,6 +695,7 @@ internal fun VocaPhoneKeyboard(
                     shouldAbort = abort,
                     points = trace.points,
                     previousWord = trace.previousWord,
+                    allowed = { word -> dictionary.allows(word, trace.previousWord, allowSwears, personal) },
                 )
                 // Strip after a swipe is the other same-path words, not
                 // edit-distance cousins of the winner. Those cousins are
@@ -575,17 +719,46 @@ internal fun VocaPhoneKeyboard(
     val latestSwipe by rememberUpdatedState<(SwipeInput) -> Unit>(::handleSwipe)
     val latestUndoSwipe by rememberUpdatedState(::undoSwipeSeed)
     val latestLongPressVariant by rememberUpdatedState(::commitLongPressVariant)
-    val latestCursorMove by rememberUpdatedState<(Int) -> Unit> { positions ->
+    val latestCursorMove by rememberUpdatedState<(Int, Int) -> Unit> { positions, lines ->
         clearSwipe()
+        learnedUndo[0] = null
+        tapTrace.clear()
         keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
-        onCommand(KeyboardCommand.MoveCursor(positions))
+        onCommand(KeyboardCommand.MoveCursor(positions, lines))
     }
     val latestEmojiUsed by rememberUpdatedState(onEmojiUsed)
     val onKeyStable = remember { { key: KeyboardKey -> latestKey(key) } }
     val onSwipeStable = remember { { input: SwipeInput -> latestSwipe(input) } }
     val onUndoSwipeStable = remember { { latestUndoSwipe() } }
     val onLongPressVariantStable = remember { { text: String -> latestLongPressVariant(text) } }
-    val onCursorMoveStable = remember { { positions: Int -> latestCursorMove(positions) } }
+    val onCursorMoveStable = remember { { positions: Int, lines: Int -> latestCursorMove(positions, lines) } }
+    val latestDeleteSlide by rememberUpdatedState<(Int) -> Unit>(::handleDeleteSlide)
+    val onDeleteSlideStable = remember { { steps: Int -> latestDeleteSlide(steps) } }
+    // A tap low on the strip just after a key: the top-row letter under it.
+    val latestDeadZone by rememberUpdatedState<(Float, Float) -> Boolean> { rootX, yFraction ->
+        if (
+            keyboardState.layer != KeyboardLayer.LETTERS ||
+            !StripDeadZone.typesKey(SystemClock.uptimeMillis(), keyTouch.lastDownMs, keyTouch.pointersDown, yFraction)
+        ) {
+            false
+        } else {
+            val spans = keyBounds.values
+                .filter { (key, _) -> isLetterKey(key) }
+                .map { (key, rect) -> StripDeadZone.KeySpan(key to rect, rect.left, rect.right, rect.top) }
+            val hit = StripDeadZone.topRowKey(rootX, spans)
+            if (hit == null) {
+                false
+            } else {
+                val (key, rect) = hit
+                tapSink[0] = if (rect.width > 0f) (rootX - rect.center.x) / rect.width else Float.NaN
+                tapSink[1] = -0.5f
+                keyFeedback.play(key.type)
+                handleKey(key)
+                true
+            }
+        }
+    }
+    val onDeadZoneStable = remember { { rootX: Float, yFraction: Float -> latestDeadZone(rootX, yFraction) } }
     val latestSpaceLongPress by rememberUpdatedState(onSpaceLongPress)
     val onSpaceLongPressStable = remember { { latestSpaceLongPress() } }
     val onKeyHoldStable = remember {
@@ -644,6 +817,19 @@ internal fun VocaPhoneKeyboard(
                     suggestions = stripSuggestions.takeIf {
                         preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
                     }.orEmpty(),
+                    inline = stripInline.takeIf {
+                        preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
+                    }.orEmpty(),
+                    stripAnimates = stripAnimates,
+                    replacesSelection = replacesSelection,
+                    onStripDeadZone = onDeadZoneStable,
+                    onMicHoldStart = onMicHoldStart,
+                    onMicHoldEnd = onMicHoldEnd,
+                    onMicSlideMenu = {
+                        if (MicDictationControl.allowsMenu(dictationState.phase) && editor.dictationAllowed) {
+                            preferencePanel = PreferencePanel.MENU
+                        }
+                    },
                     emojiCategory = emojiCategory.takeIf {
                         preferencePanel == null && keyboardState.layer == KeyboardLayer.EMOJI
                     },
@@ -691,6 +877,8 @@ internal fun VocaPhoneKeyboard(
                     onPaste = { onPasteClipboard(clipboardChip?.fullText.orEmpty()) },
                     onDismissClipboard = onDismissClipboard,
                     onSuggestion = { item ->
+                        learnedUndo[0] = null
+                        tapTrace.clear()
                         if (item.isEmoji) {
                             clearSwipe()
                             keyboardState = keyboardState.copy(
@@ -716,6 +904,21 @@ internal fun VocaPhoneKeyboard(
                                 swipeChoicesActive = swipeReplacesWord,
                                 stripReplacesWord = suggestionStrip.replacesWord,
                             )
+                            // A correction picked for a typed word is remembered;
+                            // the same fix twice, and it is made by space.
+                            val typedWord = when {
+                                keyboardState.composing.isNotEmpty() -> keyboardState.composing
+                                replace && !swipeReplacesWord ->
+                                    SuggestionEngine.wordSpan(editorText.before, editorText.after)?.word
+                                else -> null
+                            }
+                            if (
+                                learnsFixes && composeWords && typedWord != null &&
+                                LearnedFixes.isCorrection(typedWord, item.text) &&
+                                suggestions?.isHeldBack(item.text, settings.suggestSwearWords, personalWords) != true
+                            ) {
+                                onLearnPick(typedWord, item.text)
+                            }
                             swipeChoices = emptyList()
                             swipeWord = if (replace) item.text else null
                             keyboardState = keyboardState.copy(
@@ -798,6 +1001,8 @@ internal fun VocaPhoneKeyboard(
                             split = splitKeys,
                             spacerFraction = spacerFraction,
                             numberRow = settings.numberRowEnabled,
+                            feedback = keyFeedback,
+                            onDeleteSlide = onDeleteSlideStable,
                             onEmoji = onEmojiStable,
                             onKey = onKeyStable,
                             onKeyHold = onKeyHoldStable,
@@ -836,7 +1041,13 @@ internal fun VocaPhoneKeyboard(
                             numberKeyHints = settings.numberKeyHintsEnabled &&
                                 keyboardState.layer == KeyboardLayer.LETTERS,
                             longPressSymbols = settings.longPressSymbolsEnabled,
+                            quickAccents = settings.quickAccentsEnabled,
                             numberRow = settings.numberRowEnabled,
+                            keyBounds = keyBounds,
+                            touchClock = keyTouch,
+                            tapSink = tapSink,
+                            feedback = keyFeedback,
+                            onDeleteSlide = onDeleteSlideStable,
                             split = splitKeys,
                             spacerFraction = spacerFraction,
                             swipeEnabled = settings.swipeTypingEnabled &&
@@ -1020,6 +1231,13 @@ private fun DictationBar(
     onPaste: () -> Unit,
     onDismissClipboard: () -> Unit,
     onSuggestion: (SuggestionItem) -> Unit,
+    inline: List<View> = emptyList(),
+    stripAnimates: Boolean = false,
+    replacesSelection: Boolean = false,
+    onStripDeadZone: (rootX: Float, yFraction: Float) -> Boolean = { _, _ -> false },
+    onMicHoldStart: () -> Unit = {},
+    onMicHoldEnd: () -> Unit = {},
+    onMicSlideMenu: (() -> Unit)? = null,
 ) {
     val view = LocalView.current
     val idle = state.phase == DictationPhase.IDLE
@@ -1032,6 +1250,9 @@ private fun DictationBar(
     val detail = when {
         editor.sensitive -> "Dictation is off here"
         !editor.dictationAllowed -> "Dictation is available in text fields"
+        // Said while it can still be stopped: the transcript will go over
+        // the selected text, if that selection is still there when it lands.
+        replacesSelection && state.phase == DictationPhase.LISTENING -> REPLACES_SELECTION
         else -> DictationBarCopy.detail(
             state,
             idleDetail = "",
@@ -1147,10 +1368,25 @@ private fun DictationBar(
                         Spacer(Modifier.weight(1f))
                     }
                 }
-                suggestions.isNotEmpty() -> SuggestionStripRow(
-                    suggestions = suggestions,
-                    onSuggestion = onSuggestion,
-                )
+                inline.isNotEmpty() -> InlineSuggestionRow(views = inline)
+                suggestions.isNotEmpty() -> StripDeadZoneBox(
+                    onDeadZone = onStripDeadZone,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                ) {
+                    // Cross-faded once the keyboard has been up for a frame
+                    // (stripAnimates); before that a change simply lands.
+                    Crossfade(
+                        targetState = suggestions,
+                        animationSpec = if (stripAnimates) tween(STRIP_FADE_MS) else snap(),
+                        label = "strip",
+                    ) { shown ->
+                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                            SuggestionStripRow(suggestions = shown, onSuggestion = onSuggestion)
+                        }
+                    }
+                }
                 clipboard != null -> {
                     Box(
                         modifier = Modifier
@@ -1221,7 +1457,75 @@ private fun DictationBar(
             enabled = editor.dictationAllowed && !isPreferenceWritePending,
             onClick = onMicTap,
             onLongPress = onMicLongPress,
+            onHoldStart = onMicHoldStart,
+            onHoldEnd = onMicHoldEnd,
+            onSlideMenu = onMicSlideMenu.takeIf { menuEnabled && panelTitle == null },
         )
+    }
+}
+
+private const val REPLACES_SELECTION = "Replaces selection"
+
+/** Strip changes fade this long, once the keyboard is settled on screen. */
+private const val STRIP_FADE_MS = 120
+
+/**
+ * The strip's dead zone ([StripDeadZone]): a tap on its lower half just after
+ * a key, while [onDeadZone] says it typed the key under it, is consumed before
+ * the chip under it sees it. Anything else passes through untouched.
+ */
+@Composable
+private fun StripDeadZoneBox(
+    onDeadZone: (rootX: Float, yFraction: Float) -> Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val coords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val currentOnDeadZone by rememberUpdatedState(onDeadZone)
+    Box(
+        modifier = modifier
+            .onGloballyPositioned { coords[0] = it }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val layout = coords[0] ?: return@awaitEachGesture
+                    val yFraction = if (size.height > 0) down.position.y / size.height else 0f
+                    val rootX = layout.localToRoot(down.position).x
+                    if (!currentOnDeadZone(rootX, yFraction)) return@awaitEachGesture
+                    down.consume()
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.forEach { it.consume() }
+                        if (event.changes.none { it.pressed }) break
+                    }
+                }
+            },
+    ) {
+        content()
+    }
+}
+
+/** Autofill's own chips (passwords, one-time codes), drawn by the autofill service. */
+@Composable
+private fun RowScope.InlineSuggestionRow(views: List<View>) {
+    Row(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        views.forEach { inlineView ->
+            key(inlineView) {
+                AndroidView(
+                    factory = {
+                        (inlineView.parent as? ViewGroup)?.removeView(inlineView)
+                        inlineView
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -1321,6 +1625,8 @@ internal fun VoiceShortcutListeningChrome(
     onRetry: () -> Unit = {},
     onInsertSaved: () -> Unit = {},
     onReadyToListen: () -> Unit = {},
+    onMicHoldStart: () -> Unit = {},
+    onMicHoldEnd: () -> Unit = {},
 ) {
     LaunchedEffect(Unit) { onReadyToListen() }
     VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
@@ -1339,6 +1645,8 @@ internal fun VoiceShortcutListeningChrome(
                 onMicLongPress = onMicLongPress,
                 onRetry = onRetry,
                 onInsertSaved = onInsertSaved,
+                onMicHoldStart = onMicHoldStart,
+                onMicHoldEnd = onMicHoldEnd,
             )
         }
     }
@@ -1355,6 +1663,8 @@ private fun VoiceShortcutListeningBar(
     onMicLongPress: () -> Unit,
     onRetry: () -> Unit,
     onInsertSaved: () -> Unit,
+    onMicHoldStart: () -> Unit = {},
+    onMicHoldEnd: () -> Unit = {},
 ) {
     val status = when {
         rejectGuidance -> "Voice shortcut"
@@ -1411,6 +1721,8 @@ private fun VoiceShortcutListeningBar(
             enabled = editor.dictationAllowed && !isPreferenceWritePending,
             onClick = onMicTap,
             onLongPress = onMicLongPress,
+            onHoldStart = onMicHoldStart,
+            onHoldEnd = onMicHoldEnd,
         )
     }
 }
@@ -1975,6 +2287,9 @@ private fun MicButton(
     enabled: Boolean,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
+    onHoldStart: () -> Unit = {},
+    onHoldEnd: () -> Unit = {},
+    onSlideMenu: (() -> Unit)? = null,
 ) {
     val view = LocalView.current
     val processing = state.phase in setOf(
@@ -1988,6 +2303,11 @@ private fun MicButton(
     // The gesture below is keyed on `enabled` only; the phase it checks has
     // to be the current one, not the one it was first composed with.
     val currentPhase by rememberUpdatedState(state.phase)
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnHoldStart by rememberUpdatedState(onHoldStart)
+    val currentOnHoldEnd by rememberUpdatedState(onHoldEnd)
+    val currentOnSlideMenu by rememberUpdatedState(onSlideMenu)
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceContainerHigh
         recording -> MaterialTheme.colorScheme.error
@@ -2011,20 +2331,68 @@ private fun MicButton(
             }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
-                detectTapGestures(
-                    onTap = {
-                        // The spinner does nothing on a tap (cancel is the X),
-                        // so it does not confirm one either.
-                        if (MicDictationControl.tap(currentPhase) != MicDictationAction.NONE) {
-                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                val slop = MicDictationControl.SLIDE_DP.dp.toPx()
+                val longPressMs = viewConfiguration.longPressTimeoutMillis
+                coroutineScope {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        down.consume()
+                        val press = MicPress(currentPhase, menuAllowed = currentOnSlideMenu != null, slopPx = slop)
+                        fun act(event: MicPressEvent?) {
+                            when (event) {
+                                MicPressEvent.TAP -> {
+                                    // The spinner does nothing on a tap (cancel is
+                                    // the X), so it does not confirm one either.
+                                    if (MicDictationControl.tap(currentPhase) != MicDictationAction.NONE) {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                    }
+                                    currentOnClick()
+                                }
+                                MicPressEvent.HOLD_START -> {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    currentOnHoldStart()
+                                }
+                                MicPressEvent.HOLD_END -> {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                    currentOnHoldEnd()
+                                }
+                                MicPressEvent.OPEN_MENU -> {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    currentOnSlideMenu?.invoke()
+                                }
+                                MicPressEvent.CANCEL -> {
+                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    currentOnLongPress()
+                                }
+                                null -> Unit
+                            }
                         }
-                        onClick()
-                    },
-                    onLongPress = { _ ->
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        onLongPress()
-                    },
-                )
+                        val hold = launch {
+                            delay(MicDictationControl.HOLD_MS)
+                            act(press.holdElapsed())
+                        }
+                        val longPress = launch {
+                            delay(longPressMs)
+                            act(press.longPressElapsed())
+                        }
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    break
+                                }
+                                act(press.move(change.position.x - down.position.x, change.position.y - down.position.y))
+                                change.consume()
+                            }
+                        } finally {
+                            hold.cancel()
+                            longPress.cancel()
+                        }
+                        act(press.release())
+                    }
+                }
             },
         shape = CircleShape,
         color = container,
@@ -2334,14 +2702,17 @@ private fun EmojiLayer(
     split: Boolean = false,
     spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     numberRow: Boolean = false,
+    feedback: KeyFeedback? = null,
+    onDeleteSlide: (Int) -> Unit = {},
     onEmoji: (String) -> Unit,
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
-    onCursorMove: (Int) -> Unit,
+    onCursorMove: (Int, Int) -> Unit,
     onSpaceLongPress: () -> Unit = {},
     onPreview: (KeyPreview?) -> Unit = {},
     onLongPressVariant: (String) -> Unit = {},
 ) {
+    val bottomBounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
     // Keyed like the letter rows (android/AGENTS.md), so a layout that one day
     // reads another input here cannot serve a stale row.
     val bottomRow = remember(layer, editor.returnKey, editor.leadingPunctuation, numberRow) {
@@ -2366,6 +2737,9 @@ private fun EmojiLayer(
             layer = layer,
             returnKey = editor.returnKey,
             keyHeight = keyHeight,
+            keyBounds = bottomBounds,
+            feedback = feedback,
+            onDeleteSlide = onDeleteSlide,
             split = split,
             spacerFraction = spacerFraction,
             onPreview = onPreview,
@@ -2455,9 +2829,15 @@ private fun KeyboardRows(
     layer: KeyboardLayer,
     returnKey: ReturnKeyKind,
     keyHeight: Dp,
+    keyBounds: MutableMap<String, Pair<KeyboardKey, Rect>>,
     numberKeyHints: Boolean = false,
     longPressSymbols: Boolean = false,
+    quickAccents: Boolean = false,
     numberRow: Boolean = false,
+    touchClock: KeyTouchClock? = null,
+    tapSink: FloatArray? = null,
+    feedback: KeyFeedback? = null,
+    onDeleteSlide: (Int) -> Unit = {},
     split: Boolean = false,
     spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     swipeEnabled: Boolean = false,
@@ -2467,11 +2847,10 @@ private fun KeyboardRows(
     onPreview: (KeyPreview?) -> Unit = {},
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
-    onCursorMove: (Int) -> Unit,
+    onCursorMove: (Int, Int) -> Unit,
     onSpaceLongPress: () -> Unit = {},
 ) {
     val swipeConsumed = remember { mutableStateOf(false) }
-    val keyBounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
     val parentCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val trail = remember { mutableStateListOf<Offset>() }
     val trailColor = MaterialTheme.colorScheme.primary
@@ -2496,6 +2875,25 @@ private fun KeyboardRows(
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { parentCoords[0] = it }
+            .then(
+                // One observer for the whole key area, never consuming: when a
+                // key was last touched, for the strip's dead zone.
+                if (touchClock != null) {
+                    Modifier.pointerInput(touchClock) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                touchClock.observe(
+                                    newDown = event.changes.any { it.changedToDownIgnoreConsumed() },
+                                    pressed = event.changes.count { it.pressed },
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            )
             .then(
                 if (swipeEnabled) {
                     Modifier.swipeTypingGesture(
@@ -2554,7 +2952,11 @@ private fun KeyboardRows(
                                     keyHeight = keyHeight,
                                     numberKeyHints = numberKeyHints,
                                     longPressSymbols = longPressSymbols,
+                                    quickAccents = quickAccents,
                                     numberRow = numberRow,
+                                    tapSink = tapSink.takeIf { key.type == KeyboardKeyType.CHARACTER },
+                                    feedback = feedback,
+                                    onDeleteSlide = onDeleteSlide.takeIf { key.type == KeyboardKeyType.DELETE },
                                     // A swipe can only begin on a letter, so a
                                     // letter is the only key whose own tap can
                                     // be the tail of one. Handing the flag to
@@ -2734,13 +3136,17 @@ private fun RowScope.KeyButton(
     keyHeight: Dp,
     numberKeyHints: Boolean = false,
     longPressSymbols: Boolean = false,
+    quickAccents: Boolean = false,
     numberRow: Boolean = false,
+    tapSink: FloatArray? = null,
+    feedback: KeyFeedback? = null,
+    onDeleteSlide: ((Int) -> Unit)? = null,
     swipeConsumed: MutableState<Boolean>? = null,
     onPress: () -> Unit,
     onHold: (Long) -> Unit = {},
     onCommitText: (String) -> Unit,
     onPreview: (KeyPreview?) -> Unit,
-    onCursorMove: (Int) -> Unit,
+    onCursorMove: (Int, Int) -> Unit,
     onSpaceLongPress: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -2757,6 +3163,9 @@ private fun RowScope.KeyButton(
     val accents = remember(key.id, shift, longPressSymbols, numberRow) {
         KeyAccents.forKey(key, shift, longPressSymbols, numberRow)
     }
+    val accentStart = rememberUpdatedState(
+        KeyAccents.preselectIndex(key, accents, quickAccents, longPressSymbols, numberRow),
+    )
     val isReturnAction = key.type == KeyboardKeyType.RETURN && returnKey != ReturnKeyKind.ENTER
     val activeShift = key.type == KeyboardKeyType.SHIFT && shift != ShiftState.OFF
     val background = when {
@@ -2809,16 +3218,25 @@ private fun RowScope.KeyButton(
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         }
     }
+    // The key click, with the haptic, on the press only (not on cursor or
+    // accent steps). One-way into the audio service, off the down frame.
+    val click = {
+        if (feedback?.soundOn == true) view.postOnAnimation { feedback.play(key.type) }
+    }
     val gesture = when {
         key.type == KeyboardKeyType.SPACE -> Modifier.spacebarGesture(
             pointerKey = key.id,
             onTap = { currentOnPress.value() },
-            onCursorMove = { currentOnCursorMove.value(it) },
+            onCursorMove = { positions, lines -> currentOnCursorMove.value(positions, lines) },
+            onArmed = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) },
             onLongPress = {
                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 currentOnSpaceLongPress.value()
             },
-            onPressedChange = { pressed = it },
+            onPressedChange = {
+                if (it && !pressed) click()
+                pressed = it
+            },
             onHaptic = haptic,
         )
         key.type == KeyboardKeyType.CHARACTER && accents.isNotEmpty() -> Modifier.accentGesture(
@@ -2834,7 +3252,10 @@ private fun RowScope.KeyButton(
             },
             onTap = { currentOnPress.value() },
             onVariant = { index -> currentOnCommitText.value(accents[index]) },
+            startIndex = { accentStart.value },
+            tapSink = tapSink,
             onPressedChange = { isPressed ->
+                if (isPressed) click()
                 pressed = isPressed
                 publishPreview(isPressed, if (isPressed) accentIndex else -1)
             },
@@ -2851,7 +3272,10 @@ private fun RowScope.KeyButton(
             repeat = key.type == KeyboardKeyType.DELETE,
             onPress = { currentOnPress.value() },
             onHold = { currentOnHold.value(it) },
+            tapSink = tapSink,
+            onSlide = onDeleteSlide,
             onPressedChange = { isPressed ->
+                if (isPressed) click()
                 pressed = isPressed
                 if (key.type == KeyboardKeyType.CHARACTER) {
                     publishPreview(isPressed, -1)
@@ -2900,14 +3324,29 @@ private fun RowScope.KeyButton(
     }
 }
 
+/**
+ * Where [down] landed on this key, from its centre, in key widths and heights,
+ * into [tapSink] for [TapTrace]. Written before the press is handled.
+ */
+private fun androidx.compose.ui.input.pointer.PointerInputScope.recordTap(
+    tapSink: FloatArray?,
+    position: Offset,
+) {
+    if (tapSink == null || size.width <= 0 || size.height <= 0) return
+    tapSink[0] = (position.x - size.width / 2f) / size.width
+    tapSink[1] = (position.y - size.height / 2f) / size.height
+}
+
 private fun Modifier.keyGesture(
     pointerKey: String,
     repeat: Boolean,
     onPress: () -> Unit,
     onHold: (Long) -> Unit = {},
+    tapSink: FloatArray? = null,
+    onSlide: ((Int) -> Unit)? = null,
     onPressedChange: (Boolean) -> Unit,
     onHaptic: () -> Unit,
-) = pointerInput(pointerKey, repeat) {
+) = pointerInput(pointerKey, repeat, onSlide != null) {
     coroutineScope {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -2917,6 +3356,7 @@ private fun Modifier.keyGesture(
             var repeatJob: Job? = null
             try {
                 onPressedChange(true)
+                recordTap(tapSink, down.position)
                 onPress()
                 if (repeat) {
                     repeatJob = launch {
@@ -2928,7 +3368,30 @@ private fun Modifier.keyGesture(
                         }
                     }
                 }
-                waitForUpOrCancellation()
+                if (onSlide == null) {
+                    waitForUpOrCancellation()
+                } else {
+                    // Delete slid left deletes a word per key width
+                    // (DeleteSlide); once it slides, holding stops repeating.
+                    var sliding = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            change.consume()
+                            break
+                        }
+                        val steps = DeleteSlide.stepsFor(down.position.x - change.position.x, size.width.toFloat())
+                        if (!sliding && steps >= 1) {
+                            sliding = true
+                            repeatJob?.cancel()
+                        }
+                        if (sliding) {
+                            onSlide(steps)
+                            change.consume()
+                        }
+                    }
+                }
             } finally {
                 repeatJob?.cancel()
                 onPressedChange(false)
@@ -2938,32 +3401,45 @@ private fun Modifier.keyGesture(
 }
 
 /**
- * Tap commits a space on up; a horizontal drag moves the cursor; holding still
- * for the long-press timeout opens the system keyboard picker instead of
- * typing. Once the finger has moved past touch slop or the cursor has moved,
- * the hold can no longer fire, so a slow cursor drag never opens the picker.
+ * Tap commits a space on up, even one that slides. A still hold arms the
+ * trackpad (a haptic); the finger then moves the cursor, by characters
+ * sideways and by lines up and down, and lifting types nothing. Still for a
+ * second and never moved, the system keyboard picker. See [SpacebarGesture].
  */
 private fun Modifier.spacebarGesture(
     pointerKey: String,
     onTap: () -> Unit,
-    onCursorMove: (Int) -> Unit,
+    onCursorMove: (Int, Int) -> Unit,
+    onArmed: () -> Unit,
     onLongPress: () -> Unit,
     onPressedChange: (Boolean) -> Unit,
     onHaptic: () -> Unit,
 ) = pointerInput(pointerKey) {
-    val step = 18.dp.toPx()
+    val step = SpacebarGesture.STEP_DP.dp.toPx()
+    val lineStep = SpacebarGesture.LINE_STEP_DP.dp.toPx()
     val slop = viewConfiguration.touchSlop
-    val longPressMs = viewConfiguration.longPressTimeoutMillis
     coroutineScope {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             down.consume()
             onPressedChange(true)
             onHaptic()
-            val tracker = SpacebarGesture(step, slop, down.position.x, down.position.y)
-            val hold = launch {
-                delay(longPressMs)
-                if (tracker.holdElapsed()) {
+            val tracker = SpacebarGesture(
+                stepPx = step,
+                lineStepPx = lineStep,
+                slopPx = slop,
+                pxPerDp = density,
+                downX = down.position.x,
+                downY = down.position.y,
+                downTimeMs = down.uptimeMillis,
+            )
+            val arm = launch {
+                delay(SpacebarGesture.ARM_MS)
+                if (tracker.armElapsed()) onArmed()
+            }
+            val picker = launch {
+                delay(SpacebarGesture.PICKER_MS)
+                if (tracker.pickerElapsed()) {
                     onPressedChange(false)
                     onLongPress()
                 }
@@ -2976,16 +3452,16 @@ private fun Modifier.spacebarGesture(
                         change.consume()
                         break
                     }
-                    val positions = tracker.move(change.position.x, change.position.y)
-                    if (!tracker.holdAllowed) hold.cancel()
-                    if (positions != 0) {
-                        onCursorMove(positions)
+                    val moved = tracker.move(change.position.x, change.position.y, change.uptimeMillis)
+                    if (!moved.isEmpty) {
+                        onCursorMove(moved.characters, moved.lines)
                         onHaptic()
                     }
                     change.consume()
                 }
             } finally {
-                hold.cancel()
+                arm.cancel()
+                picker.cancel()
                 onPressedChange(false)
             }
             if (tracker.release()) onTap()
@@ -2998,6 +3474,8 @@ private fun Modifier.accentGesture(
     variantCount: Int,
     onTap: () -> Unit,
     onVariant: (Int) -> Unit,
+    startIndex: () -> Int = { 0 },
+    tapSink: FloatArray? = null,
     onPressedChange: (Boolean) -> Unit,
     onAccentIndex: (Int) -> Unit,
     onHaptic: () -> Unit,
@@ -3017,6 +3495,11 @@ private fun Modifier.accentGesture(
             var index = 0
             var hold: Job? = null
             var leftKey = false
+            // Where the finger was when the row appeared. The row starts on
+            // [startIndex], and a finger that has not slid off that spot keeps it.
+            var lastPosition = down.position
+            var shownAt = down.position
+            var slid = false
             fun abortHold() {
                 leftKey = true
                 hold?.cancel()
@@ -3047,12 +3530,16 @@ private fun Modifier.accentGesture(
             }
             try {
                 onPressedChange(true)
+                recordTap(tapSink, down.position)
                 onTap()
                 hold = launch {
                     delay(AccentPicker.HOLD_MS)
                     if (leftKey || swipeConsumed?.value == true) return@launch
                     showing = true
-                    onAccentIndex(0)
+                    shownAt = lastPosition
+                    // "Quick accents" starts on the letter's main accent.
+                    index = startIndex().coerceIn(0, (variantCount - 1).coerceAtLeast(0))
+                    onAccentIndex(index)
                     onHaptic()
                 }
                 while (true) {
@@ -3067,6 +3554,7 @@ private fun Modifier.accentGesture(
                         change.consume()
                         break
                     }
+                    lastPosition = change.position
                     val dx = change.position.x - down.position.x
                     val dy = change.position.y - down.position.y
                     if (!showing && !leftKey && dx * dx + dy * dy > slopSquared) {
@@ -3074,7 +3562,12 @@ private fun Modifier.accentGesture(
                         // pop the accent row over the trail.
                         abortHold()
                     }
-                    if (showing) {
+                    if (showing && !slid && (change.position - shownAt).getDistanceSquared() > slopSquared) {
+                        slid = true
+                    }
+                    if (showing && !slid) {
+                        change.consume()
+                    } else if (showing) {
                         val next = indexFor(change.position)
                         if (next != index) {
                             index = next
@@ -3328,7 +3821,7 @@ private fun keyDescription(
     }
     KeyboardKeyType.DELETE -> "Delete"
     KeyboardKeyType.SPACE ->
-        "Space. Swipe left or right to move the cursor. Touch and hold to switch keyboards."
+        "Space. Touch and hold, then slide to move the cursor. Keep holding to switch keyboards."
     KeyboardKeyType.RETURN -> when (returnKey) {
         ReturnKeyKind.ENTER -> "Enter"
         ReturnKeyKind.GO -> "Go"

@@ -174,4 +174,37 @@ class DictationCommitTest {
         )
         assertFalse("setSelection" in editor.calls)
     }
+
+    @Test
+    fun `a selection that is not the dictation's is left alone`() {
+        val editor = Editor(" ", "")
+        assertTrue(commitDictationText(editor.connection, "hello", composingActive = false, collapseTo = 12) != null)
+        assertEquals(12 to 12, editor.selection)
+        assertEquals("hello", editor.inserted)
+    }
+
+    @Test
+    fun `the transcript replaces the selection only while it is the same one`() {
+        val started = DictationSelection.remember(4, 9, "quick")
+        assertEquals(DictationSelection.Range(4, 9, "quick"), started)
+        // Same range and text: replace it.
+        assertEquals(
+            DictationSelection.Target.AsIs,
+            DictationSelection.target(started, DictationSelection.remember(9, 4, "quick")),
+        )
+        // Same range, different text: the user changed it; insert at its end.
+        assertEquals(
+            DictationSelection.Target.CollapseTo(9),
+            DictationSelection.target(started, DictationSelection.remember(4, 9, "brown")),
+        )
+        // A new selection made during a plain dictation is not overwritten either.
+        assertEquals(
+            DictationSelection.Target.CollapseTo(20),
+            DictationSelection.target(null, DictationSelection.remember(15, 20, "words")),
+        )
+        // No selection now: the cursor, as always.
+        assertEquals(DictationSelection.Target.AsIs, DictationSelection.target(started, null))
+        assertEquals(null, DictationSelection.remember(3, 3, ""))
+        assertEquals(null, DictationSelection.remember(-1, 4, "text"))
+    }
 }

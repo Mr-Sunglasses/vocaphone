@@ -39,6 +39,24 @@ struct LearnedWords: Codable, Equatable, Sendable {
     /// ``repetitionsBeforeLearning``.
     private(set) var entries: [String: Entry] = [:]
 
+    /// Typos the user fixed by hand, by what they typed. Optional so files
+    /// written before it decode. A typo fixed the same way
+    /// ``fixesBeforeLearning`` times, and never another way, becomes a fix
+    /// that space applies (`TypingCandidates.autocorrectDecision`); one fixed
+    /// two ways, or whose fix was turned down, never does.
+    private(set) var fixes: [String: Fix]?
+
+    struct Fix: Codable, Equatable, Sendable {
+        var fix: String
+        var count: Int
+        /// Fixed another way, or the applied fix was taken back.
+        var conflicted: Bool
+        var lastUsedAt: Date
+    }
+
+    static let fixesBeforeLearning = 2
+    static let fixCapacity = 500
+
     private var learned: some Collection<Entry> {
         entries.values.lazy.filter { $0.count >= Self.repetitionsBeforeLearning }
     }
@@ -91,7 +109,58 @@ struct LearnedWords: Codable, Equatable, Sendable {
         evictIfNeeded()
     }
 
-    mutating func removeAll() { entries.removeAll() }
+    mutating func removeAll() {
+        entries.removeAll()
+        fixes = nil
+    }
+
+    /// The user turned `typo` into `fix` by hand: picked it from the strip, or
+    /// erased the word and typed it again.
+    mutating func noteFix(typo: String, fix: String, now: Date = Date()) {
+        let key = Self.key(typo)
+        let fixed = fix.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty, !fixed.isEmpty, Self.key(fixed) != key else { return }
+        var all = fixes ?? [:]
+        if var known = all[key] {
+            if Self.key(known.fix) == Self.key(fixed) {
+                known.count += 1
+                known.fix = fixed
+            } else {
+                known.conflicted = true
+            }
+            known.lastUsedAt = now
+            all[key] = known
+        } else {
+            all[key] = Fix(fix: fixed, count: 1, conflicted: false, lastUsedAt: now)
+        }
+        if all.count > Self.fixCapacity {
+            let doomed = all.sorted { $0.value.lastUsedAt < $1.value.lastUsedAt }
+                .prefix(all.count - Self.fixCapacity)
+            for (typo, _) in doomed { all.removeValue(forKey: typo) }
+        }
+        fixes = all
+    }
+
+    /// A learned fix was applied and then taken back: it never applies again.
+    mutating func rejectFix(typo: String) {
+        let key = Self.key(typo)
+        guard var known = fixes?[key] else { return }
+        known.conflicted = true
+        fixes?[key] = known
+    }
+
+    /// What `typo` has been fixed to consistently, if it has.
+    func learnedFix(for typo: String) -> String? {
+        guard let known = fixes?[Self.key(typo)],
+              !known.conflicted,
+              known.count >= Self.fixesBeforeLearning
+        else { return nil }
+        return known.fix
+    }
+
+    var learnedFixCount: Int {
+        fixes?.values.count { !$0.conflicted && $0.count >= Self.fixesBeforeLearning } ?? 0
+    }
 
     /// Least-recently-used eviction, learned words and sightings each within
     /// their own bound: a run of typos never pushes out a name the user typed

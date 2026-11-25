@@ -1,0 +1,14 @@
+never-suggest.tsv
+
+Derived from the "List of Dirty, Naughty, Obscene, and Otherwise Bad Words"
+(LDNOOBW), https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words
+at revision 5faf2ba42d7b1c0977169ec3611df25a3c08eb13,
+(c) 2012-2020 Shutterstock, Inc., and contributors, licensed under the
+Creative Commons Attribution 4.0 International License
+(https://creativecommons.org/licenses/by/4.0/).
+
+The English, Spanish, German and Norwegian lists were lowercased, classified
+as slur or swear, trimmed of ordinary, medical and search-only terms, and
+extended with common slurs, inflections and spelling variants by the Hex
+project (https://github.com/anomalyco/hex, MIT License, (c) 2026 Christopher
+Langton), from which this file is taken unchanged apart from its header.

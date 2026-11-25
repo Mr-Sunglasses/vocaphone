@@ -621,6 +621,22 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     fun setLongPressSymbolsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setLongPressSymbolsEnabled(enabled) }
 
+    fun setQuickAccentsEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setQuickAccentsEnabled(enabled) }
+
+    fun setKeySoundEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setKeySoundEnabled(enabled) }
+
+    fun setLearnTypingFixes(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setLearnTypingFixes(enabled) }
+
+    fun setSuggestSwearWords(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setSuggestSwearWords(enabled) }
+
+    /** "Forget learned fixes": the learned fixes and the undone ones. */
+    fun forgetTypingFixes() =
+        viewModelScope.launch { container.typingFixes.clear() }
+
     fun setAutoCapitalizeEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setAutoCapitalizeEnabled(enabled) }
 

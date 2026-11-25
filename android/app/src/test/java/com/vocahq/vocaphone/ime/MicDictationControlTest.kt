@@ -75,3 +75,67 @@ class MicDictationControlTest {
         assertFalse(MicDictationControl.allowsMenu(DictationPhase.TRANSCRIBING))
     }
 }
+
+class MicPressTest {
+    private fun press(phase: DictationPhase = DictationPhase.IDLE, menu: Boolean = true) =
+        MicPress(phase, menuAllowed = menu, slopPx = SLOP)
+
+    @Test
+    fun `a quick tap is still a tap`() {
+        val p = press()
+        assertNull(p.move(3f, 2f))
+        assertEquals(MicPressEvent.TAP, p.release())
+    }
+
+    @Test
+    fun `a still hold on an idle mic is push to talk`() {
+        val p = press()
+        assertEquals(MicPressEvent.HOLD_START, p.holdElapsed())
+        // Moving while talking changes nothing.
+        assertNull(p.move(SLOP * 3, 0f))
+        assertEquals(MicPressEvent.HOLD_END, p.release())
+    }
+
+    @Test
+    fun `a slide before the hold opens the menu instead`() {
+        val p = press()
+        assertEquals(MicPressEvent.OPEN_MENU, p.move(0f, -(SLOP + 1f)))
+        assertNull(p.move(0f, -SLOP * 4))
+        assertNull(p.holdElapsed())
+        assertNull(p.release())
+    }
+
+    @Test
+    fun `without a menu a slide just cancels the tap`() {
+        val p = press(menu = false)
+        assertNull(p.move(SLOP * 2, 0f))
+        assertNull(p.holdElapsed())
+        assertNull(p.release())
+    }
+
+    @Test
+    fun `while busy a long press still discards and a tap still finishes`() {
+        val listening = press(DictationPhase.LISTENING)
+        assertNull(listening.holdElapsed())
+        assertEquals(MicPressEvent.CANCEL, listening.longPressElapsed())
+        assertNull(listening.release())
+        assertEquals(MicPressEvent.TAP, press(DictationPhase.LISTENING).release())
+        // Moving on the Stop button is not a menu.
+        val stop = press(DictationPhase.LISTENING)
+        assertNull(stop.move(SLOP * 2, 0f))
+        assertEquals(MicPressEvent.TAP, stop.release())
+    }
+
+    @Test
+    fun `idle mics have no long-press cancel and repairs only tap`() {
+        assertNull(press().longPressElapsed())
+        val repair = press(DictationPhase.PERMISSION_REPAIR)
+        assertNull(repair.holdElapsed())
+        assertNull(repair.move(SLOP * 2, 0f))
+        assertEquals(MicPressEvent.TAP, repair.release())
+    }
+
+    private companion object {
+        const val SLOP = 10f
+    }
+}
