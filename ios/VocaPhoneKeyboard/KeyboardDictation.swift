@@ -56,6 +56,10 @@ final class KeyboardDictation {
         /// can never reach this one's stream.
         let bridge = StreamingAudioBridge()
         var file: KeyboardRecordingFile?
+        /// The recording being sent when there is no file being written: a
+        /// Retry sends a WAV saved earlier, and cancelling it must delete
+        /// that one.
+        var savedAudioURL: URL?
         var chunks: AsyncStream<Data>.Continuation?
         var droppedChunks = 0
         var finishedAt: ContinuousClock.Instant?
@@ -451,7 +455,7 @@ final class KeyboardDictation {
         else { return false }
         dictation = Dictation(
             sessionID: record.sessionID, gateway: gateway, language: record.language,
-            style: record.style, contextTerms: [], tappedAt: .now, finishedAt: .now
+            style: record.style, contextTerms: [], tappedAt: .now, savedAudioURL: url, finishedAt: .now
         )
         phase = .sending
         startHeartbeat(for: record.sessionID)
@@ -674,7 +678,9 @@ final class KeyboardDictation {
         }
         if let current = dictation {
             current.chunks?.finish()
-            if deleteAudio, let url = current.file?.url { try? FileManager.default.removeItem(at: url) }
+            if deleteAudio, let url = current.file?.url ?? current.savedAudioURL {
+                try? FileManager.default.removeItem(at: url)
+            }
             let bridge = current.bridge
             Task { await bridge.cancel() }
         }

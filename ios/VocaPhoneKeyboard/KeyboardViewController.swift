@@ -2141,7 +2141,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 recoverable: true
             )
             try recovered.transition(to: next)
-            return try store.save(recovered)
+            // Only over the copy this decision was made from. An owner that
+            // resumed in the meantime and saved its transcript wins: a blind
+            // write here turned a finished `readyToInsert` into a failure, and
+            // the owner, having saved, then deleted the recording behind it.
+            return try store.save(recovered, expectingRevision: record.revision)
+        } catch SharedStoreError.revisionConflict {
+            return (try? store.load(record.sessionID)) ?? record
         } catch {
             return record
         }
