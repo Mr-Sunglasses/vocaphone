@@ -401,6 +401,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onLearnPick = ::learnTypingPick,
                 onRejectFix = ::rejectTypingFix,
                 onBlockSuggestion = ::blockSuggestion,
+                onUnblockSuggestion = ::unblockSuggestion,
                 onMicHoldStart = ::startPushToTalk,
                 onMicHoldEnd = ::finishPushToTalk,
                 readTextBeforeCursor = ::readTextBeforeCursorForSlide,
@@ -1411,6 +1412,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private fun blockSuggestion(word: String) {
         // Not persistPreference, for the same reason as addPersonalWord.
         scope.launch { container.settings.addBlockedSuggestion(word) }
+    }
+
+    /** Undo on the notice a long press leaves: the word is suggested again. */
+    private fun unblockSuggestion(word: String) {
+        scope.launch { container.settings.removeBlockedSuggestion(word) }
     }
 
     /** An automatic fix taken back: undone twice, it is not made again. */

@@ -222,4 +222,13 @@ class TypingCorrectorTest {
         assertTrue(dictionary.allows("help", null, false, emptySet(), blocked = setOf("hello")))
         assertEquals(listOf("help"), dictionary.strip("hel", "", "", true, options = StripOptions(blocked = setOf("hello"))).words)
     }
+
+    @Test
+    fun `undo right after a long press unblocks just that word`() {
+        val blocked = BlockedSuggestions.add(BlockedSuggestions.add("", "world"), "Hello")
+        assertEquals("world", BlockedSuggestions.remove(blocked, "hello"))
+        assertEquals("hello, world", BlockedSuggestions.remove(blocked, "absent"))
+        assertEquals("", BlockedSuggestions.remove("hello", "Hello"))
+        assertEquals("“Hello” won't be suggested", blockedNoticeLabel("Hello"))
+    }
 }

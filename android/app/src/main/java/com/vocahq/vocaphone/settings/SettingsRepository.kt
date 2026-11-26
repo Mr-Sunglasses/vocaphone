@@ -745,6 +745,18 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    /** The long press taken back: [word] is suggested again. */
+    suspend fun removeBlockedSuggestion(word: String) {
+        context.dataStore.edit { preferences ->
+            val next = BlockedSuggestions.remove(preferences[Keys.BLOCKED_SUGGESTIONS], word)
+            if (next.isEmpty()) {
+                preferences.remove(Keys.BLOCKED_SUGGESTIONS)
+            } else {
+                preferences[Keys.BLOCKED_SUGGESTIONS] = next
+            }
+        }
+    }
+
     suspend fun clearBlockedSuggestions() {
         context.dataStore.edit { it.remove(Keys.BLOCKED_SUGGESTIONS) }
     }

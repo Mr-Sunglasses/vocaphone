@@ -210,6 +210,7 @@ internal fun VocaPhoneKeyboard(
     onLearnPick: (typed: String, picked: String) -> Unit = { _, _ -> },
     onRejectFix: (typed: String, fix: String) -> Unit = { _, _ -> },
     onBlockSuggestion: (String) -> Unit = {},
+    onUnblockSuggestion: (String) -> Unit = {},
     onMicHoldStart: () -> Unit = {},
     onMicHoldEnd: () -> Unit = {},
     readTextBeforeCursor: () -> String? = { null },
@@ -266,6 +267,15 @@ internal fun VocaPhoneKeyboard(
     var swipeChoices by remember { mutableStateOf<List<String>>(emptyList()) }
     var swipeWord by remember { mutableStateOf<String?>(null) }
     var suggestionStrip by remember { mutableStateOf(SuggestionStrip(emptyList())) }
+    // The word a long press just blocked: the strip says so, with Undo, for a
+    // few seconds or until the next key.
+    var blockedNotice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(blockedNotice) {
+        if (blockedNotice != null) {
+            delay(BLOCKED_NOTICE_MILLIS)
+            blockedNotice = null
+        }
+    }
     // Words saved this editor session, so the + chip vanishes before DataStore
     // has come back around. Reset with the editor; the persisted list is source of truth.
     var savedThisSession by remember { mutableStateOf(emptyList<String>()) }
@@ -337,6 +347,7 @@ internal fun VocaPhoneKeyboard(
         deleteSlide[0] = null
         emojiQuery = null
         toneTarget = null
+        blockedNotice = null
     }
     LaunchedEffect(keyboardState.layer) {
         if (keyboardState.layer != KeyboardLayer.EMOJI) {
@@ -563,6 +574,7 @@ internal fun VocaPhoneKeyboard(
     }
 
     fun handleDelete(heldMs: Long) {
+        blockedNotice = null
         emojiQuery?.let { query ->
             if (keyboardState.layer == KeyboardLayer.EMOJI) {
                 emojiQuery = query.dropLast(1)
@@ -680,6 +692,7 @@ internal fun VocaPhoneKeyboard(
     fun blockSuggestion(item: SuggestionItem) {
         if (!item.kind.blockable || item.isEmoji || item.savesWord) return
         onBlockSuggestion(item.text)
+        blockedNotice = item.text
         suggestionStrip = suggestionStrip.without(item.text)
         swipeChoices = swipeChoices.filterNot { it.equals(item.text, ignoreCase = true) }
         corrector.undo = corrector.undo?.let { pending ->
@@ -729,6 +742,7 @@ internal fun VocaPhoneKeyboard(
     }
 
     fun handleKey(key: KeyboardKey) {
+        blockedNotice = null
         if (key.type == KeyboardKeyType.DELETE) {
             handleDelete(0L)
             return
@@ -1101,6 +1115,13 @@ internal fun VocaPhoneKeyboard(
                     onPaste = { onPasteClipboard(clipboardChip?.fullText.orEmpty()) },
                     onDismissClipboard = onDismissClipboard,
                     onSuggestionLongPress = ::blockSuggestion,
+                    blockedNotice = blockedNotice.takeIf {
+                        preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
+                    },
+                    onUndoBlock = {
+                        blockedNotice?.let(onUnblockSuggestion)
+                        blockedNotice = null
+                    },
                     onSuggestion = onSuggestion@{ item ->
                         if (handleAssistPick(item)) return@onSuggestion
                         corrector.undo = null
@@ -1486,6 +1507,9 @@ private val MinimumTouchTarget = 48.dp
 /** How long "Clear all?" waits for the second tap before going back to "Clear". */
 private const val CLIPBOARD_CLEAR_CONFIRM_MILLIS = 4_000L
 
+/** How long "“word” won't be suggested · Undo" stays, unless a key comes first. */
+private const val BLOCKED_NOTICE_MILLIS = 4_000L
+
 /** Suggestion-strip slot for a clipboard chip. Short clips pad out; long ones ellipsize. */
 private val ClipboardChipMinWidth = 148.dp
 private val ClipboardChipMaxWidth = 220.dp
@@ -1525,6 +1549,8 @@ private fun DictationBar(
     onDismissClipboard: () -> Unit,
     onSuggestion: (SuggestionItem) -> Unit,
     onSuggestionLongPress: (SuggestionItem) -> Unit = {},
+    blockedNotice: String? = null,
+    onUndoBlock: () -> Unit = {},
     inline: List<View> = emptyList(),
     stripAnimates: Boolean = false,
     replacesSelection: Boolean = false,
@@ -1645,6 +1671,8 @@ private fun DictationBar(
                     onSelect = onEmojiCategory,
                     modifier = Modifier.weight(1f),
                 )
+                // Answers the long press just made, so it outranks the rest.
+                blockedNotice != null -> BlockedSuggestionNotice(word = blockedNotice, onUndo = onUndoBlock)
                 // Ahead of the predictions: they are about what was just
                 // written, and show only between words, when a prediction is
                 // the least of what the strip could say.

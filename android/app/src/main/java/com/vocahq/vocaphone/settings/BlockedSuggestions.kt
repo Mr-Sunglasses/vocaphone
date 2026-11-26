@@ -27,4 +27,8 @@ object BlockedSuggestions {
         if (key.isEmpty() || key.contains(',')) return existing.joinToString(SEPARATOR)
         return (listOf(key) + (existing - key)).take(CAPACITY).joinToString(SEPARATOR)
     }
+
+    /** [word] suggested again: the Undo right after a long press. */
+    fun remove(raw: String?, word: String): String =
+        (words(raw) - word.trim().lowercase(Locale.ROOT)).joinToString(SEPARATOR)
 }

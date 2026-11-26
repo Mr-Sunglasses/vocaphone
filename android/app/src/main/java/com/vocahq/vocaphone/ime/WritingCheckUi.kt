@@ -59,8 +59,10 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -283,6 +285,34 @@ internal fun RowScope.AutoFixNotice(label: String, onUndo: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
         TextButton(onClick = onUndo) { Text("Undo") }
+    }
+}
+
+/** What the strip says right after a long press blocks [word]. */
+internal fun blockedNoticeLabel(word: String): String = "“$word” won't be suggested"
+
+/** "“word” won't be suggested", with Undo, right after a long press on a suggestion. */
+@Composable
+internal fun RowScope.BlockedSuggestionNotice(word: String, onUndo: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .weight(1f)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = blockedNoticeLabel(word),
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp),
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        TextButton(
+            onClick = onUndo,
+            modifier = Modifier.semantics { contentDescription = "Undo, suggest $word again" },
+        ) { Text("Undo") }
     }
 }
 
