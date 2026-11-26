@@ -222,6 +222,29 @@ class KeyboardReducerTest {
     }
 
     @Test
+    fun `a sentence ending in no or a number still ends`() {
+        // "I said no. We"
+        var state = typeWord("no")
+        state = KeyboardReducer.press(state, character("."), nowMillis = 1_000, composeWords = true).state
+        assertEquals(ShiftState.ONCE, KeyboardReducer.press(state, spaceKey(), nowMillis = 1_100).state.shift)
+        // "I'm 25. My": the number follows a space, so it is not a list item.
+        state = KeyboardReducer.press(typeWord("im"), spaceKey(), nowMillis = 600).state
+        for (digit in "25") state = KeyboardReducer.press(state, character(digit.toString()), nowMillis = 700).state
+        state = KeyboardReducer.press(state, character("."), nowMillis = 800).state
+        assertEquals(ShiftState.ONCE, KeyboardReducer.press(state, spaceKey(), nowMillis = 900).state.shift)
+        // After return, "3. " is a list item.
+        state = KeyboardReducer.press(state, KeyboardKey("return", "Enter", type = KeyboardKeyType.RETURN), nowMillis = 1_000).state
+        state = state.copy(shift = ShiftState.OFF)
+        state = KeyboardReducer.press(state, character("3"), nowMillis = 1_100).state
+        state = KeyboardReducer.press(state, character("."), nowMillis = 1_200).state
+        assertEquals(ShiftState.OFF, KeyboardReducer.press(state, spaceKey(), nowMillis = 1_300).state.shift)
+
+        assertTrue(SentenceBoundary.endsSentence("I said no. "))
+        assertTrue(SentenceBoundary.endsSentence("I'm 25. "))
+        assertFalse(SentenceBoundary.endsSentence("List:\n3. "))
+    }
+
+    @Test
     fun `sentence boundary knows an abbreviation from a full stop`() {
         assertTrue(SentenceBoundary.endsSentence(""))
         assertTrue(SentenceBoundary.endsSentence("Done. "))

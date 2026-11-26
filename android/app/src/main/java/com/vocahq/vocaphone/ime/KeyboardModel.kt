@@ -73,6 +73,12 @@ internal data class KeyboardState(
      * cursor moved. Bounded; only its end is ever read.
      */
     val token: String = "",
+    /**
+     * [token] began at the start of a line: after return, or in a field the
+     * keyboard has just come up in. A number there followed by a period is a
+     * list item ("3. "), not the end of a sentence. False once unknown.
+     */
+    val lineStart: Boolean = true,
     /** The last space followed a word (a letter or digit), so a second one may close the sentence. */
     val spaceAfterWord: Boolean = false,
     /** When that space went out, for the double-space window. */
@@ -87,6 +93,7 @@ internal data class KeyboardState(
         lastWasSpace = true,
         capitalizeAfterSpace = false,
         token = "",
+        lineStart = false,
         spaceAfterWord = true,
         lastSpaceMillis = nowMillis,
     )
@@ -758,15 +765,17 @@ internal object KeyboardReducer {
 
         KeyboardKeyType.DELETE -> {
             val token = state.token.dropLast(1)
+            // Deleting past the token's start reaches text the keyboard did not see typed.
+            val lineStart = state.lineStart && state.token.isNotEmpty()
             if (composeWords && state.composing.isNotEmpty()) {
                 val next = state.composing.dropLast(1)
                 KeyboardReduction(
-                    state = state.copy(composing = next, capitalizeAfterSpace = false, lastWasSpace = false, token = token),
+                    state = state.copy(composing = next, capitalizeAfterSpace = false, lastWasSpace = false, token = token, lineStart = lineStart),
                     command = KeyboardCommand.SetComposingText(next),
                 )
             } else {
                 KeyboardReduction(
-                    state = state.copy(composing = "", capitalizeAfterSpace = false, lastWasSpace = false, token = token),
+                    state = state.copy(composing = "", capitalizeAfterSpace = false, lastWasSpace = false, token = token, lineStart = lineStart),
                     command = KeyboardCommand.DeleteBackward,
                 )
             }
@@ -784,6 +793,7 @@ internal object KeyboardReducer {
                 lastWasSpace = false,
                 composing = "",
                 token = "",
+                lineStart = true,
             ),
             command = KeyboardCommand.PerformEditorAction,
         )
@@ -859,7 +869,7 @@ internal object KeyboardReducer {
         } else {
             // "e.g. ", "Mr. " and "3. " end in a period and not a sentence.
             val endsSentence = output in SENTENCE_TERMINATORS &&
-                !(output == "." && SentenceBoundary.isAbbreviation(state.token))
+                !(output == "." && SentenceBoundary.isAbbreviation(state.token, atLineStart = state.lineStart))
             KeyboardReduction(
                 state = state.copy(
                     shift = nextShift,
@@ -986,6 +996,7 @@ internal object KeyboardReducer {
                     lastWasSpace = false,
                     composing = "",
                     token = "",
+                    lineStart = false,
                     spaceAfterWord = false,
                     lastSpaceMillis = null,
                 ),
@@ -1005,6 +1016,7 @@ internal object KeyboardReducer {
                 lastWasSpace = true,
                 composing = "",
                 token = "",
+                lineStart = false,
                 spaceAfterWord = afterWord && !state.lastWasSpace,
                 lastSpaceMillis = nowMillis,
             ),

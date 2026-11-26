@@ -392,6 +392,7 @@ internal fun VocaPhoneKeyboard(
                 capitalizeAfterSpace = false,
                 lastWasSpace = false,
                 token = "",
+                lineStart = false,
             )
             tapTrace.clear()
             corrector.forget()
@@ -663,7 +664,7 @@ internal fun VocaPhoneKeyboard(
         corrector.undo = null
         clearSwipe()
         tapTrace.clear()
-        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false, token = "")
+        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false, token = "", lineStart = false)
         commands.forEach(onCommand)
         if (undo != null && (item.kind == SuggestionKind.REVERT || item.kind == SuggestionKind.REPLACE_FIX)) {
             onRejectFix(undo.typed, undo.fixed)
@@ -918,7 +919,7 @@ internal fun VocaPhoneKeyboard(
         clearSwipe()
         corrector.forget()
         tapTrace.clear()
-        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, token = "")
+        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, token = "", lineStart = false)
         onCommand(KeyboardCommand.MoveCursor(positions, lines))
     }
     val latestEmojiUsed by rememberUpdatedState(onEmojiUsed)
