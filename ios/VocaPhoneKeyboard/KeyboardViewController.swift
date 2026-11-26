@@ -420,6 +420,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         publishKeyboardStatus()
         // An "Open app" hand-off the app never took is past its use by now.
         store.removeExpiredWritingDraft()
+        // Expired clips leave the file, not only the panel; with the history
+        // switched off the file goes. The file only — the clipboard is not
+        // read here. Without Full Access the container is out of reach and
+        // this does nothing; the app deletes the file when it hears so.
+        ClipboardHistoryStore.shared.enforce(
+            isEnabled: KeyboardPreferences.clipboardHistoryEnabled,
+            retention: KeyboardPreferences.clipboardRetention.interval
+        )
         // Full Access can be granted or revoked in Settings while this instance
         // stays alive, and a warm engine is what makes the first key of the
         // session land as a tap rather than as nothing.
@@ -513,6 +521,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         writingCheck.reset()
         autoFixer.clear()
         corrections.finish()
+        // Leaving from a password field: a copy made while it had the
+        // keyboard is never kept.
+        if fieldIsSecret { ClipboardCapture.noteSecretField(UIPasteboard.general) }
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -3281,6 +3292,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // still be running the user's password through a dictionary.
         let policy = TypingFieldPolicy.resolve(for: proxy)
         typing.documentChanged(policy: policy)
+        // Into or out of a password, one-time-code or card field: whatever
+        // the clipboard holds is marked seen, so clipboard history never
+        // keeps a copy that was on the clipboard while one had the keyboard.
+        // Only `changeCount` is read. See ``ClipboardCapture/noteSecretField``.
+        let isSecret = !policy.allowsDictation
+        if isSecret || fieldIsSecret { ClipboardCapture.noteSecretField(UIPasteboard.general) }
+        fieldIsSecret = isSecret
         fieldAllowsGrammarCheck = TypingFieldPolicy.allowsGrammarCheck(for: proxy)
         fieldAllowsWritingCheck = TypingFieldPolicy.allowsWritingCheck(for: proxy)
         // The trace writes which key was pressed, and a character key's name is
@@ -3486,6 +3504,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// The document as it stood when the user last tapped Shift, until the
     /// cursor leaves that spot.
     private var manualShiftAnchor: DocumentSnapshot?
+    /// The field is a password, one-time-code or card number field
+    /// (``TypingFieldPolicy/allowsDictation`` refused it), as of the last
+    /// ``applyDocumentTraits``.
+    private var fieldIsSecret = false
     /// Caps lock is on because a field asked for capitals, not by a double tap.
     private var shiftLockIsAutomatic = false
     /// The Shift case cycle the next tap continues, if nothing has moved.

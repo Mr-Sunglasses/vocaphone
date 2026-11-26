@@ -51,6 +51,38 @@ enum ClipboardHistoryPolicy {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && text.count <= maximumCharacters
     }
+
+    /// The plain-text representations read, best first, with how each is
+    /// encoded.
+    static let plainTextTypes = [
+        "public.utf8-plain-text",
+        "public.utf16-external-plain-text",
+        "public.utf16-plain-text",
+        "public.plain-text",
+    ]
+
+    /// The most bytes of clipboard text decoded at all. Far above what
+    /// ``maximumCharacters`` keeps — four bytes a character at the worst — so
+    /// nothing keepable is refused, and far below a pasted book, which would
+    /// otherwise be decoded into a `String` in a keyboard whose whole memory
+    /// allowance is a few dozen megabytes, only to be thrown away.
+    static let maximumBytes = 64 * 1_024
+
+    /// The clipboard's text from its raw bytes, or nil when there are too
+    /// many to be worth decoding or they do not decode.
+    static func text(from data: Data, type: String) -> String? {
+        guard data.count <= maximumBytes else { return nil }
+        switch type {
+        case "public.utf16-external-plain-text":
+            // External UTF-16 carries a byte-order mark.
+            return String(data: data, encoding: .utf16)
+        case "public.utf16-plain-text":
+            // Native byte order, which on every iPhone is little-endian.
+            return String(data: data, encoding: .utf16LittleEndian)
+        default:
+            return String(data: data, encoding: .utf8)
+        }
+    }
 }
 
 /// The history itself, as a value, so every rule is testable without a file.
@@ -152,6 +184,19 @@ struct ClipboardHistoryStore: Sendable {
         } catch {
             // Nothing to report: a clip not kept is a clip not kept.
         }
+    }
+
+    /// Expired clips deleted from the file itself, not only hidden from the
+    /// panel. Touches the file and nothing else — never the clipboard — so it
+    /// is safe whenever the keyboard appears or the app opens. With the
+    /// history off, or Full Access gone, the file goes, pins included.
+    func enforce(isEnabled: Bool, retention: TimeInterval, now: Date = Date()) {
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        guard isEnabled else {
+            removeAll()
+            return
+        }
+        _ = current(retention: retention, now: now)
     }
 
     /// Settings' Clear, and what turning the history off does: pins too.

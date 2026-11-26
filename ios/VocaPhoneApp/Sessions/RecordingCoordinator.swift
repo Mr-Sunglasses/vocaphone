@@ -2439,6 +2439,26 @@ final class RecordingCoordinator {
         DiagnosticLog.record(.keyboardShown, metadata: .fullAccess(false))
         KeyboardPreferences.keyboardLackedFullAccessAt = Date()
         refreshSetupStatus()
+        enforceClipboardHistory()
+    }
+
+    /// Clipboard history's file, held to its rules from this side too: expired
+    /// clips deleted at launch, and the whole file deleted while the history
+    /// is off or the keyboard last ran without Full Access. That keyboard
+    /// cannot reach the file to delete it itself. The file only; this app
+    /// never reads the clipboard for it.
+    func enforceClipboardHistory() {
+        guard !isInert else { return }
+        let lacksFullAccess: Bool
+        if case .seenWithoutFullAccess = setupStatus.keyboard {
+            lacksFullAccess = true
+        } else {
+            lacksFullAccess = false
+        }
+        ClipboardHistoryStore.shared.enforce(
+            isEnabled: KeyboardPreferences.clipboardHistoryEnabled && !lacksFullAccess,
+            retention: KeyboardPreferences.clipboardRetention.interval
+        )
     }
 
     /// Fast path for keyboard and Live Activity writes. Adaptive polling remains

@@ -243,6 +243,109 @@ struct KeyboardSurfacesTests {
         #expect(board.reads == 1)
         #expect(store.load().clips.map(\.text) == ["hello"])
     }
+
+    private static func captureFixture() -> (UserDefaults?, String, ClipboardHistoryStore) {
+        let suite = "clipboard-capture-\(UUID().uuidString)"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipboard-\(UUID().uuidString).json")
+        return (UserDefaults(suiteName: suite), suite, ClipboardHistoryStore(fileURL: url))
+    }
+
+    /// A password copied from Notes, with no secret marker, and pasted into a
+    /// password field: the refusal marks the copy seen, so opening the panel
+    /// later in an ordinary field does not read it into the history.
+    @Test func aCopyPastedWhereItCannotBeKeptIsNeverCapturedLater() {
+        let (defaults, suite, store) = Self.captureFixture()
+        defer { defaults?.removePersistentDomain(forName: suite); store.removeAll() }
+        let board = FakeClipboard(text: "hunter2", changeCount: 9)
+        #expect(!ClipboardCapture.keep(
+            "hunter2", types: board.firstItemTypes, changeCount: 9,
+            isEnabled: true, fieldAllows: false, store: store, defaults: defaults, now: Self.now
+        ))
+        #expect(!ClipboardCapture.captureIfChanged(
+            board, isEnabled: true, fieldAllows: true, store: store,
+            retention: 3_600, defaults: defaults, now: Self.now
+        ))
+        #expect(board.reads == 0)
+        #expect(store.load().clips.isEmpty)
+
+        // The same for a copy marked secret, and with the history off.
+        board.changeCount = 10
+        #expect(!ClipboardCapture.keep(
+            "otp", types: ["org.nspasteboard.TransientType"], changeCount: 10,
+            isEnabled: true, fieldAllows: true, store: store, defaults: defaults, now: Self.now
+        ))
+        board.changeCount = 11
+        #expect(!ClipboardCapture.keep(
+            "x", changeCount: 11, isEnabled: false, fieldAllows: true,
+            store: store, defaults: defaults, now: Self.now
+        ))
+        #expect(!ClipboardCapture.hasUnseenCopy(board, defaults: defaults))
+    }
+
+    /// Whatever was on the clipboard while a password field had the keyboard
+    /// is never kept, though nothing was pasted.
+    @Test func aCopyThatMetAPasswordFieldIsNeverCaptured() {
+        let (defaults, suite, store) = Self.captureFixture()
+        defer { defaults?.removePersistentDomain(forName: suite); store.removeAll() }
+        let board = FakeClipboard(text: "hunter2", changeCount: 3)
+        ClipboardCapture.noteSecretField(board, defaults: defaults)
+        #expect(!ClipboardCapture.captureIfChanged(
+            board, isEnabled: true, fieldAllows: true, store: store,
+            retention: 3_600, defaults: defaults, now: Self.now
+        ))
+        #expect(board.reads == 0)
+        // The next copy, made after the field, is an ordinary one.
+        board.changeCount = 4
+        board.text = "lunch at 1"
+        #expect(ClipboardCapture.captureIfChanged(
+            board, isEnabled: true, fieldAllows: true, store: store,
+            retention: 3_600, defaults: defaults, now: Self.now
+        ))
+    }
+
+    /// A huge copy is refused on its byte count, before it is decoded.
+    @Test func aHugeCopyIsNotDecoded() {
+        let big = Data(repeating: 0x61, count: ClipboardHistoryPolicy.maximumBytes + 1)
+        #expect(ClipboardHistoryPolicy.text(from: big, type: "public.utf8-plain-text") == nil)
+        #expect(ClipboardHistoryPolicy.text(from: Data("hi".utf8), type: "public.utf8-plain-text") == "hi")
+        let utf16 = "hé".data(using: .utf16LittleEndian) ?? Data()
+        #expect(ClipboardHistoryPolicy.text(from: utf16, type: "public.utf16-plain-text") == "hé")
+        // Big enough for any clip the history keeps.
+        #expect(ClipboardHistoryPolicy.maximumBytes >= 4 * ClipboardHistoryPolicy.maximumCharacters)
+
+        let (defaults, suite, store) = Self.captureFixture()
+        defer { defaults?.removePersistentDomain(forName: suite); store.removeAll() }
+        let board = FakeClipboard(text: String(repeating: "a", count: 100_000), changeCount: 1)
+        #expect(!ClipboardCapture.captureIfChanged(
+            board, isEnabled: true, fieldAllows: true, store: store,
+            retention: 3_600, defaults: defaults, now: Self.now
+        ))
+        #expect(store.load().clips.isEmpty)
+    }
+
+    /// Expired clips leave the file when the keyboard appears or the app
+    /// opens, not only when the panel does; off deletes the file.
+    @Test func enforcingRetentionPrunesTheFileAndOffDeletesIt() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipboard-\(UUID().uuidString).json")
+        let store = ClipboardHistoryStore(fileURL: url)
+        defer { store.removeAll() }
+        // Nothing there: nothing is created.
+        store.enforce(isEnabled: true, retention: 3_600, now: Self.now)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+
+        store.update(retention: ClipboardRetention.week.interval, now: Self.now) {
+            $0.add("old", at: Self.now)
+            $0.add("pinned", at: Self.now)
+            $0.togglePin($0.clips[0].id)
+            $0.add("new", at: Self.now.addingTimeInterval(3_000))
+        }
+        store.enforce(isEnabled: true, retention: 3_600, now: Self.now.addingTimeInterval(4_000))
+        #expect(store.load().clips.map(\.text) == ["new", "pinned"])
+        store.enforce(isEnabled: false, retention: 3_600, now: Self.now.addingTimeInterval(4_000))
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
 }
 
 @MainActor
@@ -259,8 +362,8 @@ private final class FakeClipboard: ClipboardReading {
 
     var hasStrings: Bool { text != nil }
 
-    var string: String? {
+    func plainTextData() -> (type: String, data: Data)? {
         reads += 1
-        return text
+        return text.map { ("public.utf8-plain-text", Data($0.utf8)) }
     }
 }
