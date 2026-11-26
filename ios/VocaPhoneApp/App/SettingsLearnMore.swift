@@ -335,6 +335,13 @@ enum SettingsHelp {
             .init(heading: "Height", paragraphs: [
                 "Landscape keeps its own compact layout, because a landscape phone "
                     + "has no height to spare whichever size you pick.",
+                "Number row puts the digits above the letters, as many Android "
+                    + "keyboards do. The keyboard grows by one row, and the numbers "
+                    + "and symbols keep that height so it does not jump when you tap 123.",
+                "One-handed keyboard pushes the keys toward your left or right thumb, "
+                    + "like the iPhone keyboard's own. It applies with the iPhone upright; "
+                    + "tap the chevron in the space beside the keys, or choose it again "
+                    + "from More, to go back to full width.",
             ]),
             .init(heading: "More typing options", paragraphs: [
                 "Auto-capitalization turns Shift on at the start of a sentence. "
@@ -366,6 +373,38 @@ enum SettingsHelp {
                 "Space bar cursor: hold the space bar, then slide to move the cursor. "
                     + "With two keyboard languages, a swipe across it switches "
                     + "language instead.",
+            ]),
+        ]
+    )
+
+    static let clipboard = LearnMoreTopic(
+        title: "About clipboard history",
+        parts: [
+            .init(heading: "What it keeps", paragraphs: [
+                "With Clipboard history on, the keyboard keeps the last 30 pieces of "
+                    + "text you copied, each up to 2,000 characters, for as long as you "
+                    + "choose: an hour, a day or a week. Pinned clips stay until you "
+                    + "unpin them or clear the history.",
+                "Open it with the clipboard button beside Paste, or from More. Tap a "
+                    + "clip to type it, swipe it away to delete it, and use Clear to "
+                    + "remove everything not pinned.",
+            ]),
+            .init(heading: "When it reads the clipboard", paragraphs: [
+                "Never in the background and never on a timer. The keyboard looks at "
+                    + "the clipboard only when you open the history or tap Paste, and "
+                    + "keeps what you cut or copy from its own edit row. Opening the "
+                    + "history can make iOS ask whether vocaphone may paste; that is "
+                    + "iOS asking on your behalf, as it does for any paste.",
+                "Nothing is read or kept in password, one-time-code or card number "
+                    + "fields, and copies a password manager marks as secret or "
+                    + "temporary are skipped.",
+            ]),
+            .init(heading: "Where it lives", paragraphs: [
+                "On this iPhone only, in storage shared by vocaphone and its keyboard. "
+                    + "It is never synced, never backed up, never sent anywhere and "
+                    + "never in a diagnostics export. Turning the switch off, or Clear "
+                    + "clipboard history, deletes all of it.",
+                "It needs Full Access, as every clipboard feature of a keyboard does.",
             ]),
         ]
     )

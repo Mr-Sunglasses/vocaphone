@@ -189,13 +189,14 @@ enum KeyLayout {
         includesGlobe: Bool,
         includesLayoutSwitch: Bool = false,
         returnIsProminent: Bool,
-        punctuation: BottomRowPunctuation? = nil
+        punctuation: BottomRowPunctuation? = nil,
+        numberRow: Bool = false
     ) -> [KeyRow] {
         switch plane {
         case .numberPad, .phonePad, .decimalPad:
             return keypadRows(for: plane, includesGlobe: includesGlobe)
         case .letters:
-            return letterRows(for: layout) + [
+            return (numberRow ? [numberRowKeys] : []) + letterRows(for: layout) + [
                 bottomRow(
                     planeSwitch: .numbers,
                     punctuation: punctuation,
@@ -240,6 +241,15 @@ enum KeyLayout {
             ]
         }
     }
+
+    /// The digits above the letters, when Settings asks for them.
+    ///
+    /// Apple's iPhone keyboard has no such row; this is the one Android
+    /// keyboards offer. The digits share the width evenly and are measured
+    /// against ten columns whatever the alphabet: an eleven-key ЙЦУКЕН row
+    /// below must not squeeze `0` off the end, and ten keys a tenth of the
+    /// row apiece line up with QWERTY's columns exactly.
+    static let numberRowKeys = KeyRow(keys: fillMap("1234567890"), columnReference: 10)
 
     /// Apple's iPhone bottom row gives Return two and a half letter columns.
     /// Besides matching its visual weight, this keeps longer return labels such
@@ -558,10 +568,31 @@ struct KeyboardMetrics: Equatable {
     var letterFontSize: CGFloat
     var functionFontSize: CGFloat
     var cornerRadius: CGFloat
+    /// How many rows of keys the keyboard is tall: four, or five with the
+    /// number row. Every plane is laid out in this height — a plane with
+    /// fewer rows than this stretches its keys to fill it — so the keyboard
+    /// does not change size under the host app when `123` is tapped.
+    var rowCount: Int = 4
 
     var showsPreview: Bool { keyHeight >= 34 }
 
-    var gridHeight: CGFloat { 4 * keyHeight + 3 * rowGap }
+    var gridHeight: CGFloat {
+        CGFloat(rowCount) * keyHeight + CGFloat(max(rowCount - 1, 0)) * rowGap
+    }
+
+    /// How tall each key is on a plane of `rows` rows, inside ``gridHeight``.
+    /// Exactly ``keyHeight`` when the plane has ``rowCount`` rows.
+    func keyHeight(forRows rows: Int) -> CGFloat {
+        guard rows > 0, rows != rowCount else { return keyHeight }
+        return (gridHeight - CGFloat(rows - 1) * rowGap) / CGFloat(rows)
+    }
+
+    /// The same geometry, with or without the number row.
+    func withNumberRow(_ shows: Bool) -> KeyboardMetrics {
+        var copy = self
+        copy.rowCount = shows ? 5 : 4
+        return copy
+    }
 
     /// Portrait iPhone geometry for one height preference.
     ///
@@ -569,9 +600,9 @@ struct KeyboardMetrics: Equatable {
     /// instead: a regular/regular canvas has room the preference was never
     /// scaled for, and a compact-height phone has none to give.
     /// The glyph sizes and radii are read off the system keyboard rather than
-    /// derived: a letter is roughly 0.58 of the key's height and the corner is
-    /// roughly 0.23 of it. The keyboard this replaced sat at 0.51 and 0.14,
-    /// which is what "small letters on square keys" measures out to.
+    /// derived: a letter is roughly 0.56 of the key's height and the corner is
+    /// roughly 0.16 of it (iOS 26; it was set to 0.23 before that was
+    /// measured). The keyboard before that sat at 0.51 and 0.14.
     ///
     /// Note that the system does *not* scale its key glyphs with Dynamic Type.
     /// ``KeyFont/scaled(_:maximum:weight:)`` still does, within a bound, which
@@ -605,42 +636,59 @@ struct KeyboardMetrics: Equatable {
             )
         }
         switch preference {
+        // Across, every height uses Apple's own iOS 26 spacing, measured in
+        // the iPhone 17 simulator (402 pt) with this keyboard and Apple's
+        // side by side over the same field, at 3x: Apple's Q starts 20.5 px
+        // (6.83 pt) in, keys are 98.5 px (32.83 pt) wide, and the gap between
+        // two is 20 px (6.67 pt). The 3 pt `chromeInset` plus this side inset
+        // puts Q on that 6.83 pt. Our keys had been 34 pt wide from 3.67 pt in.
+        //
+        // The corner was 21 px (7 pt) on Apple's key against 30 px on ours;
+        // the radius keeps that 0.16 of the key height at every size.
         case .compact:
             return KeyboardMetrics(
                 keyHeight: 39,
                 rowGap: 9,
-                columnGap: 6,
-                sideInset: 2 / 3,
+                columnGap: Self.nativeColumnGap,
+                sideInset: Self.nativeSideInset,
                 letterFontSize: 23,
                 functionFontSize: 16,
-                cornerRadius: 9
+                cornerRadius: 6.5
             )
         case .standard:
+            // Down: 43 pt keys and 11 pt gaps, exactly Apple's (129 px and
+            // 33 px at 3x).
             return KeyboardMetrics(
                 keyHeight: 43,
                 rowGap: 11,
-                columnGap: 6,
-                sideInset: 2 / 3,
+                columnGap: Self.nativeColumnGap,
+                sideInset: Self.nativeSideInset,
                 letterFontSize: 24,
                 functionFontSize: 17,
-                cornerRadius: 10
+                cornerRadius: 7
             )
         case .tall:
             return KeyboardMetrics(
                 keyHeight: 49,
                 rowGap: 12,
-                columnGap: 6,
-                sideInset: 2 / 3,
+                columnGap: Self.nativeColumnGap,
+                sideInset: Self.nativeSideInset,
                 // 0.55 of the key, like the other two heights. It was 0.51
                 // here — the tall keyboard kept the old proportion when the
                 // others were corrected, which is the sort of thing nobody
                 // notices until the ratio is written down as a test.
                 letterFontSize: 27,
                 functionFontSize: 17,
-                cornerRadius: 11
+                cornerRadius: 8
             )
         }
     }
+
+    /// Apple's gap between two keys on an upright iPhone: 20 px at 3x.
+    static let nativeColumnGap: CGFloat = 20 / 3
+    /// What puts the first key 6.83 pt from the screen's edge, as Apple's
+    /// is, once the keyboard's own 3 pt chrome inset is added.
+    static let nativeSideInset: CGFloat = 23 / 6
 }
 
 /// Concrete colours for one appearance. Resolving eagerly lets the keyboard

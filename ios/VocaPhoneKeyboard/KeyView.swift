@@ -255,10 +255,11 @@ final class KeyView: UIView {
         // Immediate even inside the spacebar's crossfade, which runs `refresh`
         // in an animation block: a frame animating up from nothing would read
         // as the caption zooming in rather than fading.
+        let lift = titleLabel.font.map { KeyGlyph.lift(for: titleLabel.text, font: $0) } ?? 0
         UIView.performWithoutAnimation {
             titleLabel.frame = CGRect(
                 x: snapped(available.midX - size.width / 2),
-                y: snapped(available.midY - size.height / 2),
+                y: snapped(available.midY - size.height / 2 - lift),
                 width: size.width,
                 height: size.height
             )
@@ -267,16 +268,22 @@ final class KeyView: UIView {
 
     private func refresh() {
         defer { layoutTitleLabel() }
-        let symbolFont = UIFont.systemFont(ofSize: metrics.letterFontSize - 3, weight: .medium)
+        // Apple's shift, delete and return glyphs measured about a tenth
+        // smaller than ours were (51 px tall against 58 at 3x) and lighter.
+        let symbolFont = UIFont.systemFont(ofSize: metrics.letterFontSize - 5, weight: .regular)
         let symbolConfiguration = UIImage.SymbolConfiguration(font: symbolFont)
 
         switch spec.cap {
         case .character:
-            titleLabel.text = spec.cap.resolvedText(shift: shift)
-            titleLabel.font = KeyFont.scaled(
-                metrics.letterFontSize,
-                maximum: metrics.letterFontSize + 6
-            )
+            let text = spec.cap.resolvedText(shift: shift)
+            titleLabel.text = text
+            // Capitals a size down, as Apple sets them: its capital E stands
+            // 46 px tall at 3x where ours stood 51, while its lowercase e
+            // matches ours to a pixel.
+            let size = KeyGlyph.isCapitalLetter(text)
+                ? metrics.letterFontSize * KeyGlyph.capitalScale
+                : metrics.letterFontSize
+            titleLabel.font = KeyFont.scaled(size, maximum: size + 6)
             symbolView.image = nil
         case .shift:
             titleLabel.text = nil
@@ -379,10 +386,12 @@ final class KeyView: UIView {
         )
     }
 
+    /// `123`, `ABC`, `#+=`: 18 pt on the standard keyboard, where Apple's
+    /// `123` measured 40 px tall at 3x against ours at 46 when this was 21.
     private var planeFont: UIFont {
         KeyFont.scaled(
-            metrics.functionFontSize + 4,
-            maximum: metrics.functionFontSize + 6
+            metrics.functionFontSize + 1,
+            maximum: metrics.functionFontSize + 4
         )
     }
 
@@ -696,5 +705,57 @@ final class KeyPreviewView: UIView {
         )
         path.close()
         return path
+    }
+}
+
+/// Where a letter sits on its key.
+///
+/// A label centres its line box, and a lowercase letter is not the middle of
+/// its line box: it sits on the baseline, under the room kept for capitals and
+/// ascenders. Ours stood 8 px (at 3x) below the middle of the key; Apple's
+/// lowercase letters centre their x-height on the key, and its capitals stand a
+/// point above the middle. Measured in the iPhone 17 simulator, the two
+/// keyboards over the same field.
+enum KeyGlyph {
+    /// Apple's capitals against its lowercase, by cap height: 46 px against
+    /// the 51 px a capital at the lowercase size stands.
+    static let capitalScale: CGFloat = 0.9
+    /// How far above the key's middle a capital's centre sits.
+    static let capitalOpticalLift: CGFloat = 1
+
+    static func isCapitalLetter(_ text: String?) -> Bool {
+        guard let text, text.count == 1 else { return false }
+        return text != text.lowercased()
+    }
+
+    /// Letters and digits with nothing below the baseline and nothing
+    /// lowercase: a digit key, `123`, `ABC`.
+    static func isCapHeightLabel(_ text: String?) -> Bool {
+        guard let text, !text.isEmpty else { return false }
+        return text.allSatisfy { $0.isNumber || ($0.isLetter && $0.isUppercase) }
+    }
+
+    static func isLowercaseLetter(_ text: String?) -> Bool {
+        guard let text, text.count == 1 else { return false }
+        return text != text.uppercased()
+    }
+
+    /// How far to raise the label so the letter, rather than its line box,
+    /// is centred. Zero for anything but a single cased letter.
+    static func lift(for text: String?, font: UIFont) -> CGFloat {
+        // The line box's middle, measured down from its top, against the
+        // glyph's middle: the baseline is `ascender` down, and the glyph rises
+        // half its own height above that.
+        let lineMiddle = font.lineHeight / 2
+        if isLowercaseLetter(text) {
+            return (font.ascender - font.xHeight / 2) - lineMiddle
+        }
+        // Capitals, and labels set like them — `123`, `ABC` — whose glyphs
+        // stand on the baseline at cap height. Apple's `123` sat 3 px (at 3x)
+        // higher than ours did when it was left to the line box.
+        if isCapitalLetter(text) || isCapHeightLabel(text) {
+            return (font.ascender - font.capHeight / 2) - lineMiddle + capitalOpticalLift
+        }
+        return 0
     }
 }

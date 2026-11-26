@@ -284,7 +284,9 @@ struct KeyboardSurfaceTests {
     // MARK: - Proportions
 
     /// Letters sit at roughly 0.57 of the key's height, corners at roughly
-    /// 0.23 — both read off Apple's own keyboard on the same phone.
+    /// 0.16. The corner was 0.23 until it was measured against Apple's iOS 26
+    /// keyboard over the same field in the iPhone 17 simulator: a 7 pt radius
+    /// (21 px at 3x) on a 43 pt key.
     ///
     /// The keyboard this replaced was at 0.51 and 0.14, which is what "small
     /// letters on square keys" measures out to. The bands are wide enough for
@@ -299,7 +301,7 @@ struct KeyboardSurfaceTests {
                 "\(preference.displayName) letter is \(glyphRatio) of the key"
             )
             #expect(
-                cornerRatio > 0.18 && cornerRatio < 0.26,
+                cornerRatio > 0.14 && cornerRatio < 0.19,
                 "\(preference.displayName) corner is \(cornerRatio) of the key"
             )
         }

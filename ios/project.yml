@@ -81,6 +81,9 @@ targets:
       # The surface hosts Writing check's panel, which draws the client's report.
       - path: VocaPhoneKeyboard/WritingCheckPanel.swift
       - path: VocaPhoneKeyboard/WritingCheckClient.swift
+      # And the clipboard panel and edit row behind More.
+      - path: VocaPhoneKeyboard/ClipboardPanel.swift
+      - path: VocaPhoneKeyboard/KeyboardEditing.swift
       - path: VocaPhoneKeyboard/TypingStripView.swift
       - path: VocaPhoneKeyboard/TypingCandidates.swift
       - path: VocaPhoneKeyboard/WordComposer.swift
@@ -275,6 +278,9 @@ targets:
       - path: VocaPhoneKeyboard/TapSpatialScore.swift
       - path: VocaPhoneKeyboard/OffensiveWords.swift
       - path: VocaPhoneKeyboard/FieldOffer.swift
+      # The edit row's Undo rule and when clipboard history may read the
+      # clipboard: both are rules, and the clipboard one is a privacy rule.
+      - path: VocaPhoneKeyboard/KeyboardEditing.swift
       - path: VocaPhoneKeyboard/CursorLineMove.swift
       # The corrections a spell checker will never make, because nothing is
       # misspelled. Small, curated, and exactly the sort of table that needs a
@@ -309,6 +315,7 @@ targets:
       - path: VocaPhoneKeyboard/DictationSurfaceView.swift
       - path: VocaPhoneKeyboard/DictationBarComponents.swift
       - path: VocaPhoneKeyboard/WritingCheckPanel.swift
+      - path: VocaPhoneKeyboard/ClipboardPanel.swift
       - path: VocaPhoneKeyboard/TypingStripView.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: VocaPhoneApp/Audio/AudioCapturePipeline.swift
