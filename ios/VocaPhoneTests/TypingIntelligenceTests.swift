@@ -361,13 +361,49 @@ struct BlockedWordTests {
     }
 
     @Test func onlyWordsTheKeyboardChoseCanBeBlocked() {
-        for kind in [TypingCandidate.Kind.completion, .correction, .prediction, .swipeAlternate] {
+        for kind in [TypingCandidate.Kind.completion, .prediction, .swipeAlternate] {
             #expect(TypingCandidate(text: "x", kind: kind).isBlockable)
         }
-        for kind in [TypingCandidate.Kind.literal, .revert, .emoji, .writingFix, .writingReview,
-                     .paste, .nextKeyboard, .calculation] {
+        // A correction chip is the everyday word it corrects to; holding it
+        // must not block "the" everywhere.
+        for kind in [TypingCandidate.Kind.correction, .literal, .revert, .emoji, .writingFix,
+                     .writingReview, .paste, .nextKeyboard, .calculation] {
             #expect(!TypingCandidate(text: "x", kind: kind).isBlockable)
         }
+    }
+
+    /// One slip of a held thumb must not stop the keyboard fixing "i".
+    @Test func theCuratedShortWordsCannotBeBlocked() {
+        for word in ["I", "I'm", "don't", "can't", "i'm"] {
+            #expect(!TypingCandidate(text: word, kind: .prediction).isBlockable, "\(word)")
+            #expect(!TypingCandidate(text: word, kind: .completion).isBlockable, "\(word)")
+        }
+        #expect(TypingCandidate(text: "Ivy", kind: .prediction).isBlockable)
+    }
+
+    /// Undo straight after a block puts back the word, its learned entry and
+    /// the fix that led to it.
+    @Test func undoingABlockRestoresWhatItTookAway() {
+        var words = LearnedWords()
+        words.learn("Kanishk")
+        words.noteFix(typo: "kanihsk", fix: "Kanishk")
+        words.noteFix(typo: "kanihsk", fix: "Kanishk")
+        let before = words
+        let blocking = words.blocking("kanishk")
+        words.block("kanishk")
+        #expect(words.isBlocked("Kanishk"))
+        words.undo(blocking)
+        #expect(!words.isBlocked("Kanishk"))
+        #expect(words.contains("Kanishk"))
+        #expect(words.learnedFix(for: "kanihsk") == "Kanishk")
+        #expect(words.blockedCount == before.blockedCount)
+
+        // A word that was already blocked stays blocked.
+        words.block("gonna")
+        let again = words.blocking("gonna")
+        words.block("gonna")
+        words.undo(again)
+        #expect(words.isBlocked("gonna"))
     }
 
     @Test func blockingForgetsTheLearnedWordAndItsFix() {

@@ -784,9 +784,11 @@ final class TypingEngine {
     ///
     /// Not gated on Learn as I type. That switch is about the keyboard
     /// drawing conclusions on its own; this is an instruction.
-    func block(_ word: String) {
+    @discardableResult
+    func block(_ word: String) -> LearnedWords.Blocking? {
         let key = word.lowercased()
-        guard !key.isEmpty else { return }
+        guard !key.isEmpty else { return nil }
+        let blocking = learned.snapshot().blocking(word)
         learned.update { $0.block(word) }
         blockedWords.insert(key)
         cache.removeAll()
@@ -799,6 +801,15 @@ final class TypingEngine {
             )
             publishSwipeAlternates()
         }
+        refreshCurrentCandidates()
+        return blocking
+    }
+
+    /// The Undo offered straight after a block.
+    func undoBlock(_ blocking: LearnedWords.Blocking) {
+        learned.update { $0.undo(blocking) }
+        if !blocking.wasBlocked { blockedWords.remove(blocking.word.lowercased()) }
+        cache.removeAll()
         refreshCurrentCandidates()
     }
 

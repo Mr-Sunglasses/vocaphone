@@ -3043,11 +3043,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// most of a session. "The last insertion was removed", "Starting with
     /// Quick Dictation…" and the Full Access fallback were all being written to
     /// a view nobody could see.
-    private func flash(_ message: String) {
+    ///
+    /// `undo`, when given, is offered with it: an Undo button beside the
+    /// notice on the surface, and the message itself on the older bar.
+    private func flash(_ message: String, undo: (() -> Void)? = nil) {
         if dictationBar.isHidden {
-            dictationSurfaceState.showNotice(message)
+            dictationSurfaceState.showNotice(
+                message,
+                action: undo.map { DictationSurfaceState.NoticeAction(title: "Undo", perform: $0) }
+            )
         } else {
-            dictationBar.flash(message)
+            dictationBar.flash(undo == nil ? message : "\(message). Tap to undo.", onTap: undo)
         }
         guard isKeyboardVisible else { return }
         UIAccessibility.post(notification: .announcement, argument: message)
@@ -3579,10 +3585,17 @@ extension KeyboardViewController: DictationBarViewDelegate {
     /// never suggested again. Said out loud, because the only other sign is
     /// a chip disappearing.
     private func block(_ candidate: TypingCandidate) {
-        guard candidate.isBlockable else { return }
-        typing.block(candidate.text)
+        guard candidate.isBlockable, let blocking = typing.block(candidate.text) else { return }
         KeyboardHaptics.shared.action()
-        flash("Won\u{2019}t suggest \u{201C}\(candidate.text)\u{201D} again")
+        // A held thumb is an easy accident, so the block can be taken back
+        // for as long as the notice is up.
+        flash("Won\u{2019}t suggest \u{201C}\(candidate.text)\u{201D} again") { [weak self] in
+            guard let self else { return }
+            typing.undoBlock(blocking)
+            KeyboardHaptics.shared.action()
+            UIAccessibility.post(notification: .announcement, argument: "\(candidate.text) can be suggested again")
+            render(lastRecord)
+        }
         render(lastRecord)
     }
 

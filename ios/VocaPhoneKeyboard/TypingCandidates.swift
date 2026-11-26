@@ -49,15 +49,23 @@ struct TypingCandidate: Equatable {
     /// Whether this chip is a word the user could ask never to see again
     /// (``TypingEngine/block(_:)``). Their own spelling, an undo, an emoji and
     /// the controls are not words the keyboard chose for them.
+    ///
+    /// Nor is a correction: held, it would block the everyday word it
+    /// corrects to ("the" for "teh") everywhere, which nobody holding it
+    /// meant. And never "I", "I'm", "don't" and the rest of the curated
+    /// short-word table: one slip of a held thumb would stop the keyboard
+    /// fixing "i" for good.
     var isBlockable: Bool {
         switch kind {
-        case .completion, .correction, .prediction, .swipeAlternate: true
-        default: false
+        case .completion, .prediction, .swipeAlternate:
+            !ShortWordCorrections.isCuratedReplacement(text)
+        default:
+            false
         }
     }
 
-    /// How long a word chip is held to block it. Longer than a hesitant tap,
-    /// short enough to be a gesture rather than a wait.
+    /// How long a word chip is held to block it: UIKit's standard long press,
+    /// measured from touch-down. A slow tap lifted before it is a tap.
     static let blockHoldDuration: TimeInterval = 0.5
 
     /// The VoiceOver action that does what holding the chip does.

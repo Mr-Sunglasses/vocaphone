@@ -84,4 +84,13 @@ enum ShortWordCorrections {
     static func hasReplacement(for typed: String) -> Bool {
         table[typed.lowercased()] != nil
     }
+
+    /// Every replacement, lowercased, for ``isCuratedReplacement(_:)``.
+    private static let replacements: Set<String> = Set(table.values.map { $0.lowercased() })
+
+    /// Whether `word` is one of the table's answers — "I", "I'm", "don't" —
+    /// which the strip never lets a long press block.
+    static func isCuratedReplacement(_ word: String) -> Bool {
+        replacements.contains(word.lowercased())
+    }
 }

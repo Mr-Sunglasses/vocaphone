@@ -102,6 +102,41 @@ struct LearnedWords: Codable, Equatable, Sendable {
         blocked = nil
     }
 
+    /// What blocking a word took away, so Undo can put it back exactly: the
+    /// learned entry and the typo fixes that led to it.
+    struct Blocking: Equatable, Sendable {
+        let word: String
+        let entry: Entry?
+        let fixes: [String: Fix]
+        let wasBlocked: Bool
+    }
+
+    /// What ``block(_:now:)`` would take away, read before it does.
+    func blocking(_ word: String) -> Blocking {
+        let key = Self.key(word)
+        return Blocking(
+            word: word,
+            entry: entries[key],
+            fixes: fixes?.filter { Self.key($0.value.fix) == key } ?? [:],
+            wasBlocked: isBlocked(word)
+        )
+    }
+
+    /// Undo for a block: the word can be offered again, and what it took
+    /// away comes back.
+    mutating func undo(_ blocking: Blocking) {
+        let key = Self.key(blocking.word)
+        guard !key.isEmpty else { return }
+        if !blocking.wasBlocked {
+            blocked?.removeValue(forKey: key)
+            if blocked?.isEmpty == true { blocked = nil }
+        }
+        if let entry = blocking.entry { entries[key] = entry }
+        if !blocking.fixes.isEmpty {
+            fixes = (fixes ?? [:]).merging(blocking.fixes) { _, restored in restored }
+        }
+    }
+
     private var learned: some Collection<Entry> {
         entries.values.lazy.filter { $0.count >= Self.repetitionsBeforeLearning }
     }
