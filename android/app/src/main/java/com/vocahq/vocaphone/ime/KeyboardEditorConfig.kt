@@ -33,7 +33,20 @@ internal data class KeyboardEditorConfig(
     val learningAllowed: Boolean = false,
     /** Space may correct a typed word here: prose, not an address, a password or a name ([Autocorrect.allowedIn]). */
     val autocorrectAllowed: Boolean = false,
+    /**
+     * Swipe (glide) typing may run here: a text field that is not a password
+     * and has not asked for no suggestions. Gboard turns glide off in the
+     * same fields; a swiped word in a password would be a dictionary word
+     * typed into a secret.
+     */
+    val swipeAllowed: Boolean = false,
+    /** Which pad [KeyboardLayer.NUMPAD] draws; only read on a numeric field. */
+    val padKind: PadKind = PadKind.NUMBER,
 ) {
+    /** The field started on a dial or number pad, so `ABC` on the symbols page goes back to it. */
+    val startsOnPad: Boolean
+        get() = initialLayer == KeyboardLayer.PHONE || initialLayer == KeyboardLayer.NUMPAD
+
     companion object {
         fun empty() = KeyboardEditorConfig(
             sessionId = 0,
@@ -65,13 +78,17 @@ internal data class KeyboardEditorConfig(
         ): KeyboardEditorConfig {
             val inputType = info?.inputType ?: InputType.TYPE_NULL
             val inputClass = inputType and InputType.TYPE_MASK_CLASS
-            val initialLayer = when (inputClass) {
-                InputType.TYPE_CLASS_NUMBER,
-                InputType.TYPE_CLASS_PHONE,
-                InputType.TYPE_CLASS_DATETIME,
-                -> KeyboardLayer.NUMBERS
-
-                else -> KeyboardLayer.LETTERS
+            val padKind = when (inputClass) {
+                InputType.TYPE_CLASS_PHONE -> PadKind.PHONE
+                InputType.TYPE_CLASS_DATETIME -> PadKind.DATETIME
+                // A numeric PIN is a password; it still gets the pad.
+                InputType.TYPE_CLASS_NUMBER -> PadKind.NUMBER
+                else -> null
+            }
+            val initialLayer = when (padKind) {
+                PadKind.PHONE -> KeyboardLayer.PHONE
+                PadKind.NUMBER, PadKind.DATETIME -> KeyboardLayer.NUMPAD
+                null -> KeyboardLayer.LETTERS
             }
             // Only the cursor's current caps mode matters. CAP_SENTENCES on the
             // inputType is almost always set, and treating that as "shift on"
@@ -95,12 +112,14 @@ internal data class KeyboardEditorConfig(
             return KeyboardEditorConfig(
                 sessionId = sessionId,
                 initialLayer = initialLayer,
+                padKind = padKind ?: PadKind.NUMBER,
                 initialShift = initialShift,
                 returnKey = action.first,
                 editorActionId = action.second,
                 leadingPunctuation = leadingPunctuation,
                 dictationAllowed = ImeInputPolicy.acceptsDictation(inputType),
                 sensitive = ImeInputPolicy.isSensitive(inputType),
+                swipeAllowed = swipeAllowed(inputType),
                 learningAllowed = inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0 &&
                     CorrectionLearningPolicy.allowsLearning(
                         inputType,
@@ -111,6 +130,11 @@ internal data class KeyboardEditorConfig(
                 autocorrectAllowed = Autocorrect.allowedIn(inputType),
             )
         }
+
+        fun swipeAllowed(inputType: Int): Boolean =
+            inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+                inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0 &&
+                !ImeInputPolicy.isSensitive(inputType)
 
         private fun editorAction(imeOptions: Int): Pair<ReturnKeyKind, Int?> {
             if (imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) {

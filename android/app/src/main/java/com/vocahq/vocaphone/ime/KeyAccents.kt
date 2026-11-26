@@ -3,30 +3,12 @@ package com.vocahq.vocaphone.ime
 import java.util.Locale
 
 internal object KeyAccents {
-    /**
-     * Letter → first row of the `?123` page. Hold-and-release types the hint;
-     * accents stay in the same popup behind it.
-     *
-     * q-p are `1`-`0`. a-l and z-m follow the two punctuation rows under
-     * those digits (`@#$…` then `*"'…`).
+    /*
+     * Hold-for-symbols comes from the layout by key position
+     * ([TypingLayout.positionalSymbols]): on QWERTY q-p are 1-0, a-l the
+     * `@#$…` row and z-m `*"'…`; AZERTY's a is 1 the same way. With the
+     * number row on, the top row takes the first `#+=` row instead.
      */
-    private val letterSymbols = mapOf(
-        "q" to "1", "w" to "2", "e" to "3", "r" to "4", "t" to "5",
-        "y" to "6", "u" to "7", "i" to "8", "o" to "9", "p" to "0",
-        "a" to "@", "s" to "#", "d" to "$", "f" to "_", "g" to "&",
-        "h" to "-", "j" to "+", "k" to "(", "l" to ")",
-        "z" to "*", "x" to "\"", "c" to "'", "v" to ":", "b" to ";",
-        "n" to "!", "m" to "?",
-    )
-
-    /**
-     * When the number row already shows `1`-`0`, q-p would be blank if they
-     * kept those digits. They take the first row of the `#+=` page instead.
-     */
-    private val qwertySymbolsWhenNumberRow = mapOf(
-        "q" to "[", "w" to "]", "e" to "{", "r" to "}", "t" to "#",
-        "y" to "%", "u" to "^", "i" to "*", "o" to "+", "p" to "=",
-    )
 
     private val variants = mapOf(
         "a" to listOf("à", "á", "â", "ä", "æ", "ã", "å", "ā"),
@@ -67,16 +49,20 @@ internal object KeyAccents {
         shift: ShiftState,
         longPressSymbols: Boolean = false,
         numberRow: Boolean = false,
+        layout: TypingLayout = KeyboardLanguages.ENGLISH,
     ): List<String> {
         if (key.type != KeyboardKeyType.CHARACTER) return emptyList()
+        key.popup?.let { return it }
         val base = key.output.lowercase(Locale.ROOT)
-        val accents = variants[base].orEmpty()
-        val symbol = letterSymbol(base, longPressSymbols, numberRow)
+        // The language's own accents first, then the general Latin table.
+        val accents = (layout.accents[base].orEmpty() + variants[base].orEmpty()).distinct()
+        val symbol = letterSymbol(base, longPressSymbols, numberRow, layout)
         if (symbol == null && accents.isEmpty()) return emptyList()
         val shiftedAccents = if (shift == ShiftState.OFF) {
             accents
         } else {
-            accents.map { it.uppercase(Locale.ROOT) }
+            // ß has no one-letter capital ("SS"); a key commits one character.
+            accents.map { it.uppercase(Locale.ROOT) }.filter { it.length == 1 }
         }
         // The hinted symbol does not follow shift: long-press e is 3, not #,
         // whether or not caps is on. Accents still capitalise.
@@ -95,11 +81,12 @@ internal object KeyAccents {
         quickAccents: Boolean,
         longPressSymbols: Boolean = false,
         numberRow: Boolean = false,
+        layout: TypingLayout = KeyboardLanguages.ENGLISH,
     ): Int {
-        if (!quickAccents || accents.size < 2 || key.type != KeyboardKeyType.CHARACTER) return 0
+        if (!quickAccents || accents.size < 2 || key.type != KeyboardKeyType.CHARACTER || key.popup != null) return 0
         val base = key.output.lowercase(Locale.ROOT)
         if (base.length != 1 || !base[0].isLetter()) return 0
-        val symbol = letterSymbol(base, longPressSymbols, numberRow) ?: return 0
+        val symbol = letterSymbol(base, longPressSymbols, numberRow, layout) ?: return 0
         return if (accents[0] == symbol) 1 else 0
     }
 
@@ -114,23 +101,26 @@ internal object KeyAccents {
         numberKeyHints: Boolean = true,
         longPressSymbols: Boolean = false,
         numberRow: Boolean = false,
+        layout: TypingLayout = KeyboardLanguages.ENGLISH,
     ): String? {
         if (key.type != KeyboardKeyType.CHARACTER) return null
+        key.popup?.let { return it.firstOrNull() }
         val base = key.output
         if (base.length != 1) return null
         if (base[0].isDigit()) {
             return if (numberKeyHints) variants[base]?.firstOrNull() else null
         }
-        return letterSymbol(base.lowercase(Locale.ROOT), longPressSymbols, numberRow)
+        return letterSymbol(base.lowercase(Locale.ROOT), longPressSymbols, numberRow, layout)
     }
 
     private fun letterSymbol(
         base: String,
         longPressSymbols: Boolean,
         numberRow: Boolean,
+        layout: TypingLayout,
     ): String? {
         if (!longPressSymbols) return null
-        if (numberRow) qwertySymbolsWhenNumberRow[base]?.let { return it }
-        return letterSymbols[base]
+        if (numberRow) layout.positionalSymbolsWithNumberRow[base]?.let { return it }
+        return layout.positionalSymbols[base]
     }
 }

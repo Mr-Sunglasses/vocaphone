@@ -39,13 +39,14 @@ class KeyboardEditorConfigTest {
     }
 
     @Test
-    fun `number fields start on number layer`() {
+    fun `number fields start on the number pad`() {
         val config = KeyboardEditorConfig.from(
             EditorInfo().apply { inputType = InputType.TYPE_CLASS_NUMBER },
             sessionId = 8,
         )
 
-        assertEquals(KeyboardLayer.NUMBERS, config.initialLayer)
+        assertEquals(KeyboardLayer.NUMPAD, config.initialLayer)
+        assertEquals(PadKind.NUMBER, config.padKind)
         assertFalse(config.dictationAllowed)
     }
 

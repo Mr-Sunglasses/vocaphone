@@ -85,6 +85,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
      */
     private val suggestionDictionary = MutableStateFlow<SuggestionDictionary?>(null)
     private val emojiCatalog = MutableStateFlow<List<EmojiEntry>>(emptyList())
+    /** Skin-tone groups, built from the catalog with it, off the main thread. */
+    private val emojiTones = MutableStateFlow(EmojiTones.EMPTY)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         // A failed empty dictation owns the suggestion strip. A new copy is
@@ -92,7 +94,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (lastState.phase == DictationPhase.FAILED) {
             container.dictation.clearTransient()
         }
-        refreshClipboard()
+        refreshClipboard(changed = true)
     }
     private val preferenceWrites by lazy {
         KeyboardPreferenceCoordinator(scope) {
@@ -148,6 +150,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var dictationEditorSession = -1
     private var ignoredClipboardText: String? = null
     private var lastRecordedClip: String? = null
+    private var lastClipboardPrune = Long.MIN_VALUE / 2
+    /** The text-editing panel's selection: where Select started, and the end that moves. */
+    private var editSelectionAnchor: Int? = null
+    private var editSelectionFocus: Int? = null
+    /** Clips that changed while a sensitive field was focused; see [ClipboardPrivacy]. */
+    private val sensitiveClips = SensitiveClips()
     private var lastImageSource: String? = null
     private var editorSession = 0
     private var editorIdentity: EditorIdentity? = null
@@ -288,7 +296,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             // Failures are silent on purpose: a keyboard that cannot read its
             // word list still types, and there is no screen here to report on.
             suggestionDictionary.value = runCatching { SuggestionDictionary.load(assets) }.getOrNull()
-            emojiCatalog.value = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
+            val catalog = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
+            emojiTones.value = runCatching { EmojiTones.build(catalog) }.getOrDefault(EmojiTones.EMPTY)
+            emojiCatalog.value = catalog
             runCatching { EmojiSuggestions.load(assets) }
             writingChecker.value = container.writingCheck
         }
@@ -331,6 +341,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val editorText by visibleEditorText.collectAsState()
             val dictionary by suggestionDictionary.collectAsState()
             val emojis by emojiCatalog.collectAsState()
+            val tones by emojiTones.collectAsState()
             val writingReport by writingCheck.report.collectAsState()
             val writingChecking by writingCheck.checking.collectAsState()
             val writingAutoFix by autoFixed.collectAsState()
@@ -352,6 +363,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 editorText = editorText,
                 suggestions = dictionary,
                 emojiCatalog = emojis,
+                emojiTones = tones,
+                onEmojiSkinTone = { tone -> scope.launch { container.settings.setEmojiSkinTone(tone) } },
                 writing = writing,
                 onCommand = ::handleCommand,
                 onMicTap = ::toggleDictation,
@@ -368,6 +381,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onDismissClipboard = ::dismissClipboard,
                 onRemoveClipboardHistory = ::removeClipboardHistory,
                 onClearClipboardHistory = ::clearClipboardHistory,
+                onPinClipboardHistory = ::pinClipboardHistory,
+                onLayoutChanged = ::setActiveLayout,
+                onOneHandedMode = { mode -> scope.launch { container.settings.setOneHandedMode(mode) } },
                 onEmojiUsed = ::recordEmojiRecent,
                 onSpaceLongPress = ::showKeyboardPicker,
                 onWritingApply = ::applyWriting,
@@ -453,6 +469,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         viewShows.value += 1
         applyVoiceShortcutSubtype(currentSubtype())
         if (!voiceShortcutActive) {
+            pruneClipboardHistory()
             startClipboardWatch()
             refreshEditorText()
         }
@@ -816,6 +833,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 connection.endBatchEdit()
                 composingRegionActive = false
             }
+            is KeyboardCommand.EditText -> {
+                if (composingRegionActive) connection?.finishComposingText()
+                composingRegionActive = false
+                editText(command.action, command.selecting)
+            }
             KeyboardCommand.CycleSelectionCase -> cycleSelectionCase()
             KeyboardCommand.ShiftTap -> {
                 if (cycleSelectionCase()) {
@@ -941,6 +963,27 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun clearClipboardHistory() {
         persistPreference { container.settings.clearClipboardHistory() }
+    }
+
+    /** Not [persistPreference]: two layout swipes in a row must both land. */
+    private fun setActiveLayout(id: String) {
+        scope.launch { container.settings.setActiveKeyboardLayout(id) }
+    }
+
+    private fun pinClipboardHistory(text: String, pinned: Boolean) {
+        persistPreference { container.settings.setClipboardPinned(text, pinned) }
+    }
+
+    /**
+     * Deletes clips past the retention limit, and their cached images, at
+     * most once a minute as the keyboard comes up. Reading already hides
+     * them; this is what removes them from the phone.
+     */
+    private fun pruneClipboardHistory() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastClipboardPrune < CLIPBOARD_PRUNE_INTERVAL_MS) return
+        lastClipboardPrune = now
+        scope.launch { runCatching { container.settings.pruneClipboardHistory() } }
     }
 
     private fun recordEmojiRecent(emoji: String) {
@@ -1385,29 +1428,57 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             ?.removePrimaryClipChangedListener(clipboardListener)
     }
 
-    private fun refreshClipboard() {
+    /**
+     * [changed] is true when the system just told us the primary clip changed,
+     * as opposed to the keyboard re-reading it on show or on a settings update.
+     */
+    private fun refreshClipboard(changed: Boolean = false) {
         if (destroyed) return
         mainHandler.post {
             // The settings collector and the clipboard listener can both get
             // here in the frame onDestroy runs; the post then lands after it.
             if (destroyed) return@post
             val settings = visibleSettings.value
+            val manager = getSystemService(ClipboardManager::class.java)
+            val description = manager?.primaryClipDescription
             if (editorConfig.sensitive) {
+                // A copy made while a password field has the keyboard came
+                // from the secret: remember that, so moving to a normal field
+                // does not record it. Only on a change, so merely tapping
+                // into a password field does not taint an older clip.
+                if (changed && description != null) {
+                    val text = runCatching {
+                        manager?.primaryClip?.getItemAt(0)?.let { it.text?.toString() ?: it.uri?.toString() }
+                    }.getOrNull()
+                    sensitiveClips.mark(SensitiveClips.of(description.timestamp, text))
+                }
                 visibleClipboard.value = null
                 return@post
             }
-            val manager = getSystemService(ClipboardManager::class.java)
-            val description = manager?.primaryClipDescription
+            if (ClipboardPrivacy.markedSensitive(clipSensitiveExtra(description))) {
+                visibleClipboard.value = null
+                return@post
+            }
             val clip = manager?.primaryClip
+            val firstItem = runCatching { clip?.getItemAt(0) }.getOrNull()
+            if (
+                description != null &&
+                sensitiveClips.contains(
+                    SensitiveClips.of(description.timestamp, firstItem?.let { it.text?.toString() ?: it.uri?.toString() }),
+                )
+            ) {
+                visibleClipboard.value = null
+                return@post
+            }
             val imageMime = clipImageMime(description)
             val rawText = runCatching {
-                clip?.getItemAt(0)?.coerceToText(this)?.toString()
+                firstItem?.coerceToText(this)?.toString()
             }.getOrNull()?.trim().orEmpty()
             val text = rawText.takeIf { it.isNotEmpty() && !isImageUriText(it, imageMime != null) }
             when {
                 !text.isNullOrEmpty() -> showClipboardText(text, settings)
                 imageMime != null -> {
-                    val uri = clip?.getItemAt(0)?.uri
+                    val uri = firstItem?.uri
                     if (uri != null) showClipboardImage(uri, imageMime, settings)
                     else visibleClipboard.value = null
                 }
@@ -1469,6 +1540,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         }
     }
 
+    /** The raw [ClipboardPrivacy.EXTRA_IS_SENSITIVE] value, whatever type the copying app used. */
+    @Suppress("DEPRECATION")
+    private fun clipSensitiveExtra(description: ClipDescription?): Any? =
+        runCatching { description?.extras?.get(ClipboardPrivacy.EXTRA_IS_SENSITIVE) }.getOrNull()
+
     private fun clipImageMime(description: ClipDescription?): String? {
         if (description == null) return null
         for (index in 0 until description.mimeTypeCount) {
@@ -1499,6 +1575,48 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (lines == 0) return
         val keyCode = if (lines > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
         repeat(abs(lines).coerceAtMost(MAX_CURSOR_STEPS_PER_EVENT)) { sendKey(keyCode) }
+    }
+
+    /**
+     * The text-editing panel. Context-menu actions first (what TextView
+     * understands), the desktop shortcut when the editor declines; arrows
+     * as key events, and left/right with Select on as an exact range from
+     * where selecting started. See [TextEditing].
+     */
+    private fun editText(action: TextEditAction, selecting: Boolean) {
+        val connection = currentInputConnection ?: return
+        TextEditing.contextMenuId(action)?.let { id ->
+            val handled = runCatching { connection.performContextMenuAction(id) }.getOrDefault(false)
+            if (!handled) TextEditing.shortcut(action)?.let { sendKey(it.keyCode, it.metaState) }
+            editSelectionAnchor = null
+            return
+        }
+        if (selecting && lastSelStart >= 0 && lastSelEnd >= 0) {
+            val current = setOf(lastSelStart, lastSelEnd)
+            val anchor = editSelectionAnchor
+            val focus = editSelectionFocus
+            val (from, to) = if (anchor != null && focus != null && current == setOf(anchor, focus)) {
+                anchor to focus
+            } else {
+                lastSelStart to lastSelEnd
+            }
+            TextEditing.extend(from, to, action)?.let { (start, end) ->
+                editSelectionAnchor = start
+                editSelectionFocus = end
+                connection.setSelection(start, end)
+                return
+            }
+        } else if (!selecting) {
+            editSelectionAnchor = null
+        }
+        TextEditing.movement(action, selecting)?.let { sendKey(it.keyCode, it.metaState) }
+    }
+
+    private fun sendKey(keyCode: Int, metaState: Int) {
+        val connection = currentInputConnection ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState))
+        connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, metaState))
     }
 
     private fun sendKey(keyCode: Int) {
@@ -1909,6 +2027,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private companion object {
         const val MAX_CURSOR_STEPS_PER_EVENT = 12
+        const val CLIPBOARD_PRUNE_INTERVAL_MS = 60_000L
         /** Enough text for the words a delete slide can reach. */
         const val DELETE_SLIDE_CONTEXT = 1_000
 

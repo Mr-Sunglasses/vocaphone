@@ -8,6 +8,17 @@ internal enum class KeyboardLayer {
     NUMBERS,
     SYMBOLS,
     EMOJI,
+    /** Dial pad for phone-number fields. */
+    PHONE,
+    /** Number pad for number and date/time fields. */
+    NUMPAD,
+}
+
+/** Which number pad a numeric field gets; see [KeyboardLayouts.padRows]. */
+internal enum class PadKind {
+    NUMBER,
+    DATETIME,
+    PHONE,
 }
 
 internal enum class ShiftState {
@@ -23,6 +34,8 @@ internal enum class KeyboardKeyType {
     SPACE,
     RETURN,
     LAYER_SWITCH,
+    /** Next typing layout ([KeyboardLanguages]). Handled by the keyboard, not the reducer. */
+    LANGUAGE,
 }
 
 internal data class KeyboardKey(
@@ -32,6 +45,13 @@ internal data class KeyboardKey(
     val type: KeyboardKeyType = KeyboardKeyType.CHARACTER,
     val weight: Float = 1f,
     val targetLayer: KeyboardLayer? = null,
+    /**
+     * What a hold offers instead of [KeyAccents]' table, or null for the
+     * table. Empty means nothing: a dial pad's 2 should not offer `@`.
+     */
+    val popup: List<String>? = null,
+    /** Small second line under the label, like ABC on a dial pad's 2. */
+    val caption: String? = null,
 )
 
 internal data class KeyboardRow(
@@ -100,6 +120,8 @@ internal sealed interface KeyboardCommand {
      * snapshot used to arm caps instead of cycling case.
      */
     data object ShiftTap : KeyboardCommand
+    /** A text-editing panel button; [selecting] when its Select is on. See [TextEditing]. */
+    data class EditText(val action: TextEditAction, val selecting: Boolean = false) : KeyboardCommand
 }
 
 /**
@@ -110,7 +132,11 @@ internal sealed interface KeyboardCommand {
  * the popup is up does not become a swipe.
  */
 internal object AccentPicker {
-    const val HOLD_MS = 380L
+    /**
+     * AOSP LatinIME's `config_default_longpress_key_timeout` and Gboard's
+     * default "Key long press delay": 300 ms. Was 380 ms with no recorded reason.
+     */
+    const val HOLD_MS = 300L
     const val CELL_DP = 36
 
     fun rowLeft(centerX: Float, count: Int, cellPx: Float, parentWidth: Float): Float {
@@ -129,8 +155,9 @@ internal object AccentPicker {
 
 /** Hold-delete starts on characters, then words, then the rest of the line. */
 internal object DeleteHold {
-    const val REPEAT_DELAY_MS = 380L
-    const val CHAR_INTERVAL_MS = 55L
+    /** LatinIME `config_key_repeat_start_timeout` (400 ms) and `config_key_repeat_interval` (50 ms). */
+    const val REPEAT_DELAY_MS = 400L
+    const val CHAR_INTERVAL_MS = 50L
     const val WORD_AFTER_MS = 1_000L
     const val LINE_AFTER_MS = 2_200L
     const val WORD_INTERVAL_MS = 130L
@@ -603,7 +630,8 @@ internal fun planCaseCycle(
 
 /** Pure keyboard-state reducer so behavior stays testable outside the IME process. */
 internal object KeyboardReducer {
-    const val CAPS_LOCK_WINDOW_MILLIS = 350L
+    /** LatinIME's double-tap-shift window is `ViewConfiguration.getDoubleTapTimeout()`, 300 ms. */
+    const val CAPS_LOCK_WINDOW_MILLIS = 300L
 
     fun press(
         state: KeyboardState,
@@ -658,6 +686,11 @@ internal object KeyboardReducer {
                 lastWasSpace = false,
                 composing = "",
             ),
+            command = if (state.composing.isNotEmpty()) KeyboardCommand.FinishComposing else null,
+        )
+
+        KeyboardKeyType.LANGUAGE -> KeyboardReduction(
+            state = state.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false),
             command = if (state.composing.isNotEmpty()) KeyboardCommand.FinishComposing else null,
         )
 
