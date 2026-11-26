@@ -123,4 +123,15 @@ internal object DictationUndo {
         if (inserted.isEmpty() || before != inserted) return false
         return insertionStart < 0 || cursor < 0 || cursor == insertionStart + inserted.length
     }
+
+    /**
+     * What Undo should put back for a dictation that [replacesSelection]:
+     * the selected text, only when it was read whole ([selectionLength] is
+     * what the editor reported). Empty when nothing was replaced; null when
+     * something was and Undo could not restore it faithfully.
+     */
+    fun replacedSelection(replacesSelection: Boolean, selectedText: String?, selectionLength: Int): String? {
+        if (!replacesSelection) return ""
+        return selectedText?.takeIf { it.isNotEmpty() && it.length == selectionLength }
+    }
 }

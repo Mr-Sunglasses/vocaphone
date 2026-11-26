@@ -227,4 +227,12 @@ class DictationCommitTest {
         assertFalse(DictationUndo.matches("Hello there. ", 5, null, 18))
         assertFalse(DictationUndo.matches("", 5, "", 5))
     }
+
+    @Test
+    fun `undo puts back a selection only when it was read whole`() {
+        assertEquals("", DictationUndo.replacedSelection(replacesSelection = false, selectedText = null, selectionLength = 0))
+        assertEquals("world", DictationUndo.replacedSelection(replacesSelection = true, selectedText = "world", selectionLength = 5))
+        assertEquals(null, DictationUndo.replacedSelection(replacesSelection = true, selectedText = "wor", selectionLength = 5))
+        assertEquals(null, DictationUndo.replacedSelection(replacesSelection = true, selectedText = null, selectionLength = 5))
+    }
 }

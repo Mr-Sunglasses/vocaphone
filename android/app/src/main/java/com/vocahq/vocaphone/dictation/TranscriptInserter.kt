@@ -5,6 +5,12 @@ data class AppliedInsertion(
     val packageName: String?,
     val insertionStart: Int,
     val inserted: String,
+    /**
+     * The selection the transcript took the place of, for Undo to put back:
+     * empty when nothing was selected, null when something was but could not
+     * be read whole — Undo is then refused rather than losing it.
+     */
+    val replaced: String? = "",
 )
 
 enum class InsertionOutcome {

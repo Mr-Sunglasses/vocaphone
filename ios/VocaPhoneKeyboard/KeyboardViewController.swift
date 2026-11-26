@@ -22,6 +22,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// The field `lastInsertedText` went into. Undo deletes by length, so a
     /// window that shows only the insertion's tail is not enough on its own.
     private var lastInsertedDocumentID: String?
+    /// The selection `lastInsertedText` replaced, which Undo puts back.
+    private var lastInsertedReplaced: String?
     private var isPerformingInsertion = false
     private var lastSpaceInsertedAt: Date?
     /// Observed by this keyboard instance rather than read from the record: the
@@ -1369,7 +1371,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // By the stored length, not by what the window shows: the window may
         // hold only the last sentence of it.
         inserted.forEach { _ in textDocumentProxy.deleteBackward() }
+        if let replaced = lastInsertedReplaced { textDocumentProxy.insertText(replaced) }
         lastInsertedText = nil
+        lastInsertedReplaced = nil
+        // The edit row's Undo described the same insertion.
+        lastEdit = nil
         refresh()
         flash("The last insertion was removed.")
     }
@@ -2221,11 +2227,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         defer { isPerformingInsertion = false }
         let contextBefore = textDocumentProxy.documentContextBeforeInput
         let contextAfter = textDocumentProxy.documentContextAfterInput
+        let selectedBefore = textDocumentProxy.selectedText ?? ""
         let prepared = TextInsertion.prepare(
             transcript,
             before: contextBefore,
             after: contextAfter,
-            hasSelection: textDocumentProxy.selectedText?.isEmpty == false
+            hasSelection: !selectedBefore.isEmpty
         )
         do {
             DiagnosticLog.record(.insertionStarted)
@@ -2238,14 +2245,26 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             textDocumentProxy.insertText(prepared.text)
             followDictationForCorrections(prepared, before: contextBefore, after: contextAfter)
-            lastInsertedText = prepared.text
-            lastInsertedFollowing = prepared.following
-            lastInsertedDocumentID = currentDocumentID
-            lastEdit = .inserted(
-                text: prepared.text,
-                following: prepared.following,
-                documentID: currentDocumentID
-            )
+            // The transcript replaced the selection. Undo puts it back, and a
+            // selection too long to trust the proxy with gets no Undo rather
+            // than one that loses text.
+            let replaced = prepared.cursorAdvance == 0 ? selectedBefore : ""
+            if replaced.isEmpty || SelectionEditGuard.allows(replaced) {
+                lastInsertedText = prepared.text
+                lastInsertedFollowing = prepared.following
+                lastInsertedDocumentID = currentDocumentID
+                lastInsertedReplaced = replaced.isEmpty ? nil : replaced
+                lastEdit = .inserted(
+                    text: prepared.text,
+                    following: prepared.following,
+                    documentID: currentDocumentID,
+                    replaced: lastInsertedReplaced
+                )
+            } else {
+                lastInsertedText = nil
+                lastInsertedReplaced = nil
+                lastEdit = nil
+            }
             // The session ID makes this append idempotent if the extension is
             // interrupted after insertion. Recording here means an insertion
             // that happened cannot be lost merely because saving the terminal
