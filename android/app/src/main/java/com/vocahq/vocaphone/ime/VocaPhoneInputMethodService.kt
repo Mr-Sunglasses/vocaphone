@@ -373,6 +373,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onClearClipboardHistory = ::clearClipboardHistory,
                 onPinClipboardHistory = ::pinClipboardHistory,
                 onLayoutChanged = ::setActiveLayout,
+                onOneHandedMode = { mode -> scope.launch { container.settings.setOneHandedMode(mode) } },
                 onEmojiUsed = ::recordEmojiRecent,
                 onSpaceLongPress = ::showKeyboardPicker,
                 onWritingApply = ::applyWriting,

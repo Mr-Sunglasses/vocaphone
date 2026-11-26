@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?android:attr/colorForeground">
+    <!-- A keyboard pushed to one side of the screen: one-handed mode. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,6h18v12H3z M5,8v8h10V8z M6,9h2v2H6z M9,9h2v2H9z M12,9h2v2h-2z M6,12h2v2H6z M9,12h2v2H9z M12,12h2v2h-2z M17,10l3,2 -3,2z" />
+</vector>

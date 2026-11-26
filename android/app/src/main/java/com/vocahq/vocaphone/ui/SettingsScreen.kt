@@ -89,6 +89,7 @@ import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import com.vocahq.vocaphone.settings.SplitKeyboard
 import com.vocahq.vocaphone.settings.ClipboardRetention
+import com.vocahq.vocaphone.settings.OneHandedMode
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
 import kotlin.math.abs
@@ -473,6 +474,19 @@ fun SettingsScreen(
                         selected = settings.splitKeyboard,
                         label = { it.displayName },
                         onSelect = onSplitKeyboard,
+                    )
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        title = "One-handed mode",
+                        options = OneHandedMode.entries,
+                        selected = settings.oneHandedMode,
+                        label = { it.displayName },
+                        supporting = if (settings.oneHandedMode == OneHandedMode.OFF) {
+                            "Off. Also in the keyboard menu. Phones held upright only."
+                        } else {
+                            "${settings.oneHandedMode.displayName} hand. Phones held upright only."
+                        },
+                        onSelect = surface.onOneHandedMode,
                     )
                 }
                 SettingsGroup(title = "Typing", learnMore = SettingsHelp.typing) {

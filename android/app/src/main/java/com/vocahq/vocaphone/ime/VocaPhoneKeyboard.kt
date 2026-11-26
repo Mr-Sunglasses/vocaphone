@@ -131,6 +131,7 @@ import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.ClipEntry
+import com.vocahq.vocaphone.settings.OneHandedMode
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -190,6 +191,7 @@ internal fun VocaPhoneKeyboard(
     onEmojiUsed: (String) -> Unit,
     onPinClipboardHistory: (String, Boolean) -> Unit = { _, _ -> },
     onLayoutChanged: (String) -> Unit = {},
+    onOneHandedMode: (OneHandedMode) -> Unit = {},
     onSpaceLongPress: () -> Unit = {},
     onWritingApply: (WritingSuggestion) -> Unit = {},
     onWritingDismiss: (WritingSuggestion) -> Unit = {},
@@ -384,6 +386,19 @@ internal fun VocaPhoneKeyboard(
     val isEnglishLayout = activeLayout.isEnglish
     SideEffect { keyFeedback.layoutSwipeOn = layoutSwitchable }
     val composeWords = settings.suggestionsEnabled && !editor.sensitive && isEnglishLayout
+    // One-handed mode, local so the frame moves on the tap; the store follows.
+    var oneHandedMode by remember { mutableStateOf(settings.oneHandedMode) }
+    LaunchedEffect(settings.oneHandedMode) { oneHandedMode = settings.oneHandedMode }
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val oneHandedAvailable = OneHandedLayout.available(
+        smallestWidthDp = configuration.smallestScreenWidthDp,
+        portrait = configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT,
+    )
+    val oneHandedShown = if (oneHandedAvailable) oneHandedMode else OneHandedMode.OFF
+    fun setOneHanded(mode: OneHandedMode) {
+        oneHandedMode = mode
+        onOneHandedMode(mode)
+    }
     val keyHeight = settings.keyboardHeight.keyHeightDp.dp
     val letterRows = KeyboardLayouts.letterRowCount(settings.numberRowEnabled)
     val keyAreaHeight = keyHeight * letterRows + RowGap * (letterRows - 1)
@@ -839,7 +854,9 @@ internal fun VocaPhoneKeyboard(
         ) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val widthDp = maxWidth.value.roundToInt()
-                val splitKeys = SplitKeyboardLayout.shouldSplit(settings.splitKeyboard, widthDp)
+                // One-handed keys are already narrow; splitting them too would not fit a thumb.
+                val splitKeys = oneHandedShown == OneHandedMode.OFF &&
+                    SplitKeyboardLayout.shouldSplit(settings.splitKeyboard, widthDp)
                 val spacerFraction = SplitKeyboardLayout.spacerFraction(widthDp)
                 val hostCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
             Box(
@@ -991,6 +1008,12 @@ internal fun VocaPhoneKeyboard(
                     },
                 )
                 Spacer(Modifier.height(4.dp))
+                OneHandedFrame(
+                    mode = oneHandedShown,
+                    height = keyAreaHeight,
+                    onSwitchSide = { setOneHanded(OneHandedLayout.otherSide(oneHandedMode)) },
+                    onExpand = { setOneHanded(OneHandedMode.OFF) },
+                ) {
                 when (preferencePanel) {
                     PreferencePanel.MENU -> ToolbarMenuPanel(
                         clipboardOn = settings.clipboardHistoryEnabled && !editor.sensitive,
@@ -999,6 +1022,17 @@ internal fun VocaPhoneKeyboard(
                         onStyle = { preferencePanel = PreferencePanel.STYLE },
                         onClipboard = { preferencePanel = PreferencePanel.CLIPBOARD },
                         onEdit = { preferencePanel = PreferencePanel.EDIT },
+                        oneHandedTile = if (oneHandedAvailable) {
+                            MenuTile(
+                                if (oneHandedMode == OneHandedMode.OFF) "One-handed" else "Full width",
+                                R.drawable.ic_one_handed,
+                            ) {
+                                preferencePanel = null
+                                setOneHanded(OneHandedLayout.toggled(oneHandedMode))
+                            }
+                        } else {
+                            null
+                        },
                         onOpenSettings = { page ->
                             preferencePanel = null
                             onOpenSettings(page)
@@ -1150,6 +1184,7 @@ internal fun VocaPhoneKeyboard(
                             onSpaceLongPress = onSpaceLongPressStable,
                         )
                     }
+                }
                 }
             }
             KeyPreviewLayer(preview = keyPreview, hostCoords = hostCoords)

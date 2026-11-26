@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import com.vocahq.vocaphone.ime.KeyboardLanguages
 import com.vocahq.vocaphone.ime.TypingLayout
 import com.vocahq.vocaphone.settings.ClipboardRetention
+import com.vocahq.vocaphone.settings.OneHandedMode
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 /**
@@ -18,6 +19,7 @@ data class KeyboardSurfaceActions(
     val onSpaceCursor: (Boolean) -> Unit = {},
     val onEmojiSuggestions: (Boolean) -> Unit = {},
     val onKeyboardLayouts: (List<String>) -> Unit = {},
+    val onOneHandedMode: (OneHandedMode) -> Unit = {},
 )
 
 /**
