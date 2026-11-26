@@ -803,7 +803,7 @@ internal fun VocaPhoneKeyboard(
         keyboardState = reduction.state
         reduction.command?.let(onCommand)
         val corrected = if (fix != null) typed to fix else held
-        if (corrected != null && boundary != null && boundary != "'" && reduction.command == KeyboardCommand.CommitText(boundary)) {
+        if (corrected != null && boundary != null && !TypingCorrector.isApostrophe(boundary) && reduction.command == KeyboardCommand.CommitText(boundary)) {
             corrector.undo = AutocorrectUndo(
                 typed = corrected.first,
                 fixed = corrected.second,

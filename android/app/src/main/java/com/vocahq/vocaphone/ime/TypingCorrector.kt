@@ -93,13 +93,16 @@ internal class TypingCorrector {
     fun takeHeld(boundary: String?): Pair<String, String>? {
         val pending = held
         held = null
-        if (boundary == null || boundary == " " || boundary == "'" || pending == null) return null
+        if (boundary == null || boundary == " " || isApostrophe(boundary) || pending == null) return null
         return pending
     }
 
     companion object {
         /** The characters that end a word and may correct it. */
         const val PUNCTUATION = ".,!?;:"
+
+        /** `'` or `’`: inside a word ("don't"), so never where a correction lands. */
+        fun isApostrophe(boundary: String): Boolean = boundary == "'" || boundary == "’"
 
         /** What [key] ends a word with, or null for a key that does not end one. */
         fun boundary(key: KeyboardKey): String? = when (key.type) {
@@ -136,8 +139,7 @@ internal class TypingCorrector {
             tokenBefore: String = "",
         ): String? {
             if (typed.isEmpty()) return null
-            val apostrophe = boundary == "'" || boundary == "’"
-            if (apostrophe) {
+            if (isApostrophe(boundary)) {
                 // "i'" can only be I'm, I'll, I've or I'd.
                 return ShortWordCorrections.beforeApostrophe(typed).takeIf { autocorrect }
             }

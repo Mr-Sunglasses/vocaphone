@@ -135,6 +135,18 @@ class TypingCorrectorTest {
     }
 
     @Test
+    fun `a curly apostrophe is an apostrophe`() {
+        val corrector = TypingCorrector()
+        corrector.hold("teh", "the")
+        assertNull(corrector.takeHeld("’"))
+        corrector.hold("teh", "the")
+        assertNull(corrector.takeHeld("'"))
+        assertTrue(TypingCorrector.isApostrophe("’"))
+        assertTrue(TypingCorrector.isApostrophe("'"))
+        assertFalse(TypingCorrector.isApostrophe(","))
+    }
+
+    @Test
     fun `snippet and sum chips edit the field`() {
         val snippet = SuggestionItem("on my way", kind = SuggestionKind.SNIPPET, replaces = "omw")
         assertEquals(listOf(KeyboardCommand.ReplaceBeforeCursor(3, "on my way ")), TypingAssist.pick(snippet, null, ""))
