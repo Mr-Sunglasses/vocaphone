@@ -409,6 +409,15 @@ final class KeyGridView: UIView {
         return y >= bar.midY && y < bar.maxY
     }
 
+    /// Whether a strip touch at `x` (in the grid's coordinates) sits over the
+    /// keys. Over the one-handed strip there is no key for an "e" aimed high
+    /// to have meant, and the chevron there must not take a touch on the
+    /// suggestion strip above it.
+    func stripTouchHasKeysBelow(atX x: CGFloat) -> Bool {
+        let area = keyArea
+        return x >= area.minX && x <= area.maxX
+    }
+
     /// The tap behind the letter just produced, once.
     func takeLastLetterTap() -> TapOffset? {
         defer { lastLetterTap = nil }

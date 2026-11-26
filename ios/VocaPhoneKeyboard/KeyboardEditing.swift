@@ -29,6 +29,23 @@ struct KeyboardEditAvailability: Equatable, Sendable {
     var canCutOrCopy: Bool { hasSelection && hasFullAccess }
 }
 
+/// Which side the one-handed keyboard is on when the keyboard appears.
+///
+/// The choice from More is written to the shared defaults, which without
+/// Full Access may not keep it. Comparing against what was stored last time,
+/// rather than against the choice in hand, means only a real change of the
+/// stored value — made in the app's Settings — replaces it; otherwise the
+/// side chosen in this keyboard session stands.
+enum OneHandedPreferenceSync {
+    static func resolve(
+        stored: OneHandedKeyboard,
+        lastStored: OneHandedKeyboard,
+        current: OneHandedKeyboard
+    ) -> OneHandedKeyboard {
+        stored != lastStored ? stored : current
+    }
+}
+
 /// Something this keyboard did to the document that Undo can take back.
 enum KeyboardEdit: Equatable, Sendable {
     /// Text the keyboard put in at the cursor: a paste, a clip, a dictation.

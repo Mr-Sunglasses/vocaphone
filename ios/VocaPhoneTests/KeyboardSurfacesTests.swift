@@ -105,6 +105,27 @@ struct KeyboardSurfacesTests {
         #expect(restored)
     }
 
+    /// A touch on the suggestion strip above the one-handed strip is the
+    /// strip's, never the chevron's: there is no key below it to have meant.
+    @Test func theStripAboveTheChevronIsNotTheKeys() {
+        let left = Self.grid(oneHanded: .left)
+        #expect(left.stripTouchHasKeysBelow(atX: 20))
+        #expect(!left.stripTouchHasKeysBelow(atX: Self.width - 10))
+        let right = Self.grid(oneHanded: .right)
+        #expect(!right.stripTouchHasKeysBelow(atX: 10))
+        #expect(right.stripTouchHasKeysBelow(atX: Self.width - 20))
+        #expect(Self.grid().stripTouchHasKeysBelow(atX: Self.width - 2))
+    }
+
+    /// A side chosen from More without Full Access may not reach the shared
+    /// defaults; it stays for the session rather than snapping back on the
+    /// next appearance. A change made in Settings still wins.
+    @Test func aOneHandedChoiceSurvivesAStoreThatDidNotKeepIt() {
+        #expect(OneHandedPreferenceSync.resolve(stored: .off, lastStored: .off, current: .left) == .left)
+        #expect(OneHandedPreferenceSync.resolve(stored: .right, lastStored: .off, current: .left) == .right)
+        #expect(OneHandedPreferenceSync.resolve(stored: .left, lastStored: .left, current: .left) == .left)
+    }
+
     @Test func fullWidthLeavesNoStrip() {
         let grid = Self.grid()
         #expect(grid.keyArea == grid.bounds)

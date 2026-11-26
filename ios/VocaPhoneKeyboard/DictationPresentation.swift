@@ -436,7 +436,9 @@ extension DictationBarModel {
 
     /// Why Dictate is off, said as the button's label and when anything else
     /// tries to start a dictation in that field.
-    static let noDictationHere = "Dictation is off in password fields"
+    /// Covers every field it shows in: passwords, one-time codes and card
+    /// numbers alike.
+    static let noDictationHere = "Dictation is off in this field"
 
     private static func resting(_ context: DictationContext) -> DictationBarModel {
         // A finished insertion keeps the headline and the Undo button: "Text

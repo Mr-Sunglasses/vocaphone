@@ -141,6 +141,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Read with the height, for the same reason.
     private var numberRowPreference = KeyboardPreferences.numberRowEnabled
     private var oneHandedPreference = KeyboardPreferences.oneHandedKeyboard
+    /// What the shared defaults said last time they were read. Without Full
+    /// Access a choice made from More may not persist there, so only a change
+    /// in what is stored (Settings, in the app) replaces the choice in hand.
+    private var storedOneHanded = KeyboardPreferences.oneHandedKeyboard
     /// The last thing this keyboard did to the document that the edit row's
     /// Undo can take back. See ``KeyboardEditUndo``.
     private var lastEdit: KeyboardEdit?
@@ -445,7 +449,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func applyHeightPreferenceIfChanged() {
         let preference = KeyboardPreferences.keyboardHeight
         let numberRow = KeyboardPreferences.numberRowEnabled
-        let oneHanded = KeyboardPreferences.oneHandedKeyboard
+        let stored = KeyboardPreferences.oneHandedKeyboard
+        let oneHanded = OneHandedPreferenceSync.resolve(
+            stored: stored,
+            lastStored: storedOneHanded,
+            current: oneHandedPreference
+        )
+        storedOneHanded = stored
         guard preference != heightPreference
             || numberRow != numberRowPreference
             || oneHanded != oneHandedPreference
@@ -466,6 +476,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Moves the keys toward one thumb, or back, and remembers it.
     private func setOneHanded(_ side: OneHandedKeyboard) {
         KeyboardPreferences.oneHandedKeyboard = side
+        // Whatever landed: the side itself with Full Access, possibly the old
+        // value without. Either way the next appearance keeps `side`.
+        storedOneHanded = KeyboardPreferences.oneHandedKeyboard
         oneHandedPreference = side
         keyGrid.oneHandedSide = allowsOneHanded ? side : .off
         refreshEditAvailability()
@@ -693,6 +706,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
+            // The edit row's Undo and a Shift case cycle belong to the field
+            // they were made in.
+            lastEdit = nil
+            caseCycle = nil
             corrections.finish()
             stopReadingWholeMessage()
             writingCheck.reset()
@@ -3767,12 +3784,16 @@ final class KeyboardStack: UIStackView {
         // 3. The strip's lower half while the user is typing: a touch there
         //    within a quarter second of a key is an "e" aimed high, not a
         //    suggestion read and chosen, so it types the top-row key below.
+        //    Not above the one-handed strip: nothing below is a key, and the
+        //    chevron must not take a touch meant for a suggestion.
         if let bar = topBarContainer?.frame,
            lateralSpan.contains(point.x),
+           let grid = keyGrid as? KeyGridView,
+           grid.stripTouchHasKeysBelow(atX: grid.convert(point, from: self).x),
            KeyGridView.stripTouchGoesToKeys(
                y: point.y,
                bar: bar,
-               isTyping: (keyGrid as? KeyGridView)?.isTypingNow == true
+               isTyping: grid.isTypingNow
            )
         {
             return forwardToGrid("strip-dead-zone")
