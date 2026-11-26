@@ -75,6 +75,10 @@ enum KeyboardDefaults {
     static let clipboardHistory = false
     static let clipboardRetention = ClipboardRetention.day
     static let spacebarCursor = true
+    /// Off: Apple's keyboard never changes a selection's case from Shift, and
+    /// someone who selects a word, taps Shift and types a capital expects the
+    /// capital — not their selection rewritten.
+    static let shiftChangesSelectionCase = false
     static let numbersAsDigits = true
     static let spokenEmoji = true
     static let repairSpeech = true
@@ -672,6 +676,8 @@ enum KeyboardPreferences {
     static let touchTraceKey = "touchTraceEnabled"
     /// Holding or sliding the spacebar to move the cursor.
     static let spacebarCursorKey = "spacebarCursorEnabled"
+    /// Shift over a selection cycles its case (``CaseCycle``).
+    static let shiftChangesSelectionCaseKey = "shiftChangesSelectionCase"
     /// The compact dictation row: More, Start, and the dashboard behind More.
     /// On by default. The lab switch is an off-ramp, not the way it ships; the
     /// key keeps its lab name so a switch someone already flipped still counts.
@@ -1013,6 +1019,13 @@ enum KeyboardPreferences {
     static var spacebarCursorEnabled: Bool {
         get { boolean(spacebarCursorKey, default: KeyboardDefaults.spacebarCursor) }
         set { defaults?.set(newValue, forKey: spacebarCursorKey) }
+    }
+
+    /// Shift over selected text changes its case. Off by default; see
+    /// ``KeyboardDefaults/shiftChangesSelectionCase``.
+    static var shiftChangesSelectionCase: Bool {
+        get { boolean(shiftChangesSelectionCaseKey, default: KeyboardDefaults.shiftChangesSelectionCase) }
+        set { defaults?.set(newValue, forKey: shiftChangesSelectionCaseKey) }
     }
 
     /// Read by the keyboard itself, not only by the lab.

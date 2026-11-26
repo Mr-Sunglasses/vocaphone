@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// Shift on a selection: Sentence case → ALL CAPS → lower → the original.
 ///
@@ -83,5 +83,50 @@ struct CaseCycleSession: Equatable {
               after == self.after
         else { return false }
         return true
+    }
+}
+
+/// When Shift may touch a selection at all, with the setting on.
+///
+/// A keyboard replaces a selection with one `insertText`, so whatever it
+/// was handed as `selectedText` is everything that survives. The proxy
+/// reports no selection range or length to compare that against — a host
+/// that hands over less than is selected cannot be caught — so the guard
+/// keeps to selections too small for that to happen: one line of at most
+/// ``maximumLength`` characters. And never where text is an address rather
+/// than prose: a URL, a web search or an email address has no sentence case.
+enum SelectionCaseGuard {
+    static let maximumLength = 200
+
+    /// Whether this field's text may have its case changed by Shift.
+    static func fieldAllows(keyboardType: UIKeyboardType?, contentType: UITextContentType?) -> Bool {
+        switch keyboardType {
+        case .URL?, .webSearch?, .emailAddress?: return false
+        default: break
+        }
+        if let contentType, [.URL, .emailAddress, .username].contains(contentType) { return false }
+        return true
+    }
+
+    /// Whether this selection is one Shift may rewrite.
+    static func allows(_ selected: String) -> Bool {
+        selected.count <= maximumLength
+            && selected.contains(where: \.isLetter)
+            && !selected.contains(where: \.isNewline)
+    }
+}
+
+/// How much selected text the edit row's Cut and Copy will take.
+///
+/// `selectedText` is all a keyboard is told about a selection, while Cut's
+/// delete removes the whole selection in the host. A host that reported less
+/// than is selected would lose the difference: deleted, and on no clipboard.
+/// There is no length to check it against, so long selections are left to
+/// the app's own Cut and Copy, which see the real selection.
+enum SelectionEditGuard {
+    static let maximumLength = ClipboardHistoryPolicy.maximumCharacters
+
+    static func allows(_ selected: String) -> Bool {
+        !selected.isEmpty && selected.count <= maximumLength
     }
 }

@@ -115,13 +115,23 @@ struct TypingCandidatesTests {
     /// The words deliberately left out, because only grammar could tell them
     /// apart and a keyboard has none.
     @Test func ambiguousContractionsAreLeftAlone() {
-        for token in ["its", "were", "well", "hell", "shell", "wed"] {
+        for token in ["its", "were", "well", "hell", "shell", "wed", "ill", "lets", "id", "hows", "whos"] {
             #expect(
                 TypingCandidates.autocorrection(
                     Self.context(composition: token, isKnownToChecker: true)
                 ) == nil,
                 "\(token) should stand"
             )
+        }
+    }
+
+    /// A contraction whose typed form is a word is offered, never applied.
+    @Test func aContractionThatIsAlsoAWordIsOnlyOffered() {
+        for (typed, contraction) in ["ill": "I'll", "lets": "let's", "id": "I'd"] {
+            var context = Self.context(composition: typed, isKnownToChecker: true, isInWordList: true)
+            context.hasCheckerAnswer = true
+            #expect(TypingCandidates.autocorrection(context) == nil, "\(typed)")
+            #expect(TypingCandidates.rankedSuggestions(context).first == contraction, "\(typed)")
         }
     }
 

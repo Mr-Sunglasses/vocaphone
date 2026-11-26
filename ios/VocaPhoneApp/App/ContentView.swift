@@ -80,6 +80,7 @@ struct ContentView: View {
         }
         .task {
             coordinator.refreshSetupStatus()
+            coordinator.enforceClipboardHistory()
             // `scenePhase` does not change on a cold launch, so the pause a
             // previous run left behind is cleared here too.
             coordinator.endQuickDictationPause()
@@ -185,6 +186,7 @@ struct ContentView: View {
                 }
                 guard previousPhase != .active, currentPhase == .active else { return }
                 coordinator.refreshSetupStatus()
+                coordinator.enforceClipboardHistory()
                 Task { await coordinator.refreshGatewayHealth() }
             }
             // Both halves of a model arriving: the files landing, and a model

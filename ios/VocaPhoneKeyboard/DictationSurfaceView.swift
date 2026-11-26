@@ -192,19 +192,41 @@ final class DictationSurfaceState: ObservableObject {
     }
     private var noticeExpiry: DispatchWorkItem?
 
-    /// Long enough to read a sentence, and longer for a longer one.
-    func showNotice(_ message: String) {
+    /// A button beside the notice, for as long as it is up: Undo after a
+    /// word is blocked.
+    struct NoticeAction {
+        let title: String
+        let perform: () -> Void
+    }
+    private(set) var noticeAction: NoticeAction?
+
+    /// Long enough to read a sentence, and longer for a longer one, and
+    /// longer again with a button to reach for.
+    func showNotice(_ message: String, action: NoticeAction? = nil) {
         noticeExpiry?.cancel()
+        if action != nil || noticeAction != nil { objectWillChange.send() }
+        noticeAction = action
         notice = message
-        let work = DispatchWorkItem { [weak self] in self?.notice = nil }
+        let work = DispatchWorkItem { [weak self] in self?.clearNotice() }
         noticeExpiry = work
-        let seconds = min(6, max(2.6, Double(message.count) / 14))
+        let seconds = min(6, max(action == nil ? 2.6 : 4, Double(message.count) / 14))
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Runs the notice's button, and the notice has done its job.
+    func performNoticeAction() {
+        guard let action = noticeAction else { return }
+        clearNotice()
+        action.perform()
     }
 
     private func clearNotice() {
         noticeExpiry?.cancel()
         noticeExpiry = nil
+        if noticeAction != nil {
+            objectWillChange.send()
+            noticeAction = nil
+        }
         notice = nil
     }
 
@@ -941,14 +963,24 @@ struct DictationSurfaceView: View {
     /// a little smaller than a candidate, so it reads as a remark rather than
     /// as something to tap.
     private func noticeLine(_ notice: String) -> some View {
-        Text(notice)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(controlForeground.opacity(0.75))
-            .lineLimit(2)
-            .minimumScaleFactor(0.85)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .transition(.opacity)
+        HStack(spacing: 8) {
+            Text(notice)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(controlForeground.opacity(0.75))
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let action = state.noticeAction {
+                Button(action.title) { state.performNoticeAction() }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(controlForeground)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 36)
+                    .contentShape(Rectangle())
+            }
+        }
+        .transition(.opacity)
     }
 
     /// Menu on the leading edge, microphone on the trailing. Writing style

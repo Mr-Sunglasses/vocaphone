@@ -141,6 +141,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Read with the height, for the same reason.
     private var numberRowPreference = KeyboardPreferences.numberRowEnabled
     private var oneHandedPreference = KeyboardPreferences.oneHandedKeyboard
+    /// What the shared defaults said last time they were read. Without Full
+    /// Access a choice made from More may not persist there, so only a change
+    /// in what is stored (Settings, in the app) replaces the choice in hand.
+    private var storedOneHanded = KeyboardPreferences.oneHandedKeyboard
     /// The last thing this keyboard did to the document that the edit row's
     /// Undo can take back. See ``KeyboardEditUndo``.
     private var lastEdit: KeyboardEdit?
@@ -362,6 +366,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Edited in the app, like the vocabulary: once per appearance, never
         // per keystroke. A few hundred bytes of JSON from the shared defaults.
         typing.installSnippets(SnippetStore.snippets)
+        // Settings may have reset learned or blocked words meanwhile. Read
+        // off the main thread; nothing waits for it.
+        typing.reloadLearnedWords()
         applyDocumentTraits()
         // Shift was last set for wherever the keyboard was before, and iOS
         // sends no `textDidChange` for a field it is merely shown over.
@@ -420,6 +427,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         publishKeyboardStatus()
         // An "Open app" hand-off the app never took is past its use by now.
         store.removeExpiredWritingDraft()
+        // Expired clips leave the file, not only the panel; with the history
+        // switched off the file goes. The file only — the clipboard is not
+        // read here. Without Full Access the container is out of reach and
+        // this does nothing; the app deletes the file when it hears so.
+        ClipboardHistoryStore.shared.enforce(
+            isEnabled: KeyboardPreferences.clipboardHistoryEnabled,
+            retention: KeyboardPreferences.clipboardRetention.interval
+        )
         // Full Access can be granted or revoked in Settings while this instance
         // stays alive, and a warm engine is what makes the first key of the
         // session land as a tap rather than as nothing.
@@ -434,7 +449,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func applyHeightPreferenceIfChanged() {
         let preference = KeyboardPreferences.keyboardHeight
         let numberRow = KeyboardPreferences.numberRowEnabled
-        let oneHanded = KeyboardPreferences.oneHandedKeyboard
+        let stored = KeyboardPreferences.oneHandedKeyboard
+        let oneHanded = OneHandedPreferenceSync.resolve(
+            stored: stored,
+            lastStored: storedOneHanded,
+            current: oneHandedPreference
+        )
+        storedOneHanded = stored
         guard preference != heightPreference
             || numberRow != numberRowPreference
             || oneHanded != oneHandedPreference
@@ -455,6 +476,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Moves the keys toward one thumb, or back, and remembers it.
     private func setOneHanded(_ side: OneHandedKeyboard) {
         KeyboardPreferences.oneHandedKeyboard = side
+        // Whatever landed: the side itself with Full Access, possibly the old
+        // value without. Either way the next appearance keeps `side`.
+        storedOneHanded = KeyboardPreferences.oneHandedKeyboard
         oneHandedPreference = side
         keyGrid.oneHandedSide = allowsOneHanded ? side : .off
         refreshEditAvailability()
@@ -513,6 +537,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         writingCheck.reset()
         autoFixer.clear()
         corrections.finish()
+        // Leaving from a password field: a copy made while it had the
+        // keyboard is never kept.
+        if fieldIsSecret { ClipboardCapture.noteSecretField(UIPasteboard.general) }
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -679,6 +706,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
+            // The edit row's Undo and a Shift case cycle belong to the field
+            // they were made in.
+            lastEdit = nil
+            caseCycle = nil
             corrections.finish()
             stopReadingWholeMessage()
             writingCheck.reset()
@@ -1666,11 +1697,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
 
     func keyGridDidToggleShift(_ grid: KeyGridView) {
-        // Over a selection, Shift changes the selection's case instead.
-        if documentEvent({ cycleSelectionCase() }) { return }
+        // One read of the document for the whole tap: the event's snapshot is
+        // the anchor too. `selectedText` is asked for only when the setting
+        // that uses it is on.
+        let anchor: DocumentSnapshot? = documentEvent {
+            // Over a selection, Shift changes the selection's case instead —
+            // only when asked for in Settings, since Apple's keyboard never does.
+            if shiftChangesSelectionCase, cycleSelectionCase() { return nil }
+            return document
+        }
+        guard let anchor else { return }
         // Remembered with the place it was made, so that it lasts exactly as
         // long as the cursor stays there. See ``updateAutomaticShift``.
-        manualShiftAnchor = readDocument()
+        manualShiftAnchor = anchor
         shiftLockIsAutomatic = false
     }
 
@@ -1688,14 +1727,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// one read here that hands over text the user did not just type, and a
     /// password field's selection is none of the keyboard's business.
     private func cycleSelectionCase() -> Bool {
-        guard typing.policy.allowsTypingIntelligence, !isPerformingInsertion else {
+        guard typing.policy.allowsTypingIntelligence, fieldAllowsSelectionCase, !isPerformingInsertion else {
             caseCycle = nil
             return false
         }
         let proxy = textDocumentProxy
         let next: String
         let original: String
-        if let selected = proxy.selectedText, selected.contains(where: \.isLetter) {
+        let selected = proxy.selectedText
+        if let selected, !selected.isEmpty {
+            // Long, multi-line or letterless: Shift is just Shift. See
+            // ``SelectionCaseGuard``.
+            guard SelectionCaseGuard.allows(selected) else {
+                caseCycle = nil
+                return false
+            }
             // A selection that is still what the last tap made continues that
             // cycle; any other selection starts a new one.
             original = caseCycle?.emitted == selected ? caseCycle?.original ?? selected : selected
@@ -1703,7 +1749,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             guard next != selected else { return false }
             proxy.insertText(next)
         } else if let session = caseCycle,
-                  proxy.selectedText?.isEmpty != false,
                   session.continues(before: document.before, after: document.after)
         {
             original = session.original
@@ -3015,11 +3060,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// most of a session. "The last insertion was removed", "Starting with
     /// Quick Dictation…" and the Full Access fallback were all being written to
     /// a view nobody could see.
-    private func flash(_ message: String) {
+    ///
+    /// `undo`, when given, is offered with it: an Undo button beside the
+    /// notice on the surface, and the message itself on the older bar.
+    private func flash(_ message: String, undo: (() -> Void)? = nil) {
         if dictationBar.isHidden {
-            dictationSurfaceState.showNotice(message)
+            dictationSurfaceState.showNotice(
+                message,
+                action: undo.map { DictationSurfaceState.NoticeAction(title: "Undo", perform: $0) }
+            )
         } else {
-            dictationBar.flash(message)
+            dictationBar.flash(undo == nil ? message : "\(message). Tap to undo.", onTap: undo)
         }
         guard isKeyboardVisible else { return }
         UIAccessibility.post(notification: .announcement, argument: message)
@@ -3281,6 +3332,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // still be running the user's password through a dictionary.
         let policy = TypingFieldPolicy.resolve(for: proxy)
         typing.documentChanged(policy: policy)
+        // Into or out of a password, one-time-code or card field: whatever
+        // the clipboard holds is marked seen, so clipboard history never
+        // keeps a copy that was on the clipboard while one had the keyboard.
+        // Only `changeCount` is read. See ``ClipboardCapture/noteSecretField``.
+        let isSecret = !policy.allowsDictation
+        if isSecret || fieldIsSecret { ClipboardCapture.noteSecretField(UIPasteboard.general) }
+        fieldIsSecret = isSecret
         fieldAllowsGrammarCheck = TypingFieldPolicy.allowsGrammarCheck(for: proxy)
         fieldAllowsWritingCheck = TypingFieldPolicy.allowsWritingCheck(for: proxy)
         // The trace writes which key was pressed, and a character key's name is
@@ -3289,6 +3347,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Swipe reads words as surely as the strip does, and goes with it.
         keyGrid.allowsSwipeTyping = policy.allowsSwipeTyping
         caseCycle = nil
+        shiftChangesSelectionCase = KeyboardPreferences.shiftChangesSelectionCase
+        // Two more trait reads, only for someone who turned the switch on.
+        fieldAllowsSelectionCase = shiftChangesSelectionCase && SelectionCaseGuard.fieldAllows(
+            keyboardType: proxy.keyboardType,
+            contentType: proxy.textContentType
+        )
         // No microphone in a password field. Redrawn at once when that
         // changes, so Dictate never stays live over a field it may not use.
         if fieldAllowsDictation != policy.allowsDictation {
@@ -3486,6 +3550,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// The document as it stood when the user last tapped Shift, until the
     /// cursor leaves that spot.
     private var manualShiftAnchor: DocumentSnapshot?
+    /// Settings' "Shift changes selected text's case", read per appearance.
+    private var shiftChangesSelectionCase = KeyboardDefaults.shiftChangesSelectionCase
+    /// Not a URL, web search or email field (``SelectionCaseGuard``), as of
+    /// the last ``applyDocumentTraits``.
+    private var fieldAllowsSelectionCase = false
+    /// The field is a password, one-time-code or card number field
+    /// (``TypingFieldPolicy/allowsDictation`` refused it), as of the last
+    /// ``applyDocumentTraits``.
+    private var fieldIsSecret = false
     /// Caps lock is on because a field asked for capitals, not by a double tap.
     private var shiftLockIsAutomatic = false
     /// The Shift case cycle the next tap continues, if nothing has moved.
@@ -3529,10 +3602,17 @@ extension KeyboardViewController: DictationBarViewDelegate {
     /// never suggested again. Said out loud, because the only other sign is
     /// a chip disappearing.
     private func block(_ candidate: TypingCandidate) {
-        guard candidate.isBlockable else { return }
-        typing.block(candidate.text)
+        guard candidate.isBlockable, let blocking = typing.block(candidate.text) else { return }
         KeyboardHaptics.shared.action()
-        flash("Won\u{2019}t suggest \u{201C}\(candidate.text)\u{201D} again")
+        // A held thumb is an easy accident, so the block can be taken back
+        // for as long as the notice is up.
+        flash("Won\u{2019}t suggest \u{201C}\(candidate.text)\u{201D} again") { [weak self] in
+            guard let self else { return }
+            typing.undoBlock(blocking)
+            KeyboardHaptics.shared.action()
+            UIAccessibility.post(notification: .announcement, argument: "\(candidate.text) can be suggested again")
+            render(lastRecord)
+        }
         render(lastRecord)
     }
 
@@ -3704,12 +3784,16 @@ final class KeyboardStack: UIStackView {
         // 3. The strip's lower half while the user is typing: a touch there
         //    within a quarter second of a key is an "e" aimed high, not a
         //    suggestion read and chosen, so it types the top-row key below.
+        //    Not above the one-handed strip: nothing below is a key, and the
+        //    chevron must not take a touch meant for a suggestion.
         if let bar = topBarContainer?.frame,
            lateralSpan.contains(point.x),
+           let grid = keyGrid as? KeyGridView,
+           grid.stripTouchHasKeysBelow(atX: grid.convert(point, from: self).x),
            KeyGridView.stripTouchGoesToKeys(
                y: point.y,
                bar: bar,
-               isTyping: (keyGrid as? KeyGridView)?.isTypingNow == true
+               isTyping: grid.isTypingNow
            )
         {
             return forwardToGrid("strip-dead-zone")
@@ -3920,6 +4004,14 @@ extension KeyboardViewController {
     private func copySelection(cutting: Bool) {
         guard hasFullAccess, let selected = textDocumentProxy.selectedText, !selected.isEmpty else {
             flash("Select some text first.")
+            return
+        }
+        // Cut deletes the whole selection in the host, whatever part of it
+        // the keyboard was handed; a long one is left to the app's own Cut.
+        guard SelectionEditGuard.allows(selected) else {
+            flash(cutting
+                ? "Too much is selected to cut from the keyboard. Use the app\u{2019}s Cut."
+                : "Too much is selected to copy from the keyboard. Use the app\u{2019}s Copy.")
             return
         }
         UIPasteboard.general.string = selected

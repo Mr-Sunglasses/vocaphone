@@ -165,6 +165,36 @@ struct CaseCycleTests {
         let tooLong = CaseCycleSession(original: long, emitted: long, after: nil)
         #expect(!tooLong.continues(before: long, after: nil))
     }
+
+    /// With the setting on, Shift rewrites only a short, single-line
+    /// selection with letters in it — small enough that what the host handed
+    /// over is all of it.
+    @Test func onlyAShortSingleLineSelectionIsRewritten() {
+        #expect(SelectionCaseGuard.allows("hello world"))
+        #expect(SelectionCaseGuard.allows(String(repeating: "a", count: SelectionCaseGuard.maximumLength)))
+        #expect(!SelectionCaseGuard.allows(String(repeating: "a", count: SelectionCaseGuard.maximumLength + 1)))
+        #expect(!SelectionCaseGuard.allows("first line\nsecond line"))
+        #expect(!SelectionCaseGuard.allows("12 34"))
+    }
+
+    /// An address has no sentence case: never in URL, search or email fields.
+    @Test func neverInAddressFields() {
+        #expect(SelectionCaseGuard.fieldAllows(keyboardType: .default, contentType: nil))
+        #expect(SelectionCaseGuard.fieldAllows(keyboardType: nil, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .URL, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .webSearch, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .emailAddress, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .default, contentType: .URL))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .default, contentType: .emailAddress))
+    }
+
+    /// Cut deletes the host's whole selection, so it takes only selections
+    /// small enough to trust the keyboard was handed all of.
+    @Test func cutAndCopyRefuseALongSelection() {
+        #expect(SelectionEditGuard.allows("word"))
+        #expect(!SelectionEditGuard.allows(""))
+        #expect(!SelectionEditGuard.allows(String(repeating: "a", count: SelectionEditGuard.maximumLength + 1)))
+    }
 }
 
 /// "12*4=" offers 48. Plain arithmetic, and only where it is unmistakably a sum.
@@ -185,6 +215,13 @@ struct InlineArithmeticTests {
         ("Total is 12 * 4=", "48"),
         ("Well, 3+4=", "7"),
         ("ok\n5-2=", "3"),
+        // After a sentence: its full stop is not part of the sum.
+        ("Thanks. 3+4=", "7"),
+        ("Note: 3+4=", "7"),
+        ("Done! 2*3=", "6"),
+        ("Step 1. 2+2=", "4"),
+        ("So. .5+1=", "1.5"),
+        (".5+1=", "1.5"),
     ])
     func aSumIsAnswered(text: String, answer: String) {
         #expect(InlineArithmetic.result(before: text) == answer)
@@ -202,6 +239,8 @@ struct InlineArithmeticTests {
         "4/0=",       // nothing to say
         "3+=",        // unfinished
         "(3+4=",      // unbalanced
+        "Thanks.3+4=", // no space after the full stop: not a sentence end
+        "e.g.3+4=",
         "=",
         "",
     ])
@@ -331,13 +370,49 @@ struct BlockedWordTests {
     }
 
     @Test func onlyWordsTheKeyboardChoseCanBeBlocked() {
-        for kind in [TypingCandidate.Kind.completion, .correction, .prediction, .swipeAlternate] {
+        for kind in [TypingCandidate.Kind.completion, .prediction, .swipeAlternate] {
             #expect(TypingCandidate(text: "x", kind: kind).isBlockable)
         }
-        for kind in [TypingCandidate.Kind.literal, .revert, .emoji, .writingFix, .writingReview,
-                     .paste, .nextKeyboard, .calculation] {
+        // A correction chip is the everyday word it corrects to; holding it
+        // must not block "the" everywhere.
+        for kind in [TypingCandidate.Kind.correction, .literal, .revert, .emoji, .writingFix,
+                     .writingReview, .paste, .nextKeyboard, .calculation] {
             #expect(!TypingCandidate(text: "x", kind: kind).isBlockable)
         }
+    }
+
+    /// One slip of a held thumb must not stop the keyboard fixing "i".
+    @Test func theCuratedShortWordsCannotBeBlocked() {
+        for word in ["I", "I'm", "don't", "can't", "i'm"] {
+            #expect(!TypingCandidate(text: word, kind: .prediction).isBlockable, "\(word)")
+            #expect(!TypingCandidate(text: word, kind: .completion).isBlockable, "\(word)")
+        }
+        #expect(TypingCandidate(text: "Ivy", kind: .prediction).isBlockable)
+    }
+
+    /// Undo straight after a block puts back the word, its learned entry and
+    /// the fix that led to it.
+    @Test func undoingABlockRestoresWhatItTookAway() {
+        var words = LearnedWords()
+        words.learn("Kanishk")
+        words.noteFix(typo: "kanihsk", fix: "Kanishk")
+        words.noteFix(typo: "kanihsk", fix: "Kanishk")
+        let before = words
+        let blocking = words.blocking("kanishk")
+        words.block("kanishk")
+        #expect(words.isBlocked("Kanishk"))
+        words.undo(blocking)
+        #expect(!words.isBlocked("Kanishk"))
+        #expect(words.contains("Kanishk"))
+        #expect(words.learnedFix(for: "kanihsk") == "Kanishk")
+        #expect(words.blockedCount == before.blockedCount)
+
+        // A word that was already blocked stays blocked.
+        words.block("gonna")
+        let again = words.blocking("gonna")
+        words.block("gonna")
+        words.undo(again)
+        #expect(words.isBlocked("gonna"))
     }
 
     @Test func blockingForgetsTheLearnedWordAndItsFix() {
@@ -410,6 +485,56 @@ struct BlockedWordTests {
         #expect(reopened.snapshot().count == 0)
         reopened.removeAllBlocked()
         #expect(LearnedWordStore(containerURL: directory).snapshot().blockedCount == 0)
+    }
+
+    /// Settings loads its store when it opens. A reset there must start from
+    /// the file, not from that copy, or it undoes what the keyboard did since.
+    @Test func aResetStartsFromTheFileNotAStaleCopy() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = LearnedWordStore(containerURL: directory)
+        let keyboard = LearnedWordStore(containerURL: directory)
+        keyboard.update { $0.block("gonna") }
+        keyboard.update { $0.learn("vocaphone") }
+        keyboard.flush(timeout: .seconds(2))
+        // Reset learned words keeps a block made after Settings opened.
+        settings.removeAll()
+        let afterReset = LearnedWordStore(containerURL: directory).snapshot()
+        #expect(afterReset.isBlocked("gonna"))
+        #expect(afterReset.count == 0)
+
+        keyboard.update { $0.learn("kanishk") }
+        keyboard.flush(timeout: .seconds(2))
+        // Unblocking keeps a word learned after Settings opened.
+        settings.removeAllBlocked()
+        let afterUnblock = LearnedWordStore(containerURL: directory).snapshot()
+        #expect(afterUnblock.blockedCount == 0)
+        #expect(afterUnblock.contains("kanishk"))
+    }
+
+    /// A keyboard that stays alive picks up Settings' Unblock on its next
+    /// appearance, and does not write its old copy back over it.
+    @Test func aReloadedKeyboardDoesNotUndoAnUnblock() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let keyboard = LearnedWordStore(containerURL: directory)
+        keyboard.update { $0.block("gonna") }
+        keyboard.flush(timeout: .seconds(2))
+        LearnedWordStore(containerURL: directory).removeAllBlocked()
+
+        let reloaded: LearnedWords = await withCheckedContinuation { continuation in
+            keyboard.reload { continuation.resume(returning: $0) }
+        }
+        #expect(reloaded.blockedCount == 0)
+        keyboard.update { $0.learn("vocaphone") }
+        keyboard.flush(timeout: .seconds(2))
+        let onDisk = LearnedWordStore(containerURL: directory).snapshot()
+        #expect(onDisk.blockedCount == 0)
+        #expect(onDisk.contains("vocaphone"))
     }
 }
 

@@ -29,6 +29,23 @@ struct KeyboardEditAvailability: Equatable, Sendable {
     var canCutOrCopy: Bool { hasSelection && hasFullAccess }
 }
 
+/// Which side the one-handed keyboard is on when the keyboard appears.
+///
+/// The choice from More is written to the shared defaults, which without
+/// Full Access may not keep it. Comparing against what was stored last time,
+/// rather than against the choice in hand, means only a real change of the
+/// stored value — made in the app's Settings — replaces it; otherwise the
+/// side chosen in this keyboard session stands.
+enum OneHandedPreferenceSync {
+    static func resolve(
+        stored: OneHandedKeyboard,
+        lastStored: OneHandedKeyboard,
+        current: OneHandedKeyboard
+    ) -> OneHandedKeyboard {
+        stored != lastStored ? stored : current
+    }
+}
+
 /// Something this keyboard did to the document that Undo can take back.
 enum KeyboardEdit: Equatable, Sendable {
     /// Text the keyboard put in at the cursor: a paste, a clip, a dictation.
@@ -91,12 +108,22 @@ protocol ClipboardReading: AnyObject {
     var hasStrings: Bool { get }
     /// The types of the first item, for the do-not-keep markers.
     var firstItemTypes: [String] { get }
-    /// The content itself. iOS may ask the user before answering.
-    var string: String? { get }
+    /// The first item's plain text as raw bytes, with the type it came as.
+    /// iOS may ask the user before answering. Bytes rather than a `String`,
+    /// so a huge copy is measured and refused before it is decoded.
+    func plainTextData() -> (type: String, data: Data)?
 }
 
 extension UIPasteboard: ClipboardReading {
     var firstItemTypes: [String] { types }
+
+    func plainTextData() -> (type: String, data: Data)? {
+        let available = types
+        guard let type = ClipboardHistoryPolicy.plainTextTypes.first(where: available.contains),
+              let data = data(forPasteboardType: type)
+        else { return nil }
+        return (type, data)
+    }
 }
 
 /// When clipboard history reads the clipboard: only when asked.
@@ -137,13 +164,20 @@ enum ClipboardCapture {
         guard isEnabled, fieldAllows, hasUnseenCopy(pasteboard, defaults: defaults) else { return false }
         defaults?.set(pasteboard.changeCount, forKey: capturedChangeCountKey)
         guard ClipboardHistoryPolicy.mayKeep(types: pasteboard.firstItemTypes),
-              let text = pasteboard.string
+              let payload = pasteboard.plainTextData(),
+              let text = ClipboardHistoryPolicy.text(from: payload.data, type: payload.type)
         else { return false }
         return keep(text, isEnabled: true, fieldAllows: true, store: store, retention: retention, now: now)
     }
 
     /// Text that is already in hand: handed over by the Paste button, or
     /// copied by this keyboard. `types` are checked when the caller has them.
+    ///
+    /// `changeCount` is marked as seen whatever happens to the text. A copy
+    /// refused here — pasted into a password field, or marked secret — must
+    /// not be picked up later by ``captureIfChanged`` in an ordinary field,
+    /// which is exactly what a password copied from Notes and pasted into a
+    /// login used to become.
     @discardableResult
     static func keep(
         _ text: String,
@@ -156,12 +190,29 @@ enum ClipboardCapture {
         defaults: UserDefaults? = KeyboardPreferences.defaults,
         now: Date = Date()
     ) -> Bool {
+        if let changeCount { markSeen(changeCount, defaults: defaults) }
         guard isEnabled, fieldAllows,
               ClipboardHistoryPolicy.mayKeep(types: types),
               ClipboardHistoryPolicy.mayKeep(text: text)
         else { return false }
-        if let changeCount { defaults?.set(changeCount, forKey: capturedChangeCountKey) }
         store.update(retention: retention, now: now) { $0.add(text, at: now) }
         return true
+    }
+
+    /// The keyboard is in a password, one-time-code or card field: whatever
+    /// the clipboard holds now is never kept. Called as such a field arrives
+    /// and again as it goes, so a copy made while it had the keyboard —
+    /// usually the very secret being typed — is never read into the history.
+    /// Reads only `changeCount`, which says nothing about the content.
+    static func noteSecretField(
+        _ pasteboard: ClipboardReading,
+        defaults: UserDefaults? = KeyboardPreferences.defaults
+    ) {
+        markSeen(pasteboard.changeCount, defaults: defaults)
+    }
+
+    private static func markSeen(_ changeCount: Int, defaults: UserDefaults?) {
+        guard defaults?.object(forKey: capturedChangeCountKey) as? Int != changeCount else { return }
+        defaults?.set(changeCount, forKey: capturedChangeCountKey)
     }
 }
