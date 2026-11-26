@@ -420,6 +420,26 @@ final class TypingEngine {
     /// Whether the shipped list has loaded; it loads off the main thread.
     var hasWordList: Bool { !wordList.isEmpty }
 
+    /// Picks up resets made in Settings while this instance was off screen.
+    /// iOS keeps a keyboard alive between appearances, and one holding its
+    /// old copy would write it back on the next learned word — undoing an
+    /// Unblock, or bringing back words the user reset. The file is read off
+    /// the main thread; only the small blocked set comes back to it.
+    func reloadLearnedWords() {
+        let handler: @Sendable (LearnedWords) -> Void = { [weak self] words in
+            let blocked = words.blockedWords
+            Task { @MainActor [weak self] in self?.adoptBlockedWords(blocked) }
+        }
+        learned.reload(handler)
+    }
+
+    private func adoptBlockedWords(_ blocked: Set<String>) {
+        guard blocked != blockedWords else { return }
+        blockedWords = blocked
+        cache.removeAll()
+        refreshCurrentCandidates()
+    }
+
     /// For a process about to end: learned words are written behind the
     /// keystroke, and a queued write would not survive `exit`.
     @discardableResult

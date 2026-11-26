@@ -441,6 +441,56 @@ struct BlockedWordTests {
         reopened.removeAllBlocked()
         #expect(LearnedWordStore(containerURL: directory).snapshot().blockedCount == 0)
     }
+
+    /// Settings loads its store when it opens. A reset there must start from
+    /// the file, not from that copy, or it undoes what the keyboard did since.
+    @Test func aResetStartsFromTheFileNotAStaleCopy() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = LearnedWordStore(containerURL: directory)
+        let keyboard = LearnedWordStore(containerURL: directory)
+        keyboard.update { $0.block("gonna") }
+        keyboard.update { $0.learn("vocaphone") }
+        keyboard.flush(timeout: .seconds(2))
+        // Reset learned words keeps a block made after Settings opened.
+        settings.removeAll()
+        let afterReset = LearnedWordStore(containerURL: directory).snapshot()
+        #expect(afterReset.isBlocked("gonna"))
+        #expect(afterReset.count == 0)
+
+        keyboard.update { $0.learn("kanishk") }
+        keyboard.flush(timeout: .seconds(2))
+        // Unblocking keeps a word learned after Settings opened.
+        settings.removeAllBlocked()
+        let afterUnblock = LearnedWordStore(containerURL: directory).snapshot()
+        #expect(afterUnblock.blockedCount == 0)
+        #expect(afterUnblock.contains("kanishk"))
+    }
+
+    /// A keyboard that stays alive picks up Settings' Unblock on its next
+    /// appearance, and does not write its old copy back over it.
+    @Test func aReloadedKeyboardDoesNotUndoAnUnblock() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let keyboard = LearnedWordStore(containerURL: directory)
+        keyboard.update { $0.block("gonna") }
+        keyboard.flush(timeout: .seconds(2))
+        LearnedWordStore(containerURL: directory).removeAllBlocked()
+
+        let reloaded: LearnedWords = await withCheckedContinuation { continuation in
+            keyboard.reload { continuation.resume(returning: $0) }
+        }
+        #expect(reloaded.blockedCount == 0)
+        keyboard.update { $0.learn("vocaphone") }
+        keyboard.flush(timeout: .seconds(2))
+        let onDisk = LearnedWordStore(containerURL: directory).snapshot()
+        #expect(onDisk.blockedCount == 0)
+        #expect(onDisk.contains("vocaphone"))
+    }
 }
 
 /// The engine end of all of the above, with the preferences they read pinned.

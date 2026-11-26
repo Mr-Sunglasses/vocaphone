@@ -362,6 +362,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Edited in the app, like the vocabulary: once per appearance, never
         // per keystroke. A few hundred bytes of JSON from the shared defaults.
         typing.installSnippets(SnippetStore.snippets)
+        // Settings may have reset learned or blocked words meanwhile. Read
+        // off the main thread; nothing waits for it.
+        typing.reloadLearnedWords()
         applyDocumentTraits()
         // Shift was last set for wherever the keyboard was before, and iOS
         // sends no `textDidChange` for a field it is merely shown over.

@@ -305,24 +305,55 @@ final class LearnedWordStore: @unchecked Sendable {
     /// Unlike a learned word, this is something the user asked for and was
     /// told had happened. Queued like a word, a reset the app was suspended
     /// before writing left the old file in place, and every word came back.
+    ///
+    /// Starts from the file, not from this store's copy: Settings loads its
+    /// store when it opens, and the keyboard may have blocked or learned
+    /// words since. Writing the stale copy back would undo those.
     func removeAll() {
-        queue.sync {
-            cached.removeAll()
-            pending = nil
-        }
-        // Behind any write already queued, so an older list cannot land after.
-        let remaining = queue.sync { cached }
-        writer.sync { write(remaining) }
+        rewrite { $0.removeAll() }
     }
 
-    /// Unblocks every word, the same way: on disk before it returns.
+    /// Unblocks every word, the same way: on disk before it returns, and
+    /// starting from the file, so words learned since are not lost.
     func removeAllBlocked() {
-        queue.sync {
-            cached.removeAllBlocked()
-            pending = nil
+        rewrite { $0.removeAllBlocked() }
+    }
+
+    /// Applies `change` to the file as it is now and writes the result,
+    /// behind any write already queued so an older list cannot land after.
+    private func rewrite(_ change: (inout LearnedWords) -> Void) {
+        writer.sync {
+            let onDisk = Self.read(from: fileURL)
+            let remaining = queue.sync { () -> LearnedWords in
+                var words = onDisk ?? cached
+                change(&words)
+                cached = words
+                pending = nil
+                return words
+            }
+            write(remaining)
         }
-        let remaining = queue.sync { cached }
-        writer.sync { write(remaining) }
+    }
+
+    /// Picks up what another process wrote — Settings' resets above — so a
+    /// long-lived keyboard does not write its old copy back over them.
+    ///
+    /// Read on the writer queue, behind any write of this store's own, and
+    /// handed back on the main queue. Skipped while a change of this store's
+    /// is still waiting to be written: that change is newer than the file.
+    func reload(_ completion: @escaping @Sendable (LearnedWords) -> Void) {
+        writer.async { [self] in
+            // No file (no Full Access, or nothing written yet): the copy in
+            // memory is all there is.
+            guard let onDisk = Self.read(from: fileURL) else { return }
+            let words = queue.sync { () -> LearnedWords? in
+                guard pending == nil else { return nil }
+                cached = onDisk
+                return onDisk
+            }
+            guard let words else { return }
+            DispatchQueue.main.async { completion(words) }
+        }
     }
 
     private func write(_ words: LearnedWords) {
