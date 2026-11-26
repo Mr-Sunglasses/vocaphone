@@ -157,6 +157,11 @@ used unchanged and the diagnostic log records only that it happened
 (`grammar_failed` and similar), never any text. It reports nothing to usage
 statistics.
 
+**Blocked suggestions** (Android): words long-pressed off the keyboard's
+suggestion strip are stored as a list of words in the app's settings store on
+the phone, never the text they appeared in. Settings › Keyboard shows how many
+there are and resets them.
+
 **Custom words and replacements** (Settings › Dictation on iOS, Settings ›
 Personal dictionary on Android) are stored on the phone: in the App Group
 defaults on iOS, beside the other dictation settings, and in the app's own

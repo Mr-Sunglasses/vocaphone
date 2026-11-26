@@ -55,6 +55,19 @@ class AutocorrectMemoryTest {
     }
 
     @Test
+    fun `undone twice, a learned fix is unlearned, not just suppressed`() {
+        val learned = AutocorrectMemory.EMPTY.withPick("teh", "the").withPick("teh", "the").withPick("teh", "tea")
+        val once = learned.withRejection("teh", "the")
+        assertEquals(2, once.picks["teh"]?.get("the"))
+        val twice = once.withRejection("teh", "the")
+        assertNull(twice.picks["teh"]?.get("the"))
+        assertEquals(1, twice.picks["teh"]?.get("tea"))
+        val only = AutocorrectMemory.EMPTY.withPick("hte", "the").withRejection("hte", "the").withRejection("hte", "the")
+        assertNull(only.picks["hte"])
+        assertTrue(only.isRejected("hte", "the"))
+    }
+
+    @Test
     fun `space keeps the typed capitalisation`() {
         val memory = AutocorrectMemory.EMPTY.withPick("teh", "the").withPick("teh", "the")
         assertEquals("the", fix("teh", memory))
@@ -103,7 +116,7 @@ class AutocorrectMemoryTest {
     fun `the undo puts the typed word back in place of the fix and its space`() {
         assertEquals(
             KeyboardCommand.ReplaceBeforeCursor(4, "teh"),
-            LearnedFixUndo(typed = "teh", fixed = "the").command(),
+            AutocorrectUndo(typed = "teh", fixed = "the", boundary = " ").deleteCommand(),
         )
     }
 

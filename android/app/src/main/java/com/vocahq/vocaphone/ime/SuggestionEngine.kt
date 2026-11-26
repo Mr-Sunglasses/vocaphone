@@ -181,8 +181,9 @@ internal class SuggestionDictionary(
         if (composing.isNotEmpty()) {
             // The editor read can already hold the word being typed.
             val previous = SuggestionEngine.lastWord(before.removeSuffix(composing)).orEmpty()
-            val allowed = gate(previous, options.allowSwears, personal)
+            val allowed = gate(previous, options.allowSwears, personal, options.blocked)
             val personalHits = PersonalDictionary.completions(personalRaw, composing)
+                .filter { it.lowercase() !in options.blocked }
             val completions = complete(composing, allowed = allowed)
             // A held-back word the user typed in full stays as typed.
             val typedHeldBack = isHeldBack(composing, options.allowSwears, personal)
@@ -208,18 +209,32 @@ internal class SuggestionDictionary(
             } else {
                 null
             }
-            val words = (listOfNotNull(learned) + personalHits + completions + corrections)
-                .distinct()
-                // A fix the user undid twice is never the first offer.
-                .sortedBy { options.memory.isRejected(composing, it) }
-                .take(3)
+            // A learned fix is what space makes, so it is the only one worked out then.
+            val autocorrection = options.autocorrect?.takeIf { learned == null && !typedHeldBack }?.let { tuning ->
+                autocorrection(composing, before, after, previous, allowed, personalRaw, options, tuning, shouldAbort)
+            }
             val save = saveCandidate(
                 word = composing,
                 personalRaw = personalRaw,
                 // Still typing a known word: hello/help already fill the strip.
                 hasCompletions = personalHits.isNotEmpty() || completions.isNotEmpty(),
             )
-            return SuggestionStrip(words, emojis, saveWord = save)
+            // The word as typed sits beside a pending correction, unless the
+            // + chip already offers it.
+            val keepTyped = composing.takeIf { autocorrection != null && save == null }
+            val words = (listOfNotNull(learned, autocorrection) + personalHits + completions + corrections)
+                .distinct()
+                // A fix the user undid twice is never the first offer.
+                .sortedBy { options.memory.isRejected(composing, it) }
+                .take(if (keepTyped != null) 2 else 3)
+            return SuggestionStrip(
+                words,
+                emojis,
+                saveWord = save,
+                autocorrection = autocorrection,
+                forWord = composing,
+                keepTyped = keepTyped,
+            )
         }
         val finished = SuggestionEngine.lastTypedWord(before)
         val save = saveCandidate(
@@ -234,7 +249,7 @@ internal class SuggestionDictionary(
                 val nearby = similar(
                     span.word,
                     shouldAbort = shouldAbort,
-                    allowed = gate(previous, options.allowSwears, personal),
+                    allowed = gate(previous, options.allowSwears, personal, options.blocked),
                 ).sortedBy { options.memory.isRejected(span.word, it) }
                 if (nearby.isNotEmpty()) {
                     return SuggestionStrip(nearby, emojis, replacesWord = true, saveWord = save)
@@ -243,22 +258,124 @@ internal class SuggestionDictionary(
         }
         val previous = SuggestionEngine.lastWord(before).orEmpty()
         return SuggestionStrip(
-            next(previous, allowed = gate(previous, options.allowSwears, personal)),
+            next(previous, allowed = gate(previous, options.allowSwears, personal, options.blocked)),
             emojis,
             saveWord = save,
         )
     }
 
-    /** Whether the strip may offer [word] after [previous]; the user's own words always. */
-    fun allows(word: String, previous: String?, allowSwears: Boolean, personal: Set<String>): Boolean =
-        word.lowercase() in personal || !neverSuggest.blocks(word, previous, allowSwears)
+    /**
+     * The correction space should make for [composing], or null to leave it.
+     * Walks the word list, so it runs with the strip, off the composition
+     * thread; see [Autocorrect] for the decision itself.
+     */
+    private fun autocorrection(
+        composing: String,
+        before: String,
+        after: String,
+        previous: String,
+        allowed: (String) -> Boolean,
+        personalRaw: String,
+        options: StripOptions,
+        tuning: AutocorrectTuning,
+        shouldAbort: () -> Boolean,
+    ): String? {
+        val lower = composing.lowercase()
+        val personalTerms = PersonalDictionary.terms(personalRaw)
+        val isPersonal = personalTerms.any { it.equals(composing, ignoreCase = true) }
+        val known = isKnown(lower)
+        // Only a word that might be corrected pays for the scan.
+        val candidates = if (known || isPersonal || lower.length < Autocorrect.MIN_LENGTH) {
+            emptyList()
+        } else {
+            val listed = autocorrectCandidates(lower, shouldAbort, allowed) ?: return null
+            // The user's own words are candidates too, as fairly common ones.
+            val own = personalTerms.mapNotNull { term ->
+                val edits = SuggestionEngine.editDistance(lower, term.lowercase(), max = 2)
+                if (edits in 1..2 && allowed(term)) AutocorrectCandidate(term, PERSONAL_RANK, edits) else null
+            }
+            (listed + own).filterNot { options.memory.isRejected(composing, it.word) }
+        }
+        val beforeWord = SuggestionEngine.beforeComposing(before, composing)
+        val decision = Autocorrect.decide(
+            AutocorrectContext(
+                typed = composing,
+                tokenBefore = beforeWord.takeLastWhile { !it.isWhitespace() },
+                atSentenceStart = SentenceBoundary.endsSentence(beforeWord),
+                midWord = after.firstOrNull()?.let { it.isLetterOrDigit() } == true,
+                isKnown = known,
+                isPersonal = isPersonal,
+                asserted = lower in options.asserted,
+                heldBack = isHeldBack(composing, options.allowSwears, personalSet(personalRaw)),
+                candidates = candidates,
+                followers = if (previous.isEmpty()) emptySet() else bigrams[previous.lowercase()].orEmpty().toHashSet(),
+                tuning = tuning,
+            ),
+        )
+        val fix = decision.replacement ?: return null
+        // The short-word table's fixes are not list words; gate them the same.
+        return fix.takeIf { allowed(it) && !options.memory.isRejected(composing, it) }
+    }
+
+    /**
+     * Every listed word within two edits of [lower] that [allowed] lets
+     * through, in frequency order, with its rank and distance. Unlike
+     * [similar] it never stops early: a correction needs its competitors as
+     * well as its winner. Null when [shouldAbort] says so.
+     */
+    fun autocorrectCandidates(
+        lower: String,
+        shouldAbort: () -> Boolean = { false },
+        allowed: (String) -> Boolean = ALLOW_ALL,
+        cap: Int = AUTOCORRECT_POOL,
+    ): List<AutocorrectCandidate>? {
+        if (lower.length < 2) return emptyList()
+        val found = ArrayList<AutocorrectCandidate>()
+        val minLen = (lower.length - 2).coerceAtLeast(1)
+        val maxLen = lower.length + 2
+        val typedMask = letterMask(lower)
+        val scratch = SuggestionEngine.EditDistanceScratch(maxLen)
+        for (index in words.indices) {
+            if ((index and 127) == 0 && shouldAbort()) return null
+            val length = lengths[index]
+            if (length < minLen || length > maxLen) continue
+            if ((typedMask xor letterMasks[index]).countOneBits() > MAX_LETTER_DIFFERENCE) continue
+            val word = words[index]
+            if (word == lower) continue
+            val distance = SuggestionEngine.editDistance(lower, word, max = 2, scratch = scratch)
+            if (distance !in 1..2 || !allowed(word)) continue
+            found.add(AutocorrectCandidate(word, index, distance))
+            if (found.size >= cap) break
+        }
+        return found
+    }
+
+    /**
+     * Whether the strip may offer [word] after [previous]: never one the user
+     * blocked, always one of the user's own words otherwise.
+     */
+    fun allows(
+        word: String,
+        previous: String?,
+        allowSwears: Boolean,
+        personal: Set<String>,
+        blocked: Set<String> = emptySet(),
+    ): Boolean {
+        val key = word.lowercase()
+        if (key in blocked) return false
+        return key in personal || !neverSuggest.blocks(word, previous, allowSwears)
+    }
 
     /** [word] is one the keyboard never offers, and not one of the user's. */
     fun isHeldBack(word: String, allowSwears: Boolean, personal: Set<String>): Boolean =
         neverSuggest.blocks(word, allowSwears) && word.lowercase() !in personal
 
-    private fun gate(previous: String?, allowSwears: Boolean, personal: Set<String>): (String) -> Boolean =
-        { word -> allows(word, previous, allowSwears, personal) }
+    private fun gate(
+        previous: String?,
+        allowSwears: Boolean,
+        personal: Set<String>,
+        blocked: Set<String> = emptySet(),
+    ): (String) -> Boolean = { word -> allows(word, previous, allowSwears, personal, blocked) }
 
     private fun saveCandidate(
         word: String,
@@ -398,6 +515,12 @@ internal class SuggestionDictionary(
         /** Candidates [TapRanking] chooses among when it knows where the taps landed. */
         private const val RANK_POOL = 8
 
+        /** Enough near words for a correction to know its competitors; most typos have under ten. */
+        private const val AUTOCORRECT_POOL = 48
+
+        /** Where a personal dictionary word ranks as an autocorrect candidate: common, not top. */
+        private const val PERSONAL_RANK = 300
+
         val ALLOW_ALL: (String) -> Boolean = { true }
 
         fun personalSet(personalRaw: String): Set<String> =
@@ -470,6 +593,12 @@ internal class StripOptions(
     /** "Learn my typing fixes": a learned fix leads the strip. */
     val learnedFixes: Boolean = false,
     val taps: FloatArray? = null,
+    /** Autocorrect is on in this field, this sure; null works out no correction. */
+    val autocorrect: AutocorrectTuning? = null,
+    /** Words put back after a correction in this field, lowercase: never corrected again here. */
+    val asserted: Set<String> = emptySet(),
+    /** Words the user blocked with a long press, lowercase: never offered or corrected to. */
+    val blocked: Set<String> = emptySet(),
 ) {
     companion object {
         val DEFAULT = StripOptions()
@@ -550,6 +679,17 @@ internal object SuggestionEngine {
         val chunk = before.subSequence(before.length - first, before.length)
         if (chunk.any(::isWordChar)) return first
         return first + wordBefore(before.subSequence(0, before.length - first))
+    }
+
+    /**
+     * [before] without the composing word at its end. The editor read is
+     * coalesced, so it may hold all of [composing], a prefix of it, or none.
+     */
+    fun beforeComposing(before: String, composing: String): String {
+        for (length in composing.length downTo 1) {
+            if (before.endsWith(composing.substring(0, length))) return before.dropLast(length)
+        }
+        return before
     }
 
     fun lineBefore(before: CharSequence): Int {

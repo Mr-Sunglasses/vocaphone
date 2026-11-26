@@ -23,6 +23,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -104,7 +105,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import com.vocahq.vocaphone.R
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -129,6 +132,7 @@ import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.writing.WritingSuggestion
+import com.vocahq.vocaphone.settings.BlockedSuggestions
 import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import java.io.File
@@ -193,6 +197,7 @@ internal fun VocaPhoneKeyboard(
     typingMemory: AutocorrectMemory = AutocorrectMemory.EMPTY,
     onLearnPick: (typed: String, picked: String) -> Unit = { _, _ -> },
     onRejectFix: (typed: String, fix: String) -> Unit = { _, _ -> },
+    onBlockSuggestion: (String) -> Unit = {},
     onMicHoldStart: () -> Unit = {},
     onMicHoldEnd: () -> Unit = {},
     readTextBeforeCursor: () -> String? = { null },
@@ -264,8 +269,8 @@ internal fun VocaPhoneKeyboard(
     // dead zone, and when a key was last touched.
     val keyBounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
     val keyTouch = remember { KeyTouchClock() }
-    // A learned fix the space bar just made, which the next delete takes back.
-    val learnedUndo = remember { arrayOfNulls<LearnedFixUndo>(1) }
+    // The correction a word boundary just made, which the next delete takes back.
+    val corrector = remember { TypingCorrector() }
     // Delete slid left by words, while that press lasts.
     val deleteSlide = remember { arrayOfNulls<DeleteSlide>(1) }
     val context = LocalContext.current
@@ -299,7 +304,7 @@ internal fun VocaPhoneKeyboard(
         keyPreview.value = null
         deleteHoldBefore[0] = ""
         tapTrace.clear()
-        learnedUndo[0] = null
+        corrector.reset()
         deleteSlide[0] = null
     }
 
@@ -338,9 +343,10 @@ internal fun VocaPhoneKeyboard(
                 composing = "",
                 capitalizeAfterSpace = false,
                 lastWasSpace = false,
+                token = "",
             )
             tapTrace.clear()
-            learnedUndo[0] = null
+            corrector.forget()
         }
     }
     LaunchedEffect(settings.asciiEmojiEnabled, emojiCategory) {
@@ -382,6 +388,9 @@ internal fun VocaPhoneKeyboard(
     // Learned fixes are learned and made only where suggestions are, and only
     // in fields that allow learning: never a password, a code or an incognito tab.
     val learnsFixes = settings.learnTypingFixes && editor.learningAllowed
+    // Space and `.,!?;:` correct a typo: Corrections on, in a field that allows it.
+    val autocorrects = composeWords && settings.correctionsEnabled && editor.autocorrectAllowed
+    val blockedWords = remember(settings.blockedSuggestions) { BlockedSuggestions.words(settings.blockedSuggestions) }
     // Mid-word the strip is built from [keyboardState.composing]; surrounding
     // editor text is only needed once the word is committed. Keying on
     // editorText during a word ran a second scan ~50ms after every letter.
@@ -396,6 +405,11 @@ internal fun VocaPhoneKeyboard(
         settings.suggestSwearWords,
         typingMemory,
         learnsFixes,
+        autocorrects,
+        settings.autocorrectStrength,
+        corrector.assertedVersion,
+        blockedWords,
+        settings.snippets,
     ) {
         suggestionStrip = if (!composeWords || suggestions == null) {
             SuggestionStrip(emptyList())
@@ -406,17 +420,21 @@ internal fun VocaPhoneKeyboard(
                 memory = typingMemory,
                 learnedFixes = learnsFixes,
                 taps = tapTrace.snapshot(keyboardState.composing),
+                autocorrect = AutocorrectTuning.of(settings.autocorrectStrength).takeIf { autocorrects },
+                asserted = corrector.asserted,
+                blocked = blockedWords,
             )
+            val composing = keyboardState.composing
             withContext(Dispatchers.Default) {
                 suggestions.strip(
-                    composing = keyboardState.composing,
+                    composing = composing,
                     before = editorText.before,
                     after = editorText.after,
                     correctionsEnabled = settings.correctionsEnabled,
                     personalRaw = personalRaw,
                     shouldAbort = { !isActive },
                     options = options,
-                )
+                ).copy(extras = TypingChips.extras(editorText.before, composing, settings.snippets))
             }
         }
     }
@@ -440,7 +458,9 @@ internal fun VocaPhoneKeyboard(
             addAll(swipeChoices.map { SuggestionItem(it) })
         }
     } else {
-        KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
+        // Right after a correction: what was typed, to put back, and the other readings.
+        corrector.undo?.takeIf { keyboardState.composing.isEmpty() }?.strip
+            ?: KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
     }
     val swipeReplacesWord = swipeChoicesActive
     // The button is there whenever the field has words to check, typing or
@@ -466,15 +486,16 @@ internal fun VocaPhoneKeyboard(
     fun handleDelete(heldMs: Long) {
         if (heldMs == 0L) {
             deleteSlide[0] = null
-            // Right after the space bar made a learned fix: put back what was
-            // typed, and count it against the fix.
-            val undo = learnedUndo[0]
-            learnedUndo[0] = null
+            // Right after a correction: put back what was typed, count it
+            // against the fix, and leave the word alone in this field.
+            val undo = corrector.undo
+            corrector.undo = null
             if (undo != null && keyboardState.composing.isEmpty()) {
                 clearSwipe()
-                keyboardState = keyboardState.copy(lastWasSpace = false, capitalizeAfterSpace = false)
-                onCommand(undo.command())
+                keyboardState = keyboardState.copy(lastWasSpace = false, capitalizeAfterSpace = false, token = undo.typed)
+                onCommand(undo.deleteCommand())
                 onRejectFix(undo.typed, undo.fixed)
+                corrector.assert(undo.typed)
                 deleteHoldBefore[0] = ""
                 return
             }
@@ -532,7 +553,7 @@ internal fun VocaPhoneKeyboard(
         val slide = deleteSlide[0] ?: DeleteSlide(readTextBeforeCursor() ?: return).also {
             deleteSlide[0] = it
             clearSwipe()
-            learnedUndo[0] = null
+            corrector.forget()
             tapTrace.clear()
             keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false)
         }
@@ -543,6 +564,43 @@ internal fun VocaPhoneKeyboard(
     }
 
     val currentEditorText = rememberUpdatedState(editorText)
+
+    /**
+     * The chips that are not a word to type: put back or replace a correction,
+     * keep a word as typed, expand a snippet, type a sum's result. True when
+     * [item] was one of them; see [SuggestionKind].
+     */
+    fun handleAssistPick(item: SuggestionItem): Boolean {
+        val undo = corrector.undo
+        val commands = TypingAssist.pick(item, undo, currentEditorText.value.after) ?: run {
+            if (item.kind == SuggestionKind.KEEP_TYPED) corrector.assert(item.text)
+            return false
+        }
+        corrector.undo = null
+        clearSwipe()
+        tapTrace.clear()
+        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false, token = "")
+        commands.forEach(onCommand)
+        if (undo != null && (item.kind == SuggestionKind.REVERT || item.kind == SuggestionKind.REPLACE_FIX)) {
+            onRejectFix(undo.typed, undo.fixed)
+            if (item.kind == SuggestionKind.REVERT) corrector.assert(undo.typed)
+            if (item.kind == SuggestionKind.REPLACE_FIX && learnsFixes && LearnedFixes.isCorrection(undo.typed, item.text)) {
+                onLearnPick(undo.typed, item.text)
+            }
+        }
+        return true
+    }
+
+    /** Long press on a word chip: never offered, predicted or corrected to again. */
+    fun blockSuggestion(item: SuggestionItem) {
+        if (!item.kind.blockable || item.isEmoji || item.savesWord) return
+        onBlockSuggestion(item.text)
+        suggestionStrip = suggestionStrip.without(item.text)
+        swipeChoices = swipeChoices.filterNot { it.equals(item.text, ignoreCase = true) }
+        corrector.undo = corrector.undo?.let { pending ->
+            pending.copy(alternatives = pending.alternatives.filterNot { it.equals(item.text, ignoreCase = true) })
+        }
+    }
 
     /**
      * The learned fix space should make for the word being typed, or null.
@@ -557,7 +615,7 @@ internal fun VocaPhoneKeyboard(
             typed = typed,
             memory = typingMemory,
             isWord = { dictionary.isKnown(it) || it.lowercase() in personalWords },
-            blocked = { !dictionary.allows(it, null, allowSwears, personalWords) },
+            blocked = { !dictionary.allows(it, null, allowSwears, personalWords, blockedWords) },
             personalSpelling = { fix -> PersonalDictionary.terms(personalRaw).firstOrNull { it.equals(fix, ignoreCase = true) } },
         )
     }
@@ -567,7 +625,7 @@ internal fun VocaPhoneKeyboard(
             handleDelete(0L)
             return
         }
-        learnedUndo[0] = null
+        corrector.undo = null
         val tapX = tapSink[0]
         val tapY = tapSink[1]
         tapSink[0] = Float.NaN
@@ -582,11 +640,20 @@ internal fun VocaPhoneKeyboard(
         if (key.type == KeyboardKeyType.CHARACTER) {
             swipeSeedShift = keyboardState.shift
         }
-        // Space after a typo the user has fixed the same way twice fixes it.
+        // Space or `.,!?;:` after a typo corrects it: a fix the user taught
+        // first, then the one the strip worked out for this word.
         val typed = keyboardState.composing
-        val fix = if (key.type == KeyboardKeyType.SPACE && !keyboardState.lastWasSpace) learnedFixForSpace(typed) else null
-        if (fix != null && fix != typed) {
-            onCommand(KeyboardCommand.SetComposingText(fix))
+        val boundary = TypingCorrector.boundary(key)
+            ?.takeUnless { key.type == KeyboardKeyType.SPACE && keyboardState.lastWasSpace }
+        val fix = boundary?.let {
+            TypingCorrector.correction(typed, it, learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted)
+        }
+        if (fix != null) onCommand(KeyboardCommand.SetComposingText(fix))
+        // `?123` finished the word; the `?` it was switched for still corrects it.
+        val held = corrector.takeHeld(boundary)
+        held?.let { (word, heldFix) -> onCommand(KeyboardCommand.ReplaceBeforeCursor(word.length, heldFix)) }
+        if (key.type == KeyboardKeyType.LAYER_SWITCH) {
+            corrector.hold(typed, TypingCorrector.correction(typed, ",", learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted))
         }
         val text = currentEditorText.value
         val reduction = KeyboardReducer.press(
@@ -596,11 +663,18 @@ internal fun VocaPhoneKeyboard(
             composeWords = composeWords,
             hasSelection = text.hasSelection || text.selected.any { it.isLetter() },
             autoCapitalize = settings.autoCapitalizeEnabled,
+            doubleSpacePeriod = settings.doubleSpacePeriod,
         )
         keyboardState = reduction.state
         reduction.command?.let(onCommand)
-        if (fix != null && fix != typed && reduction.command == KeyboardCommand.CommitText(" ")) {
-            learnedUndo[0] = LearnedFixUndo(typed = typed, fixed = fix)
+        val corrected = if (fix != null) typed to fix else held
+        if (corrected != null && boundary != null && boundary != "'" && reduction.command == KeyboardCommand.CommitText(boundary)) {
+            corrector.undo = AutocorrectUndo(
+                typed = corrected.first,
+                fixed = corrected.second,
+                boundary = boundary,
+                alternatives = suggestionStrip.words.takeIf { suggestionStrip.forWord == corrected.first }.orEmpty(),
+            )
         }
         val composing = reduction.state.composing
         if (composing.isEmpty()) {
@@ -639,7 +713,7 @@ internal fun VocaPhoneKeyboard(
 
     fun applySwipe(matches: List<String>, similar: List<String>) {
         if (matches.isEmpty()) return
-        learnedUndo[0] = null
+        corrector.forget()
         tapTrace.clear()
         KeyboardChrome.swipePrefixCommand(keyboardState.composing)?.let(onCommand)
         val capitalize = keyboardState.shift != ShiftState.OFF
@@ -651,10 +725,7 @@ internal fun VocaPhoneKeyboard(
             swipeMatches = matches.map(::cased),
             similar = similar.map(::cased),
         )
-        keyboardState = keyboardState.copy(
-            composing = "",
-            lastWasSpace = true,
-            capitalizeAfterSpace = false,
+        keyboardState = keyboardState.afterWordAndSpace(SystemClock.uptimeMillis()).copy(
             shift = if (keyboardState.shift == ShiftState.LOCKED) ShiftState.LOCKED else ShiftState.OFF,
         )
         onSuggestionPicked(chosen, false)
@@ -680,7 +751,7 @@ internal fun VocaPhoneKeyboard(
 
     // Swiped words are held back like typed ones; read on the main thread
     // before each swipe is matched.
-    val swipeGate by rememberUpdatedState(settings.suggestSwearWords to personalWords)
+    val swipeGate by rememberUpdatedState(Triple(settings.suggestSwearWords, personalWords, blockedWords))
 
     // The consumer below outlives the composition that started it, so it has to
     // reach the current `applySwipe` rather than the one it closed over: that
@@ -690,7 +761,7 @@ internal fun VocaPhoneKeyboard(
     LaunchedEffect(suggestions) {
         val dictionary = suggestions ?: return@LaunchedEffect
         for (trace in swipePaths) {
-            val (allowSwears, personal) = swipeGate
+            val (allowSwears, personal, blocked) = swipeGate
             val resolved = withContext(Dispatchers.Default) {
                 val abort = { !isActive }
                 val matches = dictionary.swipe(
@@ -698,7 +769,7 @@ internal fun VocaPhoneKeyboard(
                     shouldAbort = abort,
                     points = trace.points,
                     previousWord = trace.previousWord,
-                    allowed = { word -> dictionary.allows(word, trace.previousWord, allowSwears, personal) },
+                    allowed = { word -> dictionary.allows(word, trace.previousWord, allowSwears, personal, blocked) },
                 )
                 // Strip after a swipe is the other same-path words, not
                 // edit-distance cousins of the winner. Those cousins are
@@ -724,9 +795,9 @@ internal fun VocaPhoneKeyboard(
     val latestLongPressVariant by rememberUpdatedState(::commitLongPressVariant)
     val latestCursorMove by rememberUpdatedState<(Int, Int) -> Unit> { positions, lines ->
         clearSwipe()
-        learnedUndo[0] = null
+        corrector.forget()
         tapTrace.clear()
-        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
+        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, token = "")
         onCommand(KeyboardCommand.MoveCursor(positions, lines))
     }
     val latestEmojiUsed by rememberUpdatedState(onEmojiUsed)
@@ -879,8 +950,10 @@ internal fun VocaPhoneKeyboard(
                     },
                     onPaste = { onPasteClipboard(clipboardChip?.fullText.orEmpty()) },
                     onDismissClipboard = onDismissClipboard,
-                    onSuggestion = { item ->
-                        learnedUndo[0] = null
+                    onSuggestionLongPress = ::blockSuggestion,
+                    onSuggestion = onSuggestion@{ item ->
+                        if (handleAssistPick(item)) return@onSuggestion
+                        corrector.undo = null
                         tapTrace.clear()
                         if (item.isEmoji) {
                             clearSwipe()
@@ -894,11 +967,7 @@ internal fun VocaPhoneKeyboard(
                             onSaveToDictionary(item.text)
                             if (keyboardState.composing.isNotEmpty()) {
                                 clearSwipe()
-                                keyboardState = keyboardState.copy(
-                                    composing = "",
-                                    lastWasSpace = true,
-                                    capitalizeAfterSpace = false,
-                                )
+                                keyboardState = keyboardState.afterWordAndSpace(SystemClock.uptimeMillis())
                                 onSuggestionPicked(item.text, false)
                             }
                         } else {
@@ -924,11 +993,7 @@ internal fun VocaPhoneKeyboard(
                             }
                             swipeChoices = emptyList()
                             swipeWord = if (replace) item.text else null
-                            keyboardState = keyboardState.copy(
-                                composing = "",
-                                lastWasSpace = true,
-                                capitalizeAfterSpace = false,
-                            )
+                            keyboardState = keyboardState.afterWordAndSpace(SystemClock.uptimeMillis())
                             onSuggestionPicked(item.text, replace)
                         }
                     },
@@ -1234,6 +1299,7 @@ private fun DictationBar(
     onPaste: () -> Unit,
     onDismissClipboard: () -> Unit,
     onSuggestion: (SuggestionItem) -> Unit,
+    onSuggestionLongPress: (SuggestionItem) -> Unit = {},
     inline: List<View> = emptyList(),
     stripAnimates: Boolean = false,
     replacesSelection: Boolean = false,
@@ -1366,7 +1432,7 @@ private fun DictationBar(
                     WritingFixChip(suggestion = writingChipList.first(), onApply = onWritingApply)
                     if (suggestions.isNotEmpty()) {
                         // Two words beside the fix: three left each too narrow to read.
-                        SuggestionStripRow(suggestions = suggestions.take(2), onSuggestion = onSuggestion)
+                        SuggestionStripRow(suggestions = suggestions.take(2), onSuggestion = onSuggestion, onLongPress = onSuggestionLongPress)
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
@@ -1386,7 +1452,7 @@ private fun DictationBar(
                         label = "strip",
                     ) { shown ->
                         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                            SuggestionStripRow(suggestions = shown, onSuggestion = onSuggestion)
+                            SuggestionStripRow(suggestions = shown, onSuggestion = onSuggestion, onLongPress = onSuggestionLongPress)
                         }
                     }
                 }
@@ -2552,6 +2618,7 @@ private fun ClipboardChipButton(
 private fun RowScope.SuggestionStripRow(
     suggestions: List<SuggestionItem>,
     onSuggestion: (SuggestionItem) -> Unit,
+    onLongPress: (SuggestionItem) -> Unit = {},
 ) {
     if (suggestions.size <= 3) {
         Row(
@@ -2565,6 +2632,7 @@ private fun RowScope.SuggestionStripRow(
                 SuggestionChip(
                     item = item,
                     onClick = { onSuggestion(item) },
+                    onLongClick = { onLongPress(item) },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -2600,6 +2668,7 @@ private fun RowScope.SuggestionStripRow(
                 SuggestionChip(
                     item = item,
                     onClick = { onSuggestion(item) },
+                    onLongClick = { onLongPress(item) },
                     modifier = Modifier.widthIn(min = if (item.isEmoji) 44.dp else 72.dp),
                 )
             }
@@ -2621,35 +2690,56 @@ private fun StripDivider() {
 private fun SuggestionChip(
     item: SuggestionItem,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val view = LocalView.current
+    // A word on offer can be blocked with a long press, or TalkBack's action.
+    val blockable = item.kind.blockable && !item.isEmoji && !item.savesWord
     Surface(
         modifier = modifier
             .height(40.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = if (blockable) {
+                    {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onLongClick()
+                    }
+                } else {
+                    null
+                },
+                onLongClickLabel = if (blockable) "Never suggest" else null,
+            )
             .semantics {
                 role = Role.Button
-                contentDescription = if (item.savesWord) {
-                    "Add ${item.text} to dictionary"
-                } else {
-                    item.text
+                contentDescription = suggestionDescription(item)
+                if (blockable) {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Never suggest ${item.text}") {
+                            onLongClick()
+                            true
+                        },
+                    )
                 }
             },
         shape = RoundedCornerShape(10.dp),
         color = Color.Transparent,
         // Adding to the dictionary is an action, not a word: say so in colour
         // rather than with a filled chip.
-        contentColor = if (item.savesWord) {
+        contentColor = if (item.savesWord || item.kind == SuggestionKind.SNIPPET || item.kind == SuggestionKind.RESULT) {
             MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.onSurface
         },
-        onClick = onClick,
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp)) {
             Text(
-                text = if (item.savesWord) "+ ${item.text}" else item.text,
+                text = suggestionLabel(item),
                 fontSize = if (item.isEmoji) 20.sp else 15.sp,
-                fontWeight = FontWeight.Medium,
+                // What space will type stands out, as on a system keyboard.
+                fontWeight = if (item.kind == SuggestionKind.AUTOCORRECT) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

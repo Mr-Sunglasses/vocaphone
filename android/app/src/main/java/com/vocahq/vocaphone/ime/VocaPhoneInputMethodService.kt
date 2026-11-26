@@ -191,6 +191,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     /** Push-to-talk let go before the dictation was listening: finish once it is. */
     private var pushToTalkFinishPending = false
 
+    /** [editorSession] the last dictation was typed into; undo works only there. */
+    private var insertionSession = -1
+
     /**
      * Writing check: the rules everywhere, and the app's own grammar model
      * ([com.vocahq.vocaphone.grammar.GrammarCorrector], shared with
@@ -378,6 +381,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 typingMemory = memory,
                 onLearnPick = ::learnTypingPick,
                 onRejectFix = ::rejectTypingFix,
+                onBlockSuggestion = ::blockSuggestion,
                 onMicHoldStart = ::startPushToTalk,
                 onMicHoldEnd = ::finishPushToTalk,
                 readTextBeforeCursor = ::readTextBeforeCursorForSlide,
@@ -679,6 +683,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 collapseTo = (target as? DictationSelection.Target.CollapseTo)?.position ?: -1,
             )
             val committed = committedText != null
+            val insertionStart = when (target) {
+                DictationSelection.Target.AsIs ->
+                    if (lastSelStart >= 0 && lastSelEnd >= 0) minOf(lastSelStart, lastSelEnd) else -1
+                is DictationSelection.Target.CollapseTo -> target.position
+            }
             // The composing region was finished before the commit, so the
             // half-typed word stays in the field and the keyboard has to drop
             // it. Cleared here rather than left to onUpdateSelection, whose
@@ -691,13 +700,44 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 followDictationForCorrections(committedText)
                 syncShiftFromCursor()
                 refreshEditorText()
-                InsertionReport(InsertionOutcome.INSERTED)
+                insertionSession = editorSession
+                InsertionReport(
+                    InsertionOutcome.INSERTED,
+                    applied = AppliedInsertion(currentInputEditorInfo?.packageName, insertionStart, committedText),
+                )
             } else {
                 InsertionReport(InsertionOutcome.UNSUPPORTED_EDITOR)
             }
         }
 
-    override suspend fun undo(insertion: AppliedInsertion): Boolean = false
+    /**
+     * Removes the last dictation this keyboard typed, if it is still exactly
+     * where it was put: same field, cursor right after it, nothing selected.
+     * One bounded read, only when asked.
+     */
+    override suspend fun undo(insertion: AppliedInsertion): Boolean =
+        withContext(Dispatchers.Main.immediate) {
+            if (insertionSession != editorSession) return@withContext false
+            if (insertion.packageName != currentInputEditorInfo?.packageName) return@withContext false
+            if (lastSelStart != lastSelEnd) return@withContext false
+            val connection = currentInputConnection ?: return@withContext false
+            val before = runCatching {
+                connection.getTextBeforeCursor(insertion.inserted.length, 0)?.toString()
+            }.getOrNull()
+            if (!DictationUndo.matches(insertion.inserted, insertion.insertionStart, before, lastSelStart)) {
+                return@withContext false
+            }
+            connection.beginBatchEdit()
+            if (composingRegionActive) connection.finishComposingText()
+            val deleted = connection.deleteSurroundingText(insertion.inserted.length, 0)
+            connection.endBatchEdit()
+            composingRegionActive = false
+            insertionSession = -1
+            editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
+            syncShiftFromCursor()
+            scheduleEditorTextRefresh()
+            deleted
+        }
 
     override fun currentTargetPackage(): String? = currentInputEditorInfo?.packageName
 
@@ -1288,6 +1328,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private fun learnTypingPick(typed: String, picked: String) {
         if (!visibleSettings.value.learnTypingFixes || !editorConfig.learningAllowed || editorConfig.sensitive) return
         scope.launch { container.typingFixes.recordPick(typed, picked) }
+    }
+
+    /** A word long-pressed off the strip: never suggested or corrected to again. */
+    private fun blockSuggestion(word: String) {
+        // Not persistPreference, for the same reason as addPersonalWord.
+        scope.launch { container.settings.addBlockedSuggestion(word) }
     }
 
     /** An automatic fix taken back: undone twice, it is not made again. */

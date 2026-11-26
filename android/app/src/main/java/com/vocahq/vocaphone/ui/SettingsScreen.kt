@@ -84,6 +84,8 @@ import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelEngine
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
+import com.vocahq.vocaphone.settings.AutocorrectStrength
+import com.vocahq.vocaphone.settings.BlockedSuggestions
 import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
@@ -134,6 +136,9 @@ data class KeyboardTypingActions(
     val onLearnTypingFixes: (Boolean) -> Unit = {},
     val onForgetTypingFixes: () -> Unit = {},
     val onSuggestSwearWords: (Boolean) -> Unit = {},
+    val onAutocorrectStrength: (AutocorrectStrength) -> Unit = {},
+    val onDoubleSpacePeriod: (Boolean) -> Unit = {},
+    val onResetBlockedSuggestions: () -> Unit = {},
 )
 
 @Composable
@@ -483,9 +488,37 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsSwitchRow(
                         title = "Corrections",
-                        supporting = "Nearby words in the toolbar.",
+                        supporting = "Space fixes a typo. Delete right after puts back what you typed.",
                         checked = settings.correctionsEnabled,
                         onCheckedChange = onCorrections,
+                    )
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        title = "Autocorrect strength",
+                        options = AutocorrectStrength.entries,
+                        selected = settings.autocorrectStrength,
+                        label = { it.displayName },
+                        detail = {
+                            when (it) {
+                                AutocorrectStrength.MILD -> "One-letter slips with a clear fix"
+                                AutocorrectStrength.NORMAL -> "Typical typos"
+                                AutocorrectStrength.AGGRESSIVE -> "Fixes more, guesses more"
+                            }
+                        },
+                        enabled = settings.correctionsEnabled && settings.suggestionsEnabled,
+                        onSelect = typing.onAutocorrectStrength,
+                    )
+                    SettingsDivider()
+                    val blockedCount = BlockedSuggestions.count(settings.blockedSuggestions)
+                    SettingsActionRow(
+                        title = "Reset blocked suggestions",
+                        supporting = when (blockedCount) {
+                            0 -> "Long-press a suggestion to never see it again."
+                            1 -> "1 word blocked."
+                            else -> "$blockedCount words blocked."
+                        },
+                        enabled = blockedCount > 0,
+                        onClick = typing.onResetBlockedSuggestions,
                     )
                     SettingsDivider()
                     SettingsSwitchRow(
@@ -512,9 +545,16 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsSwitchRow(
                         title = "Capitalize sentences",
-                        supporting = "Shift turns on at the start of a sentence.",
+                        supporting = "Shift turns on at the start of a sentence, not after e.g. or Mr.",
                         checked = settings.autoCapitalizeEnabled,
                         onCheckedChange = onAutoCapitalize,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Double-space period",
+                        supporting = "Two spaces after a word type a period and a space.",
+                        checked = settings.doubleSpacePeriod,
+                        onCheckedChange = typing.onDoubleSpacePeriod,
                     )
                     SettingsDivider()
                     SettingsSwitchRow(
