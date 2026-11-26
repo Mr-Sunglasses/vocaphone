@@ -699,6 +699,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 null
             }
             val target = DictationSelection.target(dictationSelection, lastSelStart, lastSelEnd, selectedText)
+            // The commit moves the selection; Undo needs the size it had.
+            val lastSelStartBefore = lastSelStart
+            val lastSelEndBefore = lastSelEnd
             dictationSelection = null
             selectionForecast.forget()
             replacesSelection.value = false
@@ -731,7 +734,16 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 insertionSession = editorSession
                 InsertionReport(
                     InsertionOutcome.INSERTED,
-                    applied = AppliedInsertion(currentInputEditorInfo?.packageName, insertionStart, committedText),
+                    applied = AppliedInsertion(
+                        currentInputEditorInfo?.packageName,
+                        insertionStart,
+                        committedText,
+                        replaced = DictationUndo.replacedSelection(
+                            replacesSelection = target == DictationSelection.Target.AsIs && hasSelection,
+                            selectedText = selectedText,
+                            selectionLength = kotlin.math.abs(lastSelEndBefore - lastSelStartBefore),
+                        ),
+                    ),
                 )
             } else {
                 InsertionReport(InsertionOutcome.UNSUPPORTED_EDITOR)
@@ -748,6 +760,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             if (insertionSession != editorSession) return@withContext false
             if (insertion.packageName != currentInputEditorInfo?.packageName) return@withContext false
             if (lastSelStart != lastSelEnd) return@withContext false
+            // A selection was replaced but could not be read whole: taking the
+            // transcript out would lose it, so Undo is not offered.
+            val replaced = insertion.replaced ?: return@withContext false
             val connection = currentInputConnection ?: return@withContext false
             val before = runCatching {
                 connection.getTextBeforeCursor(insertion.inserted.length, 0)?.toString()
@@ -759,6 +774,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             connection.beginBatchEdit()
             if (composingRegionActive) connection.finishComposingText()
             val deleted = connection.deleteSurroundingText(insertion.inserted.length, 0)
+            if (deleted && replaced.isNotEmpty()) {
+                // Put the selection back, selected, as the editor's own Undo would.
+                connection.commitText(replaced, 1)
+                val start = insertion.insertionStart
+                if (start >= 0) connection.setSelection(start, start + replaced.length)
+            }
             connection.endBatchEdit()
             composingRegionActive = false
             insertionSession = -1
@@ -1545,7 +1566,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private fun showClipboardImage(uri: Uri, mime: String, settings: VocaPhoneSettings) {
         val source = uri.toString()
         val reused = lastRecordedClip
-        if (source == lastImageSource && reused != null && ClipboardHistory.isImage(reused)) {
+        // The cached copy can be gone: history pruning deletes images it no
+        // longer lists, and with history off it lists none. Reuse only a
+        // copy that is still on disk, or the chip would offer a paste that
+        // cannot happen; otherwise cache the clip again below.
+        val reusable = reused?.takeIf { ClipboardHistory.isImage(it) }?.let { clip ->
+            ClipboardHistory.parseImage(clip)?.second?.takeIf { ClipboardImages.file(this, it).exists() }
+        }
+        if (source == lastImageSource && reused != null && reusable != null) {
             visibleClipboard.value = reused.takeIf {
                 KeyboardChrome.offersClipboardChip(it, dismissedClip(settings), settings.clipboardChipEnabled)
             }?.let {
@@ -1640,7 +1668,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             } else {
                 lastSelStart to lastSelEnd
             }
-            TextEditing.extend(from, to, action)?.let { (start, end) ->
+            // A little text either side of the selection, to find where the
+            // next whole character ends.
+            val around = runCatching { connection.getSurroundingText(16, 16, 0) }.getOrNull()
+            TextEditing.extend(from, to, action, around?.text, around?.offset ?: -1)?.let { (start, end) ->
                 editSelectionAnchor = start
                 editSelectionFocus = end
                 connection.setSelection(start, end)

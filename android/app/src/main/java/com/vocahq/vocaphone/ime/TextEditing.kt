@@ -79,16 +79,35 @@ internal object TextEditing {
 
     /**
      * Left/right with Select on, as a selection range: the anchor stays where
-     * selecting started and the moving end goes one character. Returns
-     * (start, end) for `setSelection`, which takes them in either order.
+     * selecting started and the moving end goes one character — one
+     * *user-perceived* character, so an emoji or an accented letter built
+     * from several code units is never cut in half. [window] is the editor's
+     * text starting at absolute offset [windowStart]; it must contain the
+     * moving end, or this returns null and the caller lets the editor move.
+     * Returns (start, end) for `setSelection`, which takes either order.
      */
-    fun extend(anchor: Int, focus: Int, action: TextEditAction): Pair<Int, Int>? {
-        val next = when (action) {
-            TextEditAction.LEFT -> (focus - 1).coerceAtLeast(0)
-            TextEditAction.RIGHT -> focus + 1
-            else -> return null
+    fun extend(
+        anchor: Int,
+        focus: Int,
+        action: TextEditAction,
+        window: CharSequence?,
+        windowStart: Int,
+    ): Pair<Int, Int>? {
+        if (action != TextEditAction.LEFT && action != TextEditAction.RIGHT) return null
+        if (action == TextEditAction.LEFT && focus <= 0) return anchor to 0
+        val text = window?.toString() ?: return null
+        val local = focus - windowStart
+        if (local < 0 || local > text.length) return null
+        val breaks = java.text.BreakIterator.getCharacterInstance().apply { setText(text) }
+        val next = if (action == TextEditAction.LEFT) {
+            if (local == 0) return null
+            breaks.preceding(local)
+        } else {
+            if (local == text.length) return null
+            breaks.following(local)
         }
-        return anchor to next
+        if (next == java.text.BreakIterator.DONE) return null
+        return anchor to windowStart + next
     }
 
     /** Arrows and Home/End repeat while held; the rest fire once. */

@@ -45,12 +45,27 @@ class TextEditingTest {
 
     @Test
     fun selectExtendsFromTheAnchorOneCharacterAtATime() {
-        assertEquals(5 to 6, TextEditing.extend(anchor = 5, focus = 5, action = TextEditAction.RIGHT))
-        assertEquals(5 to 7, TextEditing.extend(anchor = 5, focus = 6, action = TextEditAction.RIGHT))
+        val text = "Hello world"
+        assertEquals(5 to 6, TextEditing.extend(anchor = 5, focus = 5, action = TextEditAction.RIGHT, window = text, windowStart = 0))
+        assertEquals(5 to 7, TextEditing.extend(anchor = 5, focus = 6, action = TextEditAction.RIGHT, window = text, windowStart = 0))
         // Back past the anchor selects to its left.
-        assertEquals(5 to 4, TextEditing.extend(anchor = 5, focus = 5, action = TextEditAction.LEFT))
-        assertEquals(0 to 0, TextEditing.extend(anchor = 0, focus = 0, action = TextEditAction.LEFT))
-        assertNull(TextEditing.extend(anchor = 0, focus = 0, action = TextEditAction.UP))
+        assertEquals(5 to 4, TextEditing.extend(anchor = 5, focus = 5, action = TextEditAction.LEFT, window = text, windowStart = 0))
+        assertEquals(0 to 0, TextEditing.extend(anchor = 0, focus = 0, action = TextEditAction.LEFT, window = text, windowStart = 0))
+        assertNull(TextEditing.extend(anchor = 0, focus = 0, action = TextEditAction.UP, window = text, windowStart = 0))
+    }
+
+    @Test
+    fun `selecting moves over a whole emoji, never half of one`() {
+        // "a😀b" at absolute offset 10: the emoji is two UTF-16 units.
+        val window = "a\uD83D\uDE00b"
+        assertEquals(11 to 13, TextEditing.extend(anchor = 11, focus = 11, action = TextEditAction.RIGHT, window = window, windowStart = 10))
+        assertEquals(13 to 11, TextEditing.extend(anchor = 13, focus = 13, action = TextEditAction.LEFT, window = window, windowStart = 10))
+        // A family emoji joined with ZWJ is one character too.
+        val family = "\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67x"
+        assertEquals(0 to 8, TextEditing.extend(anchor = 0, focus = 0, action = TextEditAction.RIGHT, window = family, windowStart = 0))
+        // The moving end outside what the editor gave: let the editor move.
+        assertNull(TextEditing.extend(anchor = 0, focus = 40, action = TextEditAction.RIGHT, window = window, windowStart = 10))
+        assertNull(TextEditing.extend(anchor = 0, focus = 5, action = TextEditAction.RIGHT, window = null, windowStart = -1))
     }
 
     @Test
