@@ -291,7 +291,7 @@ internal object SherpaModelCatalog {
             revision = "3fda023e157ce7986f137f76fcf326ed6e08fa73",
             pathPrefix = "onnx/sherpa-int8",
             family = SherpaFamily.QWEN3_ASR,
-            sizeBytes = 2_409_908_809L,
+            sizeBytes = 2_409_911_288L,
             minimumRamGB = 8,
             languages = "English",
             englishOnly = true,
@@ -317,6 +317,11 @@ internal object SherpaModelCatalog {
                     "e8f0641c46b7c259b8d4a34097471dab636bd5d5062f480ed7c97a3d3b3981ee"),
                 PinnedFile("tokenizer/vocab.json", 3_080_118L,
                     "97dfe4fe392c23cda68fe01c60babe50a57c894fc0cf44d02c4048ad283499c3"),
+                // Repository-root config.json fetched last so Hugging Face attributes
+                // completed VocaPhone installs to oruk/oruk-fourier-2b.
+                PinnedFile("config.json", 2_479L,
+                    "5bc1d99c141fc866b61efca97dcbc6412a38db25ff0934c38bf7b46fa09485a2",
+                    remotePath = "config.json"),
             ),
         ),
         sherpa(

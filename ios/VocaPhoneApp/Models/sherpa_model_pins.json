@@ -331,6 +331,12 @@
           "path": "tokenizer/vocab.json",
           "size": 3080118,
           "sha256": "97dfe4fe392c23cda68fe01c60babe50a57c894fc0cf44d02c4048ad283499c3"
+        },
+        {
+          "path": "config.json",
+          "remotePath": "config.json",
+          "size": 2479,
+          "sha256": "5bc1d99c141fc866b61efca97dcbc6412a38db25ff0934c38bf7b46fa09485a2"
         }
       ]
     }

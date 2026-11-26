@@ -49,8 +49,9 @@ def _int(text: str) -> int:
     return int(text.replace("_", ""))
 
 
-def read_android() -> dict[str, dict]:
-    source = KOTLIN_SHERPA.read_text()
+def read_android(source: str | None = None) -> dict[str, dict]:
+    if source is None:
+        source = KOTLIN_SHERPA.read_text()
     models = {}
     for block in re.findall(r"sherpa\((.*?)\n        \),", source, re.S):
         model_id = re.search(r'id = "([^"]+)"', block).group(1)
@@ -60,9 +61,10 @@ def read_android() -> dict[str, dict]:
             "pathPrefix": next(iter(re.findall(r'pathPrefix = "([^"]+)"', block)), None),
             "sizeBytes": _int(re.search(r"sizeBytes = ([\d_]+)L", block).group(1)),
             "files": {
-                path: (_int(size), digest)
-                for path, size, digest in re.findall(
-                    r'PinnedFile\("([^"]+)", ([\d_]+)L,\s*"([0-9a-f]{64})"\)', block
+                path: (_int(size), digest, remote_path or None)
+                for path, size, digest, remote_path in re.findall(
+                    r'PinnedFile\("([^"]+)",\s*([\d_]+)L,\s*"([0-9a-f]{64})"(?:,\s*remotePath = "([^"]+)")?\)',
+                    block,
                 )
             },
         }
@@ -198,7 +200,7 @@ def main() -> int:
             if a[field] != i[field]:
                 problems.append(f"{model_id}: {field} is {a[field]!r} on Android, {i[field]!r} on iOS")
 
-        pinned_total = sum(size for size, _ in a["files"].values())
+        pinned_total = sum(size for size, _, _ in a["files"].values())
         if pinned_total != a["sizeBytes"]:
             problems.append(
                 f"{model_id}: sizeBytes is {a['sizeBytes']} but the pinned files sum to {pinned_total}"
@@ -213,7 +215,7 @@ def main() -> int:
             problems.append(f"{model_id}: sherpa_model_pins repository disagrees with the catalog")
         if pin["revision"] != a["revision"]:
             problems.append(f"{model_id}: sherpa_model_pins revision disagrees with the catalog")
-        pinned = {f["path"]: (f["size"], f["sha256"]) for f in pin["files"]}
+        pinned = {f["path"]: (f["size"], f["sha256"], f.get("remotePath")) for f in pin["files"]}
         if pinned != a["files"]:
             problems.append(f"{model_id}: sherpa_model_pins files disagree with the Android PinnedFile set")
 

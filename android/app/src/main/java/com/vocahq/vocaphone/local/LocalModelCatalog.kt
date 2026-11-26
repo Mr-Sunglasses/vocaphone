@@ -179,7 +179,13 @@ enum class SherpaFamily(
 }
 
 /** One file of a model, pinned by exact byte length and SHA-256. */
-data class PinnedFile(val path: String, val sizeBytes: Long, val sha256: String)
+data class PinnedFile(
+    val path: String,
+    val sizeBytes: Long,
+    val sha256: String,
+    /** Optional repository-relative path that overrides [LocalModelDescriptor.pathPrefix]. */
+    val remotePath: String? = null,
+)
 
 /** The models with a [LocalModelDescriptor.hotwordVocabularyFile]. */
 internal val MODELS_WITH_HOTWORD_VOCABULARY = setOf("parakeet-unified-0.6b-en")
@@ -617,7 +623,7 @@ object LocalModelCatalog {
     )
 
     fun downloadUrl(model: LocalModelDescriptor, file: PinnedFile): String {
-        val path = listOfNotNull(model.pathPrefix, file.path).joinToString("/")
+        val path = file.remotePath ?: listOfNotNull(model.pathPrefix, file.path).joinToString("/")
         return "https://huggingface.co/${model.repository}/resolve/${model.revision}/$path"
     }
 

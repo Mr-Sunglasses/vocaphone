@@ -652,7 +652,7 @@ enum LocalModelCatalog {
             repository: "oruk/oruk-fourier-2b",
             revision: "3fda023e157ce7986f137f76fcf326ed6e08fa73",
             sherpaFamily: .qwen3Asr,
-            sizeBytes: 2_409_908_809,
+            sizeBytes: 2_409_911_288,
             minimumRamGB: 8,
             languages: "English",
             englishOnly: true,

@@ -129,7 +129,7 @@ class LocalModelIntegrityTest {
         val model = requireNotNull(LocalModelCatalog.find("oruk-fourier-2b"))
         assertTrue(model.englishOnly)
         assertTrue(model.translationTargets.isEmpty())
-        assertEquals(10, model.files.size)
+        assertEquals(11, model.files.size)
         for (path in listOf("decoder.int8.onnx.data", "encoder.int8.onnx.data", "tokenizer/vocab.json")) {
             val pinned = model.files.single { it.path == path }
             assertEquals(
@@ -137,6 +137,13 @@ class LocalModelIntegrityTest {
                 LocalModelCatalog.downloadUrl(model, pinned),
             )
         }
+        val config = model.files.last()
+        assertEquals("config.json", config.path)
+        assertEquals("config.json", config.remotePath)
+        assertEquals(
+            "https://huggingface.co/oruk/oruk-fourier-2b/resolve/${model.revision}/config.json",
+            LocalModelCatalog.downloadUrl(model, config),
+        )
     }
 
     @Test
