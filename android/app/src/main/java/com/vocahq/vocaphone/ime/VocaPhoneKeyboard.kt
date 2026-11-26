@@ -651,10 +651,7 @@ internal fun VocaPhoneKeyboard(
             swipeMatches = matches.map(::cased),
             similar = similar.map(::cased),
         )
-        keyboardState = keyboardState.copy(
-            composing = "",
-            lastWasSpace = true,
-            capitalizeAfterSpace = false,
+        keyboardState = keyboardState.afterWordAndSpace(SystemClock.uptimeMillis()).copy(
             shift = if (keyboardState.shift == ShiftState.LOCKED) ShiftState.LOCKED else ShiftState.OFF,
         )
         onSuggestionPicked(chosen, false)
@@ -894,11 +891,7 @@ internal fun VocaPhoneKeyboard(
                             onSaveToDictionary(item.text)
                             if (keyboardState.composing.isNotEmpty()) {
                                 clearSwipe()
-                                keyboardState = keyboardState.copy(
-                                    composing = "",
-                                    lastWasSpace = true,
-                                    capitalizeAfterSpace = false,
-                                )
+                                keyboardState = keyboardState.afterWordAndSpace(SystemClock.uptimeMillis())
                                 onSuggestionPicked(item.text, false)
                             }
                         } else {
@@ -924,11 +917,7 @@ internal fun VocaPhoneKeyboard(
                             }
                             swipeChoices = emptyList()
                             swipeWord = if (replace) item.text else null
-                            keyboardState = keyboardState.copy(
-                                composing = "",
-                                lastWasSpace = true,
-                                capitalizeAfterSpace = false,
-                            )
+                            keyboardState = keyboardState.afterWordAndSpace(SystemClock.uptimeMillis())
                             onSuggestionPicked(item.text, replace)
                         }
                     },

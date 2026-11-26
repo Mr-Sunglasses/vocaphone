@@ -3,6 +3,7 @@ package com.vocahq.vocaphone.ime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class KeyboardReducerTest {
@@ -79,7 +80,9 @@ class KeyboardReducerTest {
             autoCapitalize = false,
         )
         val space = KeyboardReducer.press(punctuation.state, spaceKey(), nowMillis = 1_100, autoCapitalize = false)
-        val period = KeyboardReducer.press(space.state, spaceKey(), nowMillis = 1_200, autoCapitalize = false)
+        val word = KeyboardReducer.press(initial, character("a"), nowMillis = 1_000, autoCapitalize = false)
+        val wordSpace = KeyboardReducer.press(word.state, spaceKey(), nowMillis = 1_100, autoCapitalize = false)
+        val period = KeyboardReducer.press(wordSpace.state, spaceKey(), nowMillis = 1_200, autoCapitalize = false)
         val enter = KeyboardReducer.press(
             initial,
             KeyboardKey("return", "Enter", type = KeyboardKeyType.RETURN),
@@ -154,16 +157,89 @@ class KeyboardReducerTest {
 
     @Test
     fun `double tapping space inserts a period`() {
-        val afterSpace = KeyboardReducer.press(
-            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
-            spaceKey(),
-            nowMillis = 1_000,
-        )
+        val word = typeWord("hello")
+        val afterSpace = KeyboardReducer.press(word, spaceKey(), nowMillis = 1_000)
         val second = KeyboardReducer.press(afterSpace.state, spaceKey(), nowMillis = 1_100)
 
         assertEquals(KeyboardCommand.DoubleSpacePeriod, second.command)
         assertEquals(ShiftState.ONCE, second.state.shift)
         assertFalse(second.state.lastWasSpace)
+        // A third space is a space again.
+        val third = KeyboardReducer.press(second.state, spaceKey(), nowMillis = 1_150)
+        assertEquals(KeyboardCommand.CommitText(" "), third.command)
+    }
+
+    @Test
+    fun `double space after punctuation is just two spaces`() {
+        // "Hello." + space + space used to make "Hello.. ".
+        val stop = KeyboardReducer.press(typeWord("Hello"), character("."), nowMillis = 900)
+        val space = KeyboardReducer.press(stop.state, spaceKey(), nowMillis = 1_000)
+        val second = KeyboardReducer.press(space.state, spaceKey(), nowMillis = 1_100)
+        assertEquals(KeyboardCommand.CommitText(" "), second.command)
+        // An empty field too.
+        val empty = KeyboardReducer.press(KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF), spaceKey(), nowMillis = 1_000)
+        assertEquals(KeyboardCommand.CommitText(" "), KeyboardReducer.press(empty.state, spaceKey(), nowMillis = 1_100).command)
+    }
+
+    @Test
+    fun `double space needs both spaces within the window, and the setting on`() {
+        val afterSpace = KeyboardReducer.press(typeWord("hi"), spaceKey(), nowMillis = 1_000)
+        val late = KeyboardReducer.press(
+            afterSpace.state,
+            spaceKey(),
+            nowMillis = 1_000 + KeyboardReducer.DOUBLE_SPACE_WINDOW_MILLIS + 1,
+        )
+        assertEquals(KeyboardCommand.CommitText(" "), late.command)
+        val off = KeyboardReducer.press(afterSpace.state, spaceKey(), nowMillis = 1_100, doubleSpacePeriod = false)
+        assertEquals(KeyboardCommand.CommitText(" "), off.command)
+        // After a digit it still closes the sentence.
+        val digit = KeyboardReducer.press(KeyboardState(KeyboardLayer.NUMBERS, ShiftState.OFF), character("3"), nowMillis = 900)
+        val digitSpace = KeyboardReducer.press(digit.state, spaceKey(), nowMillis = 1_000)
+        assertEquals(KeyboardCommand.DoubleSpacePeriod, KeyboardReducer.press(digitSpace.state, spaceKey(), nowMillis = 1_100).command)
+    }
+
+    @Test
+    fun `a word picked from the strip can be closed with a double space`() {
+        val picked = KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF).afterWordAndSpace(1_000)
+        assertEquals(KeyboardCommand.DoubleSpacePeriod, KeyboardReducer.press(picked, spaceKey(), nowMillis = 1_200).command)
+    }
+
+    @Test
+    fun `no capital after an abbreviation or a list number`() {
+        for (typed in listOf("e.g", "Mr", "vs", "etc", "3", "(i.e")) {
+            var state = KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF)
+            for (character in typed) {
+                state = KeyboardReducer.press(state, character(character.toString()), nowMillis = 1_000, composeWords = true).state
+            }
+            val stop = KeyboardReducer.press(state, character("."), nowMillis = 1_000, composeWords = true)
+            val space = KeyboardReducer.press(stop.state, spaceKey(), nowMillis = 1_100)
+            assertEquals(typed, ShiftState.OFF, space.state.shift)
+        }
+        val sentence = KeyboardReducer.press(typeWord("done"), character("."), nowMillis = 1_000)
+        assertEquals(ShiftState.ONCE, KeyboardReducer.press(sentence.state, spaceKey(), nowMillis = 1_100).state.shift)
+        val question = KeyboardReducer.press(typeWord("Mr"), character("?"), nowMillis = 1_000)
+        assertEquals(ShiftState.ONCE, KeyboardReducer.press(question.state, spaceKey(), nowMillis = 1_100).state.shift)
+    }
+
+    @Test
+    fun `sentence boundary knows an abbreviation from a full stop`() {
+        assertTrue(SentenceBoundary.endsSentence(""))
+        assertTrue(SentenceBoundary.endsSentence("Done. "))
+        assertTrue(SentenceBoundary.endsSentence("Really? "))
+        assertTrue(SentenceBoundary.endsSentence("line\n"))
+        assertFalse(SentenceBoundary.endsSentence("see e.g. "))
+        assertFalse(SentenceBoundary.endsSentence("Mr. "))
+        assertFalse(SentenceBoundary.endsSentence("3. "))
+        assertFalse(SentenceBoundary.endsSentence("hello "))
+        assertFalse(SentenceBoundary.endsSentence("hello"))
+    }
+
+    private fun typeWord(word: String): KeyboardState {
+        var state = KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF)
+        for (character in word) {
+            state = KeyboardReducer.press(state, character(character.toString()), nowMillis = 500, composeWords = true).state
+        }
+        return state
     }
 
     @Test

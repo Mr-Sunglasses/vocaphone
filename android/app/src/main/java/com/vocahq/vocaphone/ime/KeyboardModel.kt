@@ -47,7 +47,30 @@ internal data class KeyboardState(
     val capitalizeAfterSpace: Boolean = false,
     val lastWasSpace: Boolean = false,
     val composing: String = "",
-)
+    /**
+     * What has been typed since the last space or return, the composing word
+     * included ("e.g" before its second period). Empty when unknown, after the
+     * cursor moved. Bounded; only its end is ever read.
+     */
+    val token: String = "",
+    /** The last space followed a word (a letter or digit), so a second one may close the sentence. */
+    val spaceAfterWord: Boolean = false,
+    /** When that space went out, for the double-space window. */
+    val lastSpaceMillis: Long? = null,
+) {
+    /**
+     * A word and its space went out together: a picked suggestion, a swipe.
+     * A second space right after it closes the sentence, as after a typed word.
+     */
+    fun afterWordAndSpace(nowMillis: Long): KeyboardState = copy(
+        composing = "",
+        lastWasSpace = true,
+        capitalizeAfterSpace = false,
+        token = "",
+        spaceAfterWord = true,
+        lastSpaceMillis = nowMillis,
+    )
+}
 
 internal sealed interface KeyboardCommand {
     data class CommitText(val text: String) : KeyboardCommand
@@ -537,21 +560,23 @@ internal object KeyboardReducer {
         composeWords: Boolean = false,
         hasSelection: Boolean = false,
         autoCapitalize: Boolean = true,
+        doubleSpacePeriod: Boolean = true,
     ): KeyboardReduction = when (key.type) {
         KeyboardKeyType.CHARACTER -> characterPress(state, key, composeWords, autoCapitalize)
 
-        KeyboardKeyType.SPACE -> spacePress(state, autoCapitalize)
+        KeyboardKeyType.SPACE -> spacePress(state, autoCapitalize, nowMillis, doubleSpacePeriod)
 
         KeyboardKeyType.DELETE -> {
+            val token = state.token.dropLast(1)
             if (composeWords && state.composing.isNotEmpty()) {
                 val next = state.composing.dropLast(1)
                 KeyboardReduction(
-                    state = state.copy(composing = next, capitalizeAfterSpace = false, lastWasSpace = false),
+                    state = state.copy(composing = next, capitalizeAfterSpace = false, lastWasSpace = false, token = token),
                     command = KeyboardCommand.SetComposingText(next),
                 )
             } else {
                 KeyboardReduction(
-                    state = state.copy(composing = "", capitalizeAfterSpace = false, lastWasSpace = false),
+                    state = state.copy(composing = "", capitalizeAfterSpace = false, lastWasSpace = false, token = token),
                     command = KeyboardCommand.DeleteBackward,
                 )
             }
@@ -568,6 +593,7 @@ internal object KeyboardReducer {
                 capitalizeAfterSpace = false,
                 lastWasSpace = false,
                 composing = "",
+                token = "",
             ),
             command = KeyboardCommand.PerformEditorAction,
         )
@@ -621,6 +647,7 @@ internal object KeyboardReducer {
             state.layer == KeyboardLayer.LETTERS &&
             output.length == 1 &&
             output[0].isLetter()
+        val token = (state.token + output).takeLast(TOKEN_LIMIT)
         return if (letter) {
             val composing = state.composing + output
             KeyboardReduction(
@@ -630,17 +657,22 @@ internal object KeyboardReducer {
                     capitalizeAfterSpace = false,
                     lastWasSpace = false,
                     composing = composing,
+                    token = token,
                 ),
                 command = KeyboardCommand.SetComposingText(composing),
             )
         } else {
+            // "e.g. ", "Mr. " and "3. " end in a period and not a sentence.
+            val endsSentence = output in SENTENCE_TERMINATORS &&
+                !(output == "." && SentenceBoundary.isAbbreviation(state.token))
             KeyboardReduction(
                 state = state.copy(
                     shift = nextShift,
                     lastShiftTapMillis = null,
-                    capitalizeAfterSpace = autoCapitalize && output in SENTENCE_TERMINATORS,
+                    capitalizeAfterSpace = autoCapitalize && endsSentence,
                     lastWasSpace = false,
                     composing = "",
+                    token = token,
                 ),
                 command = KeyboardCommand.CommitText(output),
             )
@@ -678,6 +710,7 @@ internal object KeyboardReducer {
                     shift = if (next.isEmpty()) restoreShift ?: state.shift else state.shift,
                     lastWasSpace = false,
                     capitalizeAfterSpace = false,
+                    token = state.token.dropLast(1),
                 ),
                 command = KeyboardCommand.SetComposingText(next),
             )
@@ -688,6 +721,7 @@ internal object KeyboardReducer {
                 shift = restoreShift ?: state.shift,
                 lastWasSpace = false,
                 capitalizeAfterSpace = false,
+                token = state.token.dropLast(1),
             ),
             command = KeyboardCommand.DeleteSurrounding(1, 0),
         )
@@ -731,8 +765,19 @@ internal object KeyboardReducer {
         return KeyboardReduction(state = typed.state, command = command)
     }
 
-    private fun spacePress(state: KeyboardState, autoCapitalize: Boolean): KeyboardReduction {
-        if (state.lastWasSpace) {
+    /**
+     * A second space closes the sentence, the way people type by reflex — but
+     * only within [DOUBLE_SPACE_WINDOW_MILLIS] of the first, and only when the
+     * first followed a word. After "Hello." it used to make "Hello.. ".
+     */
+    private fun spacePress(
+        state: KeyboardState,
+        autoCapitalize: Boolean,
+        nowMillis: Long,
+        doubleSpacePeriod: Boolean,
+    ): KeyboardReduction {
+        val inWindow = state.lastSpaceMillis?.let { nowMillis - it in 0..DOUBLE_SPACE_WINDOW_MILLIS } == true
+        if (doubleSpacePeriod && state.lastWasSpace && state.spaceAfterWord && inWindow) {
             val nextShift = when {
                 state.shift == ShiftState.LOCKED -> ShiftState.LOCKED
                 autoCapitalize -> ShiftState.ONCE
@@ -745,10 +790,14 @@ internal object KeyboardReducer {
                     capitalizeAfterSpace = false,
                     lastWasSpace = false,
                     composing = "",
+                    token = "",
+                    spaceAfterWord = false,
+                    lastSpaceMillis = null,
                 ),
                 command = KeyboardCommand.DoubleSpacePeriod,
             )
         }
+        val afterWord = state.composing.isNotEmpty() || state.token.lastOrNull()?.isLetterOrDigit() == true
         return KeyboardReduction(
             state = state.copy(
                 shift = when {
@@ -760,10 +809,18 @@ internal object KeyboardReducer {
                 capitalizeAfterSpace = false,
                 lastWasSpace = true,
                 composing = "",
+                token = "",
+                spaceAfterWord = afterWord && !state.lastWasSpace,
+                lastSpaceMillis = nowMillis,
             ),
             command = KeyboardCommand.CommitText(" "),
         )
     }
+
+    /** The iOS keyboard's window for a double space, in milliseconds. */
+    const val DOUBLE_SPACE_WINDOW_MILLIS = 1_200L
+
+    private const val TOKEN_LIMIT = 24
 
     private val SENTENCE_TERMINATORS = setOf(".", "!", "?")
 }
