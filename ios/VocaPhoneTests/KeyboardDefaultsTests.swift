@@ -11,6 +11,7 @@ struct KeyboardDefaultsTests {
         #expect(KeyboardDefaults.nextWordPrediction)
         #expect(KeyboardDefaults.learnAsIType)
         #expect(KeyboardDefaults.smartPunctuation)
+        #expect(KeyboardDefaults.autoCapitalization)
         #expect(KeyboardDefaults.emojiSuggestions)
         #expect(KeyboardDefaults.swipeTyping)
         #expect(KeyboardDefaults.spacebarCursor)

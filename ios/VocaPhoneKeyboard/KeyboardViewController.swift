@@ -354,6 +354,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // started, so scan once on appear and let `render` decide about polling.
         typing.installCustomVocabulary(LocalTranscriptionPreferences.customVocabulary)
         applyDocumentTraits()
+        // Shift was last set for wherever the keyboard was before, and iOS
+        // sends no `textDidChange` for a field it is merely shown over.
+        updateAutomaticShift(isArrival: true)
         // The app's settings screen writes the same two keys, and it may have
         // done so while another keyboard was on screen.
         dictationSurfaceState.refreshPreferences()
@@ -432,6 +435,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             self.dictationSurfaceState.candidatesAnimate = true
         }
         super.viewDidAppear(animated)
+        // The host often has not answered by `viewWillAppear`. It has by now,
+        // and no key can have been pressed in between.
+        updateAutomaticShift(isArrival: true)
         reportIfLowOnMemory()
         typing.prepareResources()
         // UIKit can finalize a changed Full Access setting after the earlier
@@ -664,7 +670,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // place it no longer describes. Free while nothing is waiting to undo.
         releaseUndoIfDetached()
         updateReturnKeyEnablement(for: snapshot)
-        updateAutomaticShift(for: snapshot)
+        updateAutomaticShift(for: snapshot, isArrival: isNewField)
         // An edit after an automatic fix ends its Undo: the fixed words can
         // no longer be found for certain.
         if let fix = autoFixer.offer, !fix.isCurrent(before: snapshot.before) { autoFixer.clear() }
@@ -1604,6 +1610,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
+
+    func keyGridDidToggleShift(_ grid: KeyGridView) {
+        // Remembered with the place it was made, so that it lasts exactly as
+        // long as the cursor stays there. See ``updateAutomaticShift``.
+        manualShiftAnchor = readDocument()
+        shiftLockIsAutomatic = false
+    }
 
     private func insertSpace() {
         let proxy = textDocumentProxy
@@ -2968,7 +2981,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         applyTheme()
         applyLayoutMetrics()
         applyDocumentTraits()
-        updateAutomaticShift()
+        updateAutomaticShift(isArrival: true)
     }
 
     /// The gap between the dictation surface and the top row of keys.
@@ -3281,17 +3294,48 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Autocapitalization follows the field's own request. A username or URL
     /// field asks for none, and forcing sentence case there produced input the
     /// user had to correct on every word.
-    private func updateAutomaticShift(for snapshot: DocumentSnapshot? = nil) {
+    private func updateAutomaticShift(
+        for snapshot: DocumentSnapshot? = nil,
+        isArrival: Bool = false
+    ) {
+        let resolved = snapshot ?? document
+        if isArrival {
+            manualShiftAnchor = nil
+        } else if let anchor = manualShiftAnchor {
+            // The user set Shift by hand and the cursor has not moved since.
+            // Hosts send `textDidChange` for reasons of their own, and each one
+            // used to put Shift back the way the keyboard preferred it. A read
+            // the host declined to answer says nothing about having moved.
+            if resolved == anchor || resolved == .unknown { return }
+            manualShiftAnchor = nil
+        }
+        let proxy = textDocumentProxy
+        let autocapitalization = proxy.autocapitalizationType ?? .sentences
         // `nil` means leave the shift key alone, which is the answer whenever
         // the host declined to say what the document contains. See
         // ``AutomaticShift``.
         guard let state = AutomaticShift.state(
-            documentBefore: (snapshot ?? document).before,
-            autocapitalization: textDocumentProxy.autocapitalizationType ?? .sentences,
-            current: keyGrid.shiftState
+            documentBefore: resolved.before,
+            autocapitalization: autocapitalization,
+            current: keyGrid.shiftState,
+            context: AutomaticShift.Context(
+                isEnabled: KeyboardPreferences.autoCapitalizationEnabled,
+                isArrival: isArrival,
+                // One more hop into the host, so only where it is used.
+                documentHasText: isArrival ? proxy.hasText : true,
+                documentAfter: resolved.after,
+                lockIsAutomatic: shiftLockIsAutomatic
+            )
         ) else { return }
+        shiftLockIsAutomatic = state == .locked && autocapitalization == .allCharacters
         keyGrid.shiftState = state
     }
+
+    /// The document as it stood when the user last tapped Shift, until the
+    /// cursor leaves that spot.
+    private var manualShiftAnchor: DocumentSnapshot?
+    /// Caps lock is on because a field asked for capitals, not by a double tap.
+    private var shiftLockIsAutomatic = false
 }
 
 extension KeyboardViewController: KeyGridViewDelegate {

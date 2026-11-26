@@ -104,6 +104,10 @@ enum CursorTrackpad {
 protocol KeyGridViewDelegate: AnyObject {
     func keyGrid(_ grid: KeyGridView, didProduce output: KeyboardOutput)
     func keyGridDidChangeShift(_ grid: KeyGridView)
+    /// The user tapped Shift. Unlike ``keyGridDidChangeShift(_:)`` this is
+    /// never the keyboard changing its own mind, which is what lets the
+    /// controller tell a choice from a guess and stop overruling the choice.
+    func keyGridDidToggleShift(_ grid: KeyGridView)
     /// Whether a held Delete may keep going. Only the controller can see the
     /// document, and the system keyboard stops at the start of a line rather
     /// than eating the paragraph behind it.
@@ -1777,6 +1781,7 @@ final class KeyGridView: UIView {
         let isDoubleTap = lastShiftTapAt.map { now.timeIntervalSince($0) < 0.35 } ?? false
         lastShiftTapAt = now
         shiftState = isDoubleTap ? .locked : (shiftState == .off ? .on : .off)
+        delegate?.keyGridDidToggleShift(self)
     }
 
     func key(at point: CGPoint, characterOnly: Bool) -> KeyView? {

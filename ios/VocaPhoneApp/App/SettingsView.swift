@@ -206,6 +206,10 @@ struct KeyboardSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var smartPunctuationEnabled = KeyboardDefaults.smartPunctuation
     @AppStorage(
+        KeyboardPreferences.autoCapitalizationKey,
+        store: KeyboardPreferences.defaults
+    ) private var autoCapitalizationEnabled = KeyboardDefaults.autoCapitalization
+    @AppStorage(
         KeyboardPreferences.typingHapticsKey,
         store: KeyboardPreferences.defaults
     ) private var typingHapticsEnabled = KeyboardDefaults.typingHaptics
@@ -436,6 +440,9 @@ struct KeyboardSettingsView: View {
 
     private var typingDetailSection: some View {
         Section {
+            Toggle(isOn: $autoCapitalizationEnabled) {
+                SettingLabel("Auto-capitalization", detail: "A capital at the start of a sentence.")
+            }
             Toggle(isOn: $smartPunctuationEnabled) {
                 SettingLabel("Smart punctuation", detail: "Curly quotes, — and ….")
             }

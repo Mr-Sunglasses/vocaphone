@@ -56,6 +56,8 @@ enum KeyboardDefaults {
     /// letter, which changes what a still hold types.
     static let quickAccents = false
     static let smartPunctuation = true
+    /// On, like the system keyboard.
+    static let autoCapitalization = true
     static let emojiSuggestions = true
     /// Off, like the system keyboard's own Haptic switch, which iOS ships off.
     /// A keyboard cannot read that switch, so it matches its default instead.
@@ -555,6 +557,7 @@ enum KeyboardPreferences {
     static let suggestSwearWordsKey = "suggestSwearWords"
     static let quickAccentsKey = "quickAccentsEnabled"
     static let smartPunctuationKey = "smartPunctuationEnabled"
+    static let autoCapitalizationKey = "autoCapitalizationEnabled"
     static let emojiSuggestionsKey = "emojiSuggestionsEnabled"
     /// Custom tactile feedback for committed typing. Input clicks are governed
     /// by iOS's Keyboard Clicks setting and deliberately do not share this
@@ -810,6 +813,13 @@ enum KeyboardPreferences {
     static var smartPunctuationEnabled: Bool {
         get { boolean(smartPunctuationKey, default: KeyboardDefaults.smartPunctuation) }
         set { defaults?.set(newValue, forKey: smartPunctuationKey) }
+    }
+
+    /// Shift turning itself on at the start of a sentence. A field that asks
+    /// for no capitals, or for all of them, is obeyed either way.
+    static var autoCapitalizationEnabled: Bool {
+        get { boolean(autoCapitalizationKey, default: KeyboardDefaults.autoCapitalization) }
+        set { defaults?.set(newValue, forKey: autoCapitalizationKey) }
     }
 
     /// An emoji offered beside the word candidates while typing — "lol" offers

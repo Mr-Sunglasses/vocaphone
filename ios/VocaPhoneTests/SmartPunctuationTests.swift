@@ -228,6 +228,112 @@ struct AutomaticShiftTests {
         )
     }
 
+    /// The switch in Settings. Off means Shift never arms itself, wherever the
+    /// cursor is, while a field that demands capitals is still obeyed.
+    @Test func theSwitchTurnsSentenceCapitalsOff() {
+        let off = AutomaticShift.Context(isEnabled: false)
+        for before in ["", "Done. ", "line\n"] {
+            #expect(
+                AutomaticShift.state(
+                    documentBefore: before,
+                    autocapitalization: .sentences,
+                    current: .on,
+                    context: off
+                ) == .off
+            )
+        }
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "John ",
+                autocapitalization: .words,
+                current: .on,
+                context: off
+            ) == .off
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "",
+                autocapitalization: .allCharacters,
+                current: .off,
+                context: off
+            ) == .locked
+        )
+    }
+
+    /// The keyboard opening over a draft. The host has not said where the
+    /// cursor is, the field has text in it, and Shift used to stay on from
+    /// wherever it was last: a capital in the middle of a sentence.
+    @Test func arrivingInAFieldWithTextAndNoAnswerDoesNotCapitalise() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .on,
+                context: .init(isArrival: true, documentHasText: true)
+            ) == .off
+        )
+    }
+
+    /// An empty field hands back `nil` too, and that one is a sentence start.
+    @Test func arrivingInAnEmptyFieldCapitalises() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .off,
+                context: .init(isArrival: true, documentHasText: false)
+            ) == .on
+        )
+        // Text after the cursor and none before: the top of the document.
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .off,
+                context: .init(isArrival: true, documentHasText: true, documentAfter: "world")
+            ) == .on
+        )
+        // Mid-typing, "no text" from a proxy that has stopped answering is not
+        // believed. That inference is what capitalised "how Are you".
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .off,
+                context: .init(documentHasText: false)
+            ) == nil
+        )
+    }
+
+    /// A lock set for an all-capitals field ends with that field. A lock the
+    /// user set does not.
+    @Test func aLockTheFieldAskedForDoesNotFollowTheUser() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "hello ",
+                autocapitalization: .sentences,
+                current: .locked,
+                context: .init(lockIsAutomatic: true)
+            ) == .off
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .locked,
+                context: .init(lockIsAutomatic: true)
+            ) == .off
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "hello ",
+                autocapitalization: .sentences,
+                current: .locked,
+                context: .init(isEnabled: false)
+            ) == nil
+        )
+    }
+
     /// A caps lock the user engaged outranks every automatic decision, and an
     /// unanswered read must not quietly cancel it either.
     @Test func anEngagedCapsLockIsNeverOverridden() {

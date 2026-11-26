@@ -480,6 +480,7 @@ private final class KeyGridDelegateSpy: KeyGridViewDelegate {
     }
 
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
+    func keyGridDidToggleShift(_ grid: KeyGridView) {}
     func keyGridShouldContinueDeleting(_ grid: KeyGridView) -> Bool { true }
 }
 

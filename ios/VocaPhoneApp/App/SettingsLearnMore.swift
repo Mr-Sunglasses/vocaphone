@@ -318,6 +318,10 @@ enum SettingsHelp {
                     + "has no height to spare whichever size you pick.",
             ]),
             .init(heading: "More typing options", paragraphs: [
+                "Auto-capitalization turns Shift on at the start of a sentence. "
+                    + "Tap Shift to overrule it for the next letter. A field that "
+                    + "asks for no capitals, such as a username, never gets them, "
+                    + "and one that asks for all capitals still does with this off.",
                 "Smart punctuation curls quotes, turns two hyphens into an em dash "
                     + "and three dots into an ellipsis — except where the field asks "
                     + "it not to, such as a code or address field.",
