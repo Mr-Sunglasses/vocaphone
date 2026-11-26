@@ -8,6 +8,8 @@ struct KeyboardDefaultsTests {
     @Test func typingAndDictationSwitchesStartOn() {
         #expect(KeyboardDefaults.typingSuggestions)
         #expect(KeyboardDefaults.autocorrect)
+        // The thresholds autocorrect had before there was a choice.
+        #expect(KeyboardDefaults.autocorrectStrength == .normal)
         #expect(KeyboardDefaults.nextWordPrediction)
         #expect(KeyboardDefaults.learnAsIType)
         #expect(KeyboardDefaults.smartPunctuation)

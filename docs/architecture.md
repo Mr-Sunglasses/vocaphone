@@ -735,6 +735,35 @@ unless noted):
 - **Strip animation (iOS).** Words cross-fade only once the keyboard is on
   screen, so the field's traits landing never visibly rolls "the" to "The".
 
+Field traits and smaller typing tools on iOS:
+
+- **Field traits.** `TypingFieldPolicy` also reads `autocorrectionType`: a
+  field that sets `.no` gets no strip, no autocorrect and no learning, as with
+  Apple's keyboard, while swipe and the Writing check button still work.
+  Swipe typing follows the secret-field rule (passwords, one-time codes, card
+  numbers, number pads), and Dictate is shown disabled in secure, password,
+  one-time-code and card-number fields; starting a session there is refused.
+- **Swipe language.** `TypingWordList.language` is `en`, the only shipped
+  list, and `KeyGridView` swipes only when the list serves the layout. Other
+  layouts type nothing on a slide rather than an English word.
+- **Blocked words.** Holding a word chip (or VoiceOver's "Don't suggest this
+  word") stores it in `LearnedWords.blocked` in the same App Group file as
+  learned words, at most 500, oldest dropped first. A blocked word is filtered
+  from every source, swipe readings included, and never corrected to. Settings
+  shows a count and a reset; "Reset learned words" leaves blocked words alone.
+- **Autocorrect strength.** `KeyboardPreferences.autocorrectStrength` (Mild,
+  Normal, Aggressive) scales the general correction path's edit limit, cost
+  margin and minimum length. Normal is the earlier rule unchanged; text
+  replacements, snippets and learned fixes apply at every strength.
+- **Snippets while typing.** One-word snippet triggers join the `UILexicon`
+  path: the expansion is offered while the trigger is typed and applied on
+  space, revertible with Delete, exactly as a text replacement.
+- **Shift over a selection.** Cycles Sentence case, ALL CAPS, lower, then the
+  original (`CaseCycle`, the Android rule). A keyboard cannot re-select text,
+  so later taps continue on the spelling still before the cursor.
+- **Sums.** `InlineArithmetic` offers the answer to a sum ending in "=" before
+  the cursor ("12*4=" → 48) as a chip. Arithmetic only, no units or currency.
+
 On Android the same behaviours live in `ime/AutocorrectMemory.kt` (with
 `settings/TypingFixStore.kt`), `ime/TapRanking.kt`, `ime/NeverSuggest.kt`,
 `ime/KeyboardTouch.kt` (key clicks, strip dead zone), `DeleteSlide` and

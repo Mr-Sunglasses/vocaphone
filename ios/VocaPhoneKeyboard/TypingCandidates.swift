@@ -40,7 +40,28 @@ struct TypingCandidate: Equatable {
         case paste
         /// Switches to Apple's keyboard, for a code or a saved login.
         case nextKeyboard
+        /// The answer to the sum before the cursor, "12*4=" offering 48
+        /// (``InlineArithmetic``). Inserted after the equals sign on a tap,
+        /// never by a boundary key.
+        case calculation
     }
+
+    /// Whether this chip is a word the user could ask never to see again
+    /// (``TypingEngine/block(_:)``). Their own spelling, an undo, an emoji and
+    /// the controls are not words the keyboard chose for them.
+    var isBlockable: Bool {
+        switch kind {
+        case .completion, .correction, .prediction, .swipeAlternate: true
+        default: false
+        }
+    }
+
+    /// How long a word chip is held to block it. Longer than a hesitant tap,
+    /// short enough to be a gesture rather than a wait.
+    static let blockHoldDuration: TimeInterval = 0.5
+
+    /// The VoiceOver action that does what holding the chip does.
+    static let blockActionName = "Don\u{2019}t suggest this word"
 
     let text: String
     let kind: Kind
@@ -170,6 +191,14 @@ enum TypingCandidates {
         /// next to each other, and that neighbourhood is the layout's, not
         /// QWERTY's.
         var layoutRows: [String] = TypingLayout.fallback.rows
+        /// Words the user long-pressed off the strip, lowercased. Never
+        /// offered and never corrected to, from any source.
+        var blockedWords: Set<String> = []
+        /// How sure the general correction path has to be. ``normal`` is the
+        /// rule as it was before the setting existed.
+        var strength: AutocorrectStrength = .normal
+        /// The result of a sum ending in "=" just before the cursor.
+        var calculation: String?
     }
 
     // MARK: - Strip
@@ -178,11 +207,17 @@ enum TypingCandidates {
         guard context.suggestionsEnabled, context.allowsTypingIntelligence else { return .none }
 
         guard !context.composition.isEmpty else {
-            guard context.predictionEnabled else { return .none }
+            // A sum ending in "=" is the one thing worth saying before the
+            // next word: it leads, and predictions fill what is left.
+            let calculation = context.calculation.map { [TypingCandidate(text: $0, kind: .calculation)] } ?? []
+            guard context.predictionEnabled else {
+                return TypingStrip(candidates: calculation, autocorrection: nil)
+            }
             let predictions = deduplicated(context.predictions)
-                .prefix(slotCount)
+                .filter { !isBlocked($0, context) }
+                .prefix(slotCount - calculation.count)
                 .map { TypingCandidate(text: $0, kind: .prediction) }
-            return TypingStrip(candidates: Array(predictions), autocorrection: nil)
+            return TypingStrip(candidates: calculation + Array(predictions), autocorrection: nil)
         }
 
         let correction = autocorrection(context)
@@ -276,7 +311,14 @@ enum TypingCandidates {
         ordered.append(contentsOf: context.systemGuesses)
         return deduplicated(ordered).filter {
             $0.caseInsensitiveCompare(context.composition) != .orderedSame
+                && !isBlocked($0, context)
         }
+    }
+
+    /// Whether the user asked never to be offered `word`. One set lookup,
+    /// skipped outright for the user who has blocked nothing.
+    static func isBlocked(_ word: String, _ context: Context) -> Bool {
+        !context.blockedWords.isEmpty && context.blockedWords.contains(word.lowercased())
     }
 
     // MARK: - Autocorrect
@@ -339,7 +381,8 @@ enum TypingCandidates {
         // through `lexiconEntries`, at the top of `rankedSuggestions`. Offering
         // it is right. Imposing it is not.
         if let expansion = context.lexiconExpansion,
-           expansion.lowercased() != typed.lowercased()
+           expansion.lowercased() != typed.lowercased(),
+           !isBlocked(expansion, context)
         {
             return .apply(expansion)
         }
@@ -352,6 +395,7 @@ enum TypingCandidates {
         // way: their own correction, learned. Never over a real word — that is
         // only offered (`rankedSuggestions`) — and never in shouted capitals.
         if let fix = context.learnedFix,
+           !isBlocked(fix, context),
            !isAllCaps(typed),
            !context.isInWordList,
            !context.isKnownToChecker,
@@ -385,15 +429,19 @@ enum TypingCandidates {
         // unambiguous in English. The lexicon is whatever happens to be in
         // someone's contacts.
         if let replacement = ShortWordCorrections.replacement(for: typed),
-           replacement != typed
+           replacement != typed,
+           !isBlocked(replacement, context)
         {
             return .apply(replacement)
         }
 
         // Two-letter words are mostly deliberate, and the shorter the word the
         // more words sit within one edit of it. Anything genuinely worth fixing
-        // at that length is in the table above.
-        guard typed.count >= 3 else { return .refused("shorter than three letters") }
+        // at that length is in the table above. Mild waits for a fourth
+        // letter; see ``AutocorrectStrength``.
+        guard typed.count >= context.strength.minimumLength else {
+            return .refused("shorter than \(context.strength.minimumLength) letters")
+        }
 
         // Anything the user or the language already recognises stands.
         guard !context.isKnownToChecker,
@@ -440,7 +488,8 @@ enum TypingCandidates {
         // "sometime", "backend", "frontend", "logout", "weekday" or "standup".
         // Splitting those is not a correction, it is damage.
         if context.hasCheckerAnswer,
-           let split = wordSplit(typed, context: context)
+           let split = wordSplit(typed, context: context),
+           !isBlocked(split, context)
         {
             return .apply(split)
         }
@@ -464,6 +513,10 @@ enum TypingCandidates {
             // *wanted* comes from the curated table and the lexicon above,
             // both of which have already had their say.
             .filter { !typedIsLowercase || $0.first?.isUppercase != true }
+            // And never a word the user long-pressed away. Dropped before
+            // scoring, so the next reading has to win on its own margin
+            // rather than inheriting the blocked word's.
+            .filter { !isBlocked($0, context) }
         guard !guesses.isEmpty else { return .refused("the checker offered nothing") }
 
         // Re-ranked rather than taken in the order the checker offered them.
@@ -480,8 +533,11 @@ enum TypingCandidates {
         // Close enough to be a typo rather than a different word. Measured
         // unweighted, because "is this a typo at all" is a question about how
         // many characters moved, not about which keys they were near.
-        let bestEdits = editDistance(typed.lowercased(), best.word.lowercased(), maximum: 2)
-        guard bestEdits <= 2 else { return .refused("too far: \(bestEdits) edits to \(best.word)") }
+        let maximumEdits = context.strength.maximumEdits
+        let bestEdits = editDistance(typed.lowercased(), best.word.lowercased(), maximum: maximumEdits)
+        guard bestEdits <= maximumEdits else {
+            return .refused("too far: \(bestEdits) edits to \(best.word)")
+        }
 
         // A comfortable margin over the runner-up. Two equally good guesses
         // means nothing here knows which either, and picking one is a coin toss
@@ -527,7 +583,7 @@ enum TypingCandidates {
             // by itself: a common word against one the list has never heard of
             // differs by 0.85 before a finger is considered. That is deliberate,
             // and it is what stopped "both" losing to "coth".
-            let hasCostMargin = scored[1].cost - best.cost >= 0.7
+            let hasCostMargin = scored[1].cost - best.cost >= context.strength.costMargin
             let isContextual = contains(context.contextualFollowers, best.word)
             guard hasSpellingMargin
                 || hasCostMargin
@@ -756,5 +812,44 @@ enum TypingCandidates {
             swap(&previous, &current)
         }
         return previous[b.count]
+    }
+}
+
+/// The thresholds behind Settings › Keyboard › Autocorrect strength.
+///
+/// Only the general path moves — the checker's guesses, scored and compared.
+/// The user's own instructions (text replacements, snippets, a fix learned
+/// twice) and the curated short-word table are not guesses, so no strength
+/// setting makes them more or less likely. ``normal`` is the rule exactly as
+/// it stood before there was a setting, and the tests pin that.
+extension AutocorrectStrength {
+    /// How many characters may move between the typed word and the
+    /// correction. Mild accepts one: a slip, a missed letter, a swap.
+    var maximumEdits: Int {
+        switch self {
+        case .mild: 1
+        case .normal, .aggressive: 2
+        }
+    }
+
+    /// How far ahead of the runner-up the best reading has to score when the
+    /// two are equally many edits away — see `hasCostMargin` in
+    /// ``TypingCandidates/autocorrectDecision(_:)``. Higher is more cautious.
+    var costMargin: Double {
+        switch self {
+        case .mild: 1.0
+        case .normal: 0.7
+        case .aggressive: 0.4
+        }
+    }
+
+    /// The shortest typed word the general path will touch. Short words have
+    /// the most neighbours, so Mild leaves three-letter words to the curated
+    /// table.
+    var minimumLength: Int {
+        switch self {
+        case .mild: 4
+        case .normal, .aggressive: 3
+        }
     }
 }

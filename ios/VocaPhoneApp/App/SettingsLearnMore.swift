@@ -303,7 +303,26 @@ enum SettingsHelp {
                     + "not even to your gateway. Writing check, when it is on, stays on "
                     + "this iPhone too: see its own section.",
                 "Nothing is suggested in password, passcode or one-time-code fields, "
-                    + "and nothing is learned from them.",
+                    + "and nothing is learned from them. Swipe to type and Dictate "
+                    + "are off there too. A field that turns autocorrection off, "
+                    + "such as many username and search boxes, gets no suggestions "
+                    + "or corrections either, as with the iPhone keyboard.",
+                "Autocorrect strength decides how sure the keyboard must be before "
+                    + "space replaces a word. Mild fixes only clear slips in longer "
+                    + "words; Normal is the default; Aggressive also fixes a typo when "
+                    + "the likelier word only just wins. Your text replacements and "
+                    + "the fixes the keyboard has learned from you apply at every "
+                    + "strength.",
+                "Hold a suggested word to stop it being suggested, or corrected to, "
+                    + "again. With VoiceOver, use the “Don’t suggest this word” "
+                    + "action. Reset blocked words, below, brings them all back.",
+                "Your snippets (Settings › Snippets) work while typing too, the "
+                    + "way an iPhone text replacement does: type a one-word trigger "
+                    + "and its text is offered first and goes in on space. Tap the "
+                    + "word in quotes, or Delete, to keep what you typed.",
+                "Type a sum ending in “=”, such as 12*4= or 1,200/3=, and the answer "
+                    + "is offered as a suggestion. Plain arithmetic only: no units "
+                    + "or currencies.",
             ]),
             .init(heading: "Learn as I type", paragraphs: [
                 "Words you type three times without undoing a correction, and words "
@@ -337,7 +356,13 @@ enum SettingsHelp {
                     + "keyboard no way to reach the Taptic Engine, and the switch does "
                     + "nothing. Keyboard clicks are unaffected.",
                 "Swipe to type is on by default. Slide from letter to letter "
-                    + "without lifting; alternatives appear in the suggestion row.",
+                    + "without lifting; alternatives appear in the suggestion row. "
+                    + "Swiping works on the English keyboard only: the other "
+                    + "languages have no word list to match a swipe against yet, "
+                    + "so on them a slide types nothing rather than an English word.",
+                "Tap Shift with text selected to change its case: Sentence case, "
+                    + "then ALL CAPS, then lower case, then back to how it was. Keep "
+                    + "tapping to go round.",
                 "Space bar cursor: hold the space bar, then slide to move the cursor. "
                     + "With two keyboard languages, a swipe across it switches "
                     + "language instead.",

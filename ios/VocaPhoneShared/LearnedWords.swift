@@ -57,6 +57,51 @@ struct LearnedWords: Codable, Equatable, Sendable {
     static let fixesBeforeLearning = 2
     static let fixCapacity = 500
 
+    /// Words the user long-pressed off the suggestion strip, by lowercase
+    /// word, with when. Optional so files written before it decode.
+    ///
+    /// Kept here rather than in a file of its own because it is the same kind
+    /// of thing — what this user has taught the keyboard — and it lives and
+    /// dies with the same Full Access. Never listed in the app, for the same
+    /// reason the learned words are not: a count and a reset are the feature.
+    private(set) var blocked: [String: Date]?
+
+    /// Enough for every word anyone would bother to block; the oldest go first.
+    static let blockedCapacity = 500
+
+    var blockedCount: Int { blocked?.count ?? 0 }
+
+    /// Every blocked word, lowercased, for a keyboard to hold as a set rather
+    /// than build one per keystroke.
+    var blockedWords: Set<String> { blocked.map { Set($0.keys) } ?? [] }
+
+    func isBlocked(_ word: String) -> Bool {
+        blocked?[Self.key(word)] != nil
+    }
+
+    /// Never offer `word` again, and never correct to it.
+    ///
+    /// It also stops being a word this keyboard learned, and any typo fix that
+    /// led to it is forgotten: a word the user asked not to see must not come
+    /// back as a completion three sentences later because they once typed it.
+    mutating func block(_ word: String, now: Date = Date()) {
+        let key = Self.key(word)
+        guard !key.isEmpty else { return }
+        var all = blocked ?? [:]
+        all[key] = now
+        if all.count > Self.blockedCapacity {
+            let doomed = all.sorted { $0.value < $1.value }.prefix(all.count - Self.blockedCapacity)
+            for (word, _) in doomed { all.removeValue(forKey: word) }
+        }
+        blocked = all
+        entries.removeValue(forKey: key)
+        fixes = fixes?.filter { Self.key($0.value.fix) != key }
+    }
+
+    mutating func removeAllBlocked() {
+        blocked = nil
+    }
+
     private var learned: some Collection<Entry> {
         entries.values.lazy.filter { $0.count >= Self.repetitionsBeforeLearning }
     }
@@ -101,6 +146,9 @@ struct LearnedWords: Codable, Equatable, Sendable {
     mutating func learn(_ word: String, now: Date = Date()) {
         let key = Self.key(word)
         guard !key.isEmpty else { return }
+        // Asserting a word is the opposite of blocking it, and the newer of
+        // the two instructions is the one that stands.
+        blocked?.removeValue(forKey: key)
         var entry = entries[key] ?? Entry(word: word, count: 0, lastUsedAt: now)
         entry.word = word
         entry.count = max(entry.count, Self.repetitionsBeforeLearning)
@@ -109,6 +157,8 @@ struct LearnedWords: Codable, Equatable, Sendable {
         evictIfNeeded()
     }
 
+    /// Forgets learned words and fixes. Blocked words stay: "Reset learned
+    /// words" promises nothing else is affected, and they have their own reset.
     mutating func removeAll() {
         entries.removeAll()
         fixes = nil
@@ -261,7 +311,18 @@ final class LearnedWordStore: @unchecked Sendable {
             pending = nil
         }
         // Behind any write already queued, so an older list cannot land after.
-        writer.sync { write(LearnedWords()) }
+        let remaining = queue.sync { cached }
+        writer.sync { write(remaining) }
+    }
+
+    /// Unblocks every word, the same way: on disk before it returns.
+    func removeAllBlocked() {
+        queue.sync {
+            cached.removeAllBlocked()
+            pending = nil
+        }
+        let remaining = queue.sync { cached }
+        writer.sync { write(remaining) }
     }
 
     private func write(_ words: LearnedWords) {

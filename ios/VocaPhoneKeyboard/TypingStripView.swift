@@ -3,6 +3,8 @@ import UIKit
 @MainActor
 protocol TypingStripViewDelegate: AnyObject {
     func typingStrip(_ strip: TypingStripView, didChoose candidate: TypingCandidate)
+    /// A word chip was held, or VoiceOver's "Don't suggest" action used on it.
+    func typingStrip(_ strip: TypingStripView, didBlock candidate: TypingCandidate)
 }
 
 /// The candidate chips, drawn inside the dictation bar rather than above it.
@@ -151,6 +153,11 @@ final class TypingStripView: UIScrollView {
             let button = UIButton(type: .system)
             button.tag = buttons.count
             button.addTarget(self, action: #selector(chipTapped), for: .touchUpInside)
+            // Holding a suggested word blocks it. The press cancels the
+            // button's own touch, so the word is not also inserted.
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(chipHeld))
+            hold.minimumPressDuration = TypingCandidate.blockHoldDuration
+            button.addGestureRecognizer(hold)
             // A chip that does not react under the thumb reads as a label the
             // user has failed to hit. UIKit dims a plain button's title on its
             // own, which on an accent fill is invisible; this moves the whole
@@ -244,6 +251,14 @@ final class TypingStripView: UIScrollView {
         default: candidate.text
         }
         button.accessibilityHint = Self.hint(for: candidate)
+        let tag = button.tag
+        button.accessibilityCustomActions = candidate.isBlockable
+            ? [UIAccessibilityCustomAction(name: TypingCandidate.blockActionName) { [weak self] _ in
+                guard let self, tag < candidates.count, candidates[tag].isBlockable else { return false }
+                chipDelegate?.typingStrip(self, didBlock: candidates[tag])
+                return true
+            }]
+            : nil
     }
 
     /// What the chip does, said plainly. VoiceOver reads the word from the
@@ -264,7 +279,17 @@ final class TypingStripView: UIScrollView {
         case .writingReview: "Shows every suggestion with its reason."
         case .paste: "Pastes what you copied."
         case .nextKeyboard: "Switches to Apple's keyboard, which can fill this in."
+        case .calculation: "Inserts the answer."
         }
+    }
+
+    @objc private func chipHeld(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began,
+              let tag = recognizer.view?.tag,
+              tag < candidates.count,
+              candidates[tag].isBlockable
+        else { return }
+        chipDelegate?.typingStrip(self, didBlock: candidates[tag])
     }
 
     @objc private func chipTapped(_ sender: UIButton) {

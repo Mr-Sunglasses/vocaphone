@@ -45,10 +45,21 @@ struct TypingWordList: Sendable {
     /// allocations on the main actor at the exact frame the finger lifted — the
     /// one moment in this keyboard where a hitch is guaranteed to be seen.
     let collapsedWords: [String]
+    /// The language the list is in, as a ``TypingLayout/id``. Swipe typing
+    /// ranks a trace against this list and nothing else, so a layout in
+    /// another language gets no swipe rather than an English answer — see
+    /// ``serves(_:)``.
+    let language: String
 
     static let empty = TypingWordList(words: [], bigrams: [:])
 
-    init(words: [String], bigrams: [String: [String]]) {
+    /// The only list shipped today. A language with its own list would be
+    /// loaded under its own layout id; until one exists, swipe is English
+    /// only.
+    static let shippedLanguage = "en"
+
+    init(words: [String], bigrams: [String: [String]], language: String = TypingWordList.shippedLanguage) {
+        self.language = language
         self.words = words
         self.bigrams = bigrams
         var ranks: [String: Int] = [:]
@@ -81,6 +92,12 @@ struct TypingWordList: Sendable {
     }
 
     var isEmpty: Bool { words.isEmpty }
+
+    /// Whether swipe typing on `layout` may rank against this list: it has
+    /// words, and they are in that layout's language.
+    func serves(_ layout: TypingLayout) -> Bool {
+        !isEmpty && layout.id == language
+    }
 
     /// The list in frequency order, for callers that need to rank against it —
     /// the swipe recogniser scores every plausible word and needs both the word

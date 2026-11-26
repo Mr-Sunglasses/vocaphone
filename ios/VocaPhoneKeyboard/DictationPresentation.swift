@@ -204,6 +204,10 @@ struct DictationContext: Equatable {
     var insertionWasInterrupted = false
     /// Something this keyboard has to say while no session owns the bar.
     var notice: DictationNotice?
+    /// False in a password, one-time-code or card-number field
+    /// (``TypingFieldPolicy/allowsDictation``): Dictate is shown switched off
+    /// rather than removed, so the row keeps its shape between fields.
+    var allowsDictation = true
 }
 
 /// What the keyboard says when there is no session to show, but there is news
@@ -430,6 +434,10 @@ extension DictationBarModel {
         announcement: nil
     )
 
+    /// Why Dictate is off, said as the button's label and when anything else
+    /// tries to start a dictation in that field.
+    static let noDictationHere = "Dictation is off in password fields"
+
     private static func resting(_ context: DictationContext) -> DictationBarModel {
         // A finished insertion keeps the headline and the Undo button: "Text
         // inserted" with an undo still available is not the moment to start
@@ -441,12 +449,20 @@ extension DictationBarModel {
             body: showsCandidates ? .candidates(context.candidates) : .controls,
             accent: justInserted ? .ready : .brand,
             pulse: .steady,
-            primary: DictationButton(
-                title: "Dictate",
-                symbol: "mic.fill",
-                action: .start,
-                hint: "Opens vocaphone and starts private dictation."
-            ),
+            primary: context.allowsDictation
+                ? DictationButton(
+                    title: "Dictate",
+                    symbol: "mic.fill",
+                    action: .start,
+                    hint: "Opens vocaphone and starts private dictation."
+                )
+                : DictationButton(
+                    title: noDictationHere,
+                    symbol: "mic.slash.fill",
+                    action: .start,
+                    isEnabled: false,
+                    hint: "Type it instead. Dictation comes back in the next field."
+                ),
             secondaries: context.canUndo ? [.undo] : [],
             showsElapsedTime: false,
             isExpanded: false,

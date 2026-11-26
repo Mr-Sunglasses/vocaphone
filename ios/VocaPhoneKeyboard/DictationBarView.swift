@@ -8,6 +8,8 @@ protocol DictationBarViewDelegate: AnyObject {
     func dictationBarDidChangePreferences(_ bar: DictationBarView)
     /// A candidate chip was tapped.
     func dictationBar(_ bar: DictationBarView, didChoose candidate: TypingCandidate)
+    /// A word chip was held: never suggest it again.
+    func dictationBar(_ bar: DictationBarView, didBlock candidate: TypingCandidate)
 }
 
 /// The dictation chrome above the keys: one container that morphs between
@@ -417,6 +419,10 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
     /// controller can rewrite the document.
     func typingStrip(_ strip: TypingStripView, didChoose candidate: TypingCandidate) {
         delegate?.dictationBar(self, didChoose: candidate)
+    }
+
+    func typingStrip(_ strip: TypingStripView, didBlock candidate: TypingCandidate) {
+        delegate?.dictationBar(self, didBlock: candidate)
     }
 
     @objc private func primaryTapped() {

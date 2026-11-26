@@ -20,6 +20,36 @@ struct TypingFieldPolicy: Equatable {
     /// Why it was refused, for the one place it is worth saying out loud: a
     /// test failure.
     let reason: Reason?
+    /// Whether the strip may offer anything here, and space correct anything.
+    ///
+    /// Off where the field set `autocorrectionType = .no`. Apple's keyboard
+    /// reads that as "no QuickType bar" as much as "no autocorrect": a
+    /// username, a code editor or a search box that asks for it gets neither
+    /// corrections nor predictions, and nothing typed there is learned. Not a
+    /// secret, so unlike ``allowsTypingIntelligence`` it leaves the rest of
+    /// the keyboard alone — swipe, the touch model, and the Writing check
+    /// button (``allowsWritingCheck(for:)``) all still work.
+    var offersSuggestions = true
+
+    /// Candidates, autocorrect and learning: the field allows intelligence
+    /// and did not ask for autocorrection off.
+    var allowsSuggestions: Bool { allowsTypingIntelligence && offersSuggestions }
+
+    /// Swipe typing turns a gesture into a dictionary word, so it reads what
+    /// is typed exactly as suggestions do and goes off in the same fields.
+    /// Apple's keyboard does not offer QuickPath in a password field either.
+    var allowsSwipeTyping: Bool { allowsTypingIntelligence }
+
+    /// Whether the keyboard may offer dictation here.
+    ///
+    /// Not in a secure field, nor in one carrying a password, a one-time code
+    /// or a card number: Apple's keyboard hides its microphone in those, and
+    /// the Android keyboard already refuses. Speaking a secret aloud is the
+    /// wrong way to type it, and a transcript of it would sit in the history.
+    /// A number pad is fine — saying a phone number is a reasonable thing to do.
+    var allowsDictation: Bool {
+        reason != .secureEntry && reason != .sensitiveContentType
+    }
 
     enum Reason: Equatable {
         case secureEntry
@@ -45,7 +75,8 @@ struct TypingFieldPolicy: Equatable {
     static func resolve(
         isSecureTextEntry: Bool,
         contentType: UITextContentType?,
-        keyboardType: UIKeyboardType
+        keyboardType: UIKeyboardType,
+        autocorrectionType: UITextAutocorrectionType = .default
     ) -> TypingFieldPolicy {
         if isSecureTextEntry {
             return TypingFieldPolicy(allowsTypingIntelligence: false, reason: .secureEntry)
@@ -58,6 +89,9 @@ struct TypingFieldPolicy: Equatable {
         }
         if numericKeyboardTypes.contains(keyboardType) {
             return TypingFieldPolicy(allowsTypingIntelligence: false, reason: .numericKeyboard)
+        }
+        if autocorrectionType == .no {
+            return TypingFieldPolicy(allowsTypingIntelligence: true, reason: nil, offersSuggestions: false)
         }
         return .allowed
     }
@@ -119,7 +153,8 @@ struct TypingFieldPolicy: Equatable {
             // conforms to, defaulting to the safe answer when absent.
             isSecureTextEntry: (proxy as UITextInputTraits).isSecureTextEntry ?? false,
             contentType: proxy.textContentType,
-            keyboardType: proxy.keyboardType ?? .default
+            keyboardType: proxy.keyboardType ?? .default,
+            autocorrectionType: proxy.autocorrectionType ?? .default
         )
     }
 }

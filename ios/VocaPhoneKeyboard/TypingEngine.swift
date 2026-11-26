@@ -195,6 +195,16 @@ final class TypingEngine {
     /// learning the fix they type in its place (`wordCommitted`).
     private var erasedWord: String?
     private var lexiconEntries: [LexiconEntry] = []
+    /// The user's vocaphone snippets whose trigger is one word, in the same
+    /// shape as a text replacement — which is what they are while typing.
+    private var snippetEntries: [LexiconEntry] = []
+    /// Words the user long-pressed off the strip, lowercased. Held as a set
+    /// for the keystroke path and refreshed only when this keyboard blocks or
+    /// learns a word: the store is read once, when the engine is made.
+    private var blockedWords: Set<String> = []
+    /// The answer to a sum ending in "=" before the cursor
+    /// (``InlineArithmetic``), as of the last refresh.
+    private var calculation: String?
 
     /// One of the user's own text replacements. A named type rather than a
     /// tuple so it can cross an isolation boundary as `Sendable`.
@@ -280,6 +290,7 @@ final class TypingEngine {
         }
         customWords = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
         loweredCustomWords = customWords.map { $0.lowercased() }
+        blockedWords = learned.snapshot().blockedWords
     }
 
     private var hasLoaded = false
@@ -342,9 +353,30 @@ final class TypingEngine {
         refreshCurrentCandidates()
     }
 
+    /// Installs the user's snippets (Settings › Snippets) as
+    /// typing shortcuts.
+    ///
+    /// They behave exactly as an iOS text replacement does on this keyboard:
+    /// the expansion is offered as the strip's first chip while the trigger is
+    /// being typed, and a trigger typed in full expands on space, with the
+    /// typed word one tap or one Delete away. Only one-word triggers: a
+    /// composition is one word, and "my address" can never be typed as one.
+    func installSnippets(_ snippets: [Snippet]) {
+        let entries = snippets.compactMap { snippet -> LexiconEntry? in
+            let trigger = snippet.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trigger.isEmpty, !snippet.expansion.isEmpty,
+                  trigger.allSatisfy(WordComposer.isWordCharacter)
+            else { return nil }
+            return LexiconEntry(userInput: trigger, documentText: snippet.expansion)
+        }
+        guard entries != snippetEntries else { return }
+        snippetEntries = entries
+        refreshCurrentCandidates()
+    }
+
     private func refreshCurrentCandidates() {
         guard hasDocumentContext,
-              policy.allowsTypingIntelligence,
+              policy.allowsSuggestions,
               KeyboardPreferences.typingSuggestionsEnabled,
               pendingSwipe == nil, pendingRevert == nil
         else { return }
@@ -420,6 +452,7 @@ final class TypingEngine {
         hasDocumentContext = false
         assertedWords.removeAll()
         pendingRevert = nil
+        calculation = nil
         cache.removeAll()
         publish(.none)
         publishNextCharacters()
@@ -537,7 +570,7 @@ final class TypingEngine {
         }
         guard let erased = erasedWord,
               KeyboardPreferences.learnAsITypeEnabled,
-              policy.allowsTypingIntelligence,
+              policy.allowsSuggestions,
               Self.isSlip(erased, of: final, rows: layout.rows),
               !offensive.blocks(final, allowSwears: KeyboardPreferences.suggestSwearWords)
         else { return }
@@ -548,7 +581,7 @@ final class TypingEngine {
     /// A correction (not a longer version of what was typed) is a fix.
     func notePickedCorrection(typed: String, picked: String) {
         guard KeyboardPreferences.learnAsITypeEnabled,
-              policy.allowsTypingIntelligence,
+              policy.allowsSuggestions,
               typed.count >= 2,
               !picked.lowercased().hasPrefix(typed.lowercased()),
               Self.isSlip(typed, of: picked, rows: layout.rows)
@@ -584,6 +617,7 @@ final class TypingEngine {
         pendingRevert = nil
         guard KeyboardPreferences.learnAsITypeEnabled else { return }
         learned.update { $0.learn(word) }
+        blockedWords.remove(word.lowercased())
     }
 
     /// Records that an autocorrect was applied, so the next Delete can undo it
@@ -599,7 +633,7 @@ final class TypingEngine {
             replacement: replacement,
             boundary: boundary
         )
-        guard policy.allowsTypingIntelligence else { return }
+        guard policy.allowsSuggestions else { return }
         publish(TypingCandidates.revertStrip(typed: typed))
     }
 
@@ -653,6 +687,9 @@ final class TypingEngine {
     func screenedSwipe(_ word: String, alternates: [String]) -> (String, [String])? {
         let allowSwears = KeyboardPreferences.suggestSwearWords
         let readings = offensive.filter([word] + alternates, after: precedingWord, allowSwears: allowSwears)
+            // A word the user blocked is no more a swipe's answer than a
+            // suggestion: the next reading takes its place.
+            .filter { blockedWords.isEmpty || !blockedWords.contains($0.lowercased()) }
         guard let first = readings.first else { return nil }
         return (first, Array(readings.dropFirst()))
     }
@@ -662,6 +699,12 @@ final class TypingEngine {
 
     private func publishSwipeAlternates() {
         guard let pendingSwipe else { return }
+        // Alternates are suggestions, and a field that turned them off gets
+        // none — the swiped word itself still goes in.
+        guard policy.allowsSuggestions else {
+            publish(.none)
+            return
+        }
         publish(
             TypingStrip(
                 candidates: pendingSwipe.alternates
@@ -696,7 +739,7 @@ final class TypingEngine {
     /// never reverted is a word the user means.
     func noteCompletedWord(_ word: String) {
         guard KeyboardPreferences.learnAsITypeEnabled,
-              policy.allowsTypingIntelligence,
+              policy.allowsSuggestions,
               word.count >= 3,
               word.allSatisfy({ $0.isLetter || $0 == "'" }),
               !wordList.contains(word)
@@ -712,7 +755,34 @@ final class TypingEngine {
     func learn(_ word: String) {
         guard policy.allowsTypingIntelligence, !word.isEmpty else { return }
         learned.update { $0.learn(word) }
+        blockedWords.remove(word.lowercased())
     }
+
+    /// The user long-pressed `word` on the strip: it is never offered again,
+    /// never corrected to, and never a swipe's answer. Persisted with the
+    /// learned words, and undone only from Settings.
+    ///
+    /// Not gated on Learn as I type. That switch is about the keyboard
+    /// drawing conclusions on its own; this is an instruction.
+    func block(_ word: String) {
+        let key = word.lowercased()
+        guard !key.isEmpty else { return }
+        learned.update { $0.block(word) }
+        blockedWords.insert(key)
+        cache.removeAll()
+        // A swipe's alternates own the strip until the next key, so the
+        // blocked one leaves that row too rather than waiting for it to end.
+        if let swipe = pendingSwipe {
+            pendingSwipe = PendingSwipe(
+                word: swipe.word,
+                alternates: swipe.alternates.filter { $0.lowercased() != key }
+            )
+            publishSwipeAlternates()
+        }
+        refreshCurrentCandidates()
+    }
+
+    var blockedWordCount: Int { blockedWords.count }
 
     func resetLearnedWords() {
         learned.removeAll()
@@ -762,7 +832,7 @@ final class TypingEngine {
         pendingCheck = nil
         generation += 1
         measured("nextCharacters") { publishNextCharacters() }
-        guard KeyboardPreferences.typingSuggestionsEnabled, policy.allowsTypingIntelligence
+        guard KeyboardPreferences.typingSuggestionsEnabled, policy.allowsSuggestions
         else {
             publish(.none)
             return
@@ -789,6 +859,8 @@ final class TypingEngine {
 
         let generation = generation
         let composition = composer.text
+        // Free unless the text before the cursor ends in "=".
+        calculation = InlineArithmetic.result(before: document.before)
         if !composition.isEmpty { prepareResources() }
         let origin = composer.origin
         let preceding = measured("precedingWord") {
@@ -907,13 +979,17 @@ final class TypingEngine {
         var lexiconCompletions: [String] = []
         var lexiconExpansion: String?
         if !composition.isEmpty {
-            for entry in lexiconEntries where entry.lowered.hasPrefix(lowered) {
-                lexiconCompletions.append(entry.documentText)
-                if lexiconExpansion == nil,
-                   entry.lowered == lowered,
-                   !entry.documentText.isEmpty
-                {
-                    lexiconExpansion = entry.documentText
+            // Snippets first: they were written in this app, for this
+            // keyboard, and are the more deliberate of the two.
+            for entries in [snippetEntries, lexiconEntries] where !entries.isEmpty {
+                for entry in entries where entry.lowered.hasPrefix(lowered) {
+                    lexiconCompletions.append(entry.documentText)
+                    if lexiconExpansion == nil,
+                       entry.lowered == lowered,
+                       !entry.documentText.isEmpty
+                    {
+                        lexiconExpansion = entry.documentText
+                    }
                 }
             }
         }
@@ -990,6 +1066,9 @@ final class TypingEngine {
             wordList.nextWords(after: $0, limit: 12)
         } ?? []
         context.isMidWord = isMidWord
+        context.blockedWords = blockedWords
+        context.strength = KeyboardPreferences.autocorrectStrength
+        context.calculation = composition.isEmpty ? calculation : nil
         context.hasCheckerAnswer = checked != nil
         context.isKnownToChecker = checked?.isKnown ?? false
         context.isInWordList = wordList.contains(composition)
@@ -1001,6 +1080,7 @@ final class TypingEngine {
         context.emojiSuggestion = emojiTriggers[composition.lowercased()]
         context.emojiEnabled = KeyboardPreferences.emojiSuggestionsEnabled
         context.suggestionsEnabled = KeyboardPreferences.typingSuggestionsEnabled
+            && policy.offersSuggestions
         context.autocorrectEnabled = KeyboardPreferences.autocorrectIsActive
         context.predictionEnabled = KeyboardPreferences.nextWordPredictionEnabled
         context.allowsTypingIntelligence = policy.allowsTypingIntelligence

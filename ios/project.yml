@@ -285,6 +285,10 @@ targets:
       - path: VocaPhoneKeyboard/TypingEngine.swift
       - path: VocaPhoneKeyboard/SpellChecking.swift
       - path: VocaPhoneKeyboard/SmartPunctuation.swift
+      # Shift over a selection, and the answer to a typed sum: both pure, and
+      # both the kind of rule that is wrong in one character.
+      - path: VocaPhoneKeyboard/CaseCycle.swift
+      - path: VocaPhoneKeyboard/InlineArithmetic.swift
       # The word-to-emoji table is the feature worth pinning: which names
       # offer an emoji, and which ordinary words deliberately do not.
       - path: VocaPhoneKeyboard/EmojiSuggestions.swift

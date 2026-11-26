@@ -353,6 +353,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // A recreated extension instance can inherit a session the previous one
         // started, so scan once on appear and let `render` decide about polling.
         typing.installCustomVocabulary(LocalTranscriptionPreferences.customVocabulary)
+        // Edited in the app, like the vocabulary: once per appearance, never
+        // per keystroke. A few hundred bytes of JSON from the shared defaults.
+        typing.installSnippets(SnippetStore.snippets)
         applyDocumentTraits()
         // Shift was last set for wherever the keyboard was before, and iOS
         // sends no `textDidChange` for a field it is merely shown over.
@@ -1096,7 +1099,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// not leave the field (the keyboard records itself, or Quick Dictation is
     /// ready); a hold that would open vocaphone is just the tap it ends as.
     private func beginPushToTalk() -> Bool {
-        guard activeSessionID == nil, hasFullAccess else { return false }
+        guard activeSessionID == nil, hasFullAccess, fieldAllowsDictation else { return false }
         let quickReady = (try? store.loadQuickDictationAvailability())?.isReady() == true
         guard quickReady || KeyboardDictation.gateway(quickDictationReady: false) != nil else { return false }
         KeyboardHaptics.shared.action()
@@ -1299,6 +1302,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 )
             )
         }
+        // Anything typed ends a Shift case cycle: the text before the cursor
+        // is no longer the spelling it inserted.
+        caseCycle = nil
         // The compact row moves its action button aside as soon as somebody
         // types, and "as soon as" is the keystroke — not the suggestions it
         // eventually produces.
@@ -1612,10 +1618,63 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
 
     func keyGridDidToggleShift(_ grid: KeyGridView) {
+        // Over a selection, Shift changes the selection's case instead.
+        if documentEvent({ cycleSelectionCase() }) { return }
         // Remembered with the place it was made, so that it lasts exactly as
         // long as the cursor stays there. See ``updateAutomaticShift``.
         manualShiftAnchor = readDocument()
         shiftLockIsAutomatic = false
+    }
+
+    /// Shift tapped over selected text: Sentence case, then ALL CAPS, then
+    /// lower, then the spelling it started with (``CaseCycle``), as on the
+    /// Android keyboard. Reports whether it did anything.
+    ///
+    /// Replacing the selection is one `insertText`, and the host puts the
+    /// cursor after it — a keyboard cannot select text, so the highlight does
+    /// not survive. The next tap carries on regardless, from the spelling
+    /// still in front of the cursor (``CaseCycleSession``), until anything
+    /// else is typed or the cursor moves.
+    ///
+    /// Not in a field that refuses typing intelligence: `selectedText` is the
+    /// one read here that hands over text the user did not just type, and a
+    /// password field's selection is none of the keyboard's business.
+    private func cycleSelectionCase() -> Bool {
+        guard typing.policy.allowsTypingIntelligence, !isPerformingInsertion else {
+            caseCycle = nil
+            return false
+        }
+        let proxy = textDocumentProxy
+        let next: String
+        let original: String
+        if let selected = proxy.selectedText, selected.contains(where: \.isLetter) {
+            // A selection that is still what the last tap made continues that
+            // cycle; any other selection starts a new one.
+            original = caseCycle?.emitted == selected ? caseCycle?.original ?? selected : selected
+            next = CaseCycle.next(selected, original: original)
+            guard next != selected else { return false }
+            proxy.insertText(next)
+        } else if let session = caseCycle,
+                  proxy.selectedText?.isEmpty != false,
+                  session.continues(before: document.before, after: document.after)
+        {
+            original = session.original
+            next = CaseCycle.next(session.emitted, original: original)
+            for _ in 0..<session.emitted.count { proxy.deleteBackward() }
+            proxy.insertText(next)
+        } else {
+            caseCycle = nil
+            return false
+        }
+        let snapshot = refreshDocument()
+        caseCycle = CaseCycleSession(original: original, emitted: next, after: snapshot.after)
+        typing.reconcile(document: snapshot)
+        // The tap was a case change, not a capital for the next letter.
+        manualShiftAnchor = nil
+        keyGrid.shiftState = .off
+        KeyboardHaptics.shared.action()
+        UIAccessibility.post(notification: .announcement, argument: next)
+        return true
     }
 
     private func insertSpace() {
@@ -1814,6 +1873,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func startSession() {
+        // The button is already off in a password field; this is the rule
+        // for every other way of getting here.
+        guard fieldAllowsDictation else {
+            flash(DictationBarModel.noDictationHere)
+            return
+        }
         guard hasFullAccess else {
             openFullAccessSettings()
             return
@@ -2555,7 +2620,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 processingLocation: record?.processingLocation,
                 insertionWasInterrupted: record?.insertionInterrupted == true
                     && [.readyToInsert, .targetContextChanged].contains(record?.state),
-                notice: notice
+                notice: notice,
+                allowsDictation: fieldAllowsDictation
             )
         )
         // A failure this instance is showing counts as told: another instance
@@ -2799,6 +2865,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         dictationSurfaceState.onCandidate = { [weak self] candidate in
             guard let self, !isPerformingInsertion else { return }
             documentEvent { self.apply(candidate) }
+        }
+        dictationSurfaceState.typing.onBlock = { [weak self] candidate in
+            guard let self, !isPerformingInsertion else { return }
+            documentEvent { self.block(candidate) }
         }
         dictationSurfaceState.onHoldBegan = { [weak self] in self?.beginPushToTalk() ?? false }
         dictationSurfaceState.onHoldEnded = { [weak self] in self?.endPushToTalk() }
@@ -3144,6 +3214,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // The trace writes which key was pressed, and a character key's name is
         // the character. Not in a field that has asked for no intelligence.
         keyGrid.traceNamesKeys = policy.allowsTypingIntelligence
+        // Swipe reads words as surely as the strip does, and goes with it.
+        keyGrid.allowsSwipeTyping = policy.allowsSwipeTyping
+        caseCycle = nil
+        // No microphone in a password field. Redrawn at once when that
+        // changes, so Dictate never stays live over a field it may not use.
+        if fieldAllowsDictation != policy.allowsDictation {
+            fieldAllowsDictation = policy.allowsDictation
+            if hasRendered { render(lastRecord) }
+        }
         keyGrid.showsGlobeKey = needsInputModeSwitchKey
         keyGrid.offersCursorTrackpad = KeyboardPreferences.spacebarCursorEnabled
         applyTypingLayout(KeyboardPreferences.typingLayout)
@@ -3336,6 +3415,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var manualShiftAnchor: DocumentSnapshot?
     /// Caps lock is on because a field asked for capitals, not by a double tap.
     private var shiftLockIsAutomatic = false
+    /// The Shift case cycle the next tap continues, if nothing has moved.
+    private var caseCycle: CaseCycleSession?
+    /// Whether this field may offer dictation (``TypingFieldPolicy/allowsDictation``).
+    private var fieldAllowsDictation = true
 }
 
 extension KeyboardViewController: KeyGridViewDelegate {
@@ -3362,6 +3445,22 @@ extension KeyboardViewController: DictationBarViewDelegate {
     func dictationBar(_ bar: DictationBarView, didChoose candidate: TypingCandidate) {
         guard !isPerformingInsertion else { return }
         documentEvent { apply(candidate) }
+    }
+
+    func dictationBar(_ bar: DictationBarView, didBlock candidate: TypingCandidate) {
+        guard !isPerformingInsertion else { return }
+        documentEvent { block(candidate) }
+    }
+
+    /// A long press (or the VoiceOver action) on a suggested word: it is
+    /// never suggested again. Said out loud, because the only other sign is
+    /// a chip disappearing.
+    private func block(_ candidate: TypingCandidate) {
+        guard candidate.isBlockable else { return }
+        typing.block(candidate.text)
+        KeyboardHaptics.shared.action()
+        flash("Won\u{2019}t suggest \u{201C}\(candidate.text)\u{201D} again")
+        render(lastRecord)
     }
 
     private func apply(_ candidate: TypingCandidate) {
@@ -3451,7 +3550,12 @@ extension KeyboardViewController: DictationBarViewDelegate {
             advanceToNextInputMode()
         case .writingReview:
             dictationSurfaceState.present(.writing)
+        case .calculation:
+            // Straight after the "=", no space: "12*4=48".
+            textDocumentProxy.insertText(candidate.text)
+            typing.resetComposition(origin: .suggestion, document: refreshDocument())
         }
+        caseCycle = nil
         lastSpaceInsertedAt = nil
         releaseUndoIfDetached()
         updateAutomaticShift()

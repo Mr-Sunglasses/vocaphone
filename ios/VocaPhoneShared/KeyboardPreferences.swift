@@ -47,6 +47,8 @@ enum KeyboardDefaults {
     /// every typo stayed in the text.
     static let typingSuggestions = true
     static let autocorrect = true
+    /// The thresholds autocorrect used before there was a choice.
+    static let autocorrectStrength = AutocorrectStrength.normal
     static let nextWordPrediction = true
     static let learnAsIType = true
     /// Off, as on Apple's keyboard and for the App Store's 4+ rating. Slurs are
@@ -369,6 +371,37 @@ enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable
 /// Landscape is deliberately not derived from this. A compact-height phone has
 /// almost no room to give away, and multiplying an already-tight layout by
 /// `.tall` would cover the field being typed into.
+/// How readily the keyboard replaces a word it does not recognise when space
+/// is pressed. A picker rather than a slider: three settings somebody can
+/// tell apart beat a continuum nobody can.
+///
+/// The thresholds themselves live with the rule they tune, in the keyboard
+/// (`AutocorrectStrength.maximumEdits` and its neighbours). ``normal`` is the
+/// keyboard as it behaved before this setting existed.
+enum AutocorrectStrength: String, CaseIterable, Identifiable, Sendable {
+    case mild
+    case normal
+    case aggressive
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .mild: "Mild"
+        case .normal: "Normal"
+        case .aggressive: "Aggressive"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .mild: "Only clear slips, in words of four letters or more."
+        case .normal: "Fixes a typo when one word is the obvious reading."
+        case .aggressive: "Also fixes a typo when the likelier word only just wins."
+        }
+    }
+}
+
 enum KeyboardHeightPreference: String, CaseIterable, Codable, Identifiable, Sendable {
     case compact
     case standard
@@ -575,6 +608,7 @@ enum KeyboardPreferences {
     /// Kept only so ``removeRetiredEmojiRecents()`` has a name to clear.
     static let retiredEmojiRecentsKey = "recentEmoji"
     static let swipeTypingKey = "swipeTypingEnabled"
+    static let autocorrectStrengthKey = "autocorrectStrength"
     static let numberRowKey = "numberRowEnabled"
     /// Debug-only touch and frame instrumentation. Kept off unless a developer
     /// explicitly arms it in the keyboard lab.
@@ -784,6 +818,16 @@ enum KeyboardPreferences {
     }
 
     static var autocorrectIsActive: Bool { typingSuggestionsEnabled && autocorrectEnabled }
+
+    /// Read with the rest of a keystroke's context, so a change in Settings
+    /// reaches the next word without the keyboard being reloaded.
+    static var autocorrectStrength: AutocorrectStrength {
+        get {
+            defaults?.string(forKey: autocorrectStrengthKey)
+                .flatMap(AutocorrectStrength.init(rawValue:)) ?? KeyboardDefaults.autocorrectStrength
+        }
+        set { defaults?.set(newValue.rawValue, forKey: autocorrectStrengthKey) }
+    }
 
     static var nextWordPredictionEnabled: Bool {
         get { boolean(nextWordPredictionKey, default: KeyboardDefaults.nextWordPrediction) }

@@ -592,6 +592,14 @@ final class TypingRowState: ObservableObject {
         storage = value
     }
     var onCandidate: ((TypingCandidate) -> Void)?
+    /// A word chip was held, or VoiceOver's "Don't suggest" action was used:
+    /// never suggest that word again.
+    var onBlock: ((TypingCandidate) -> Void)?
+    /// The chip a hold just blocked, so the lift that ends the hold is not
+    /// also taken as a tap that inserts the word. By identity rather than a
+    /// flag: the blocked chip usually leaves the row before the finger does,
+    /// and a flag nobody consumed would eat the next tap on another word.
+    var blockedByHold: String?
     /// The text the system paste button handed over, after the user's tap.
     var onPaste: ((String) -> Void)?
     var hapticsEnabled = true
@@ -1740,7 +1748,9 @@ struct DictationSurfaceView: View {
         } label: {
             if compactShowsStart {
                 HStack(spacing: 9) {
-                    Image(systemName: "mic.fill")
+                    // Struck through where dictation is off (a password
+                    // field), with the button disabled below.
+                    Image(systemName: state.primaryIsEnabled ? "mic.fill" : "mic.slash.fill")
                     Text("Start")
                 }
                 .font(.system(size: 15, weight: .semibold))
@@ -1802,7 +1812,9 @@ struct DictationSurfaceView: View {
         .buttonStyle(.plain)
         // The model disables processing but keeps handoff recovery available.
         .disabled(!state.primaryIsEnabled)
-        .accessibilityLabel(compactShowsStart ? "Start dictation" : state.primaryLabel)
+        .accessibilityLabel(
+            compactShowsStart && state.primaryIsEnabled ? "Start dictation" : state.primaryLabel
+        )
         .modifier(TrailingMatchedGeometryModifier(
             enabled: !state.usesCompactControls || !compactShowsStart,
             namespace: animationNamespace
@@ -1890,6 +1902,11 @@ private struct CandidateRow: View {
                     .padding(.horizontal, 6)
                 } else {
                 Button {
+                    // The lift after a hold that blocked this word.
+                    if state.blockedByHold == candidate.identity {
+                        state.blockedByHold = nil
+                        return
+                    }
                     state.tap()
                     state.onCandidate?(candidate)
                 } label: {
@@ -1925,6 +1942,7 @@ private struct CandidateRow: View {
                 }
                 .buttonStyle(CandidateButtonStyle(isDark: state.isDark))
                 .accessibilityLabel(Self.accessibilityLabel(for: candidate))
+                .modifier(BlockWordModifier(candidate: candidate, state: state))
                 }
             }
         }
@@ -1953,6 +1971,32 @@ private struct CandidateRow: View {
         case .writingFix: candidate.text
         case .writingReview: "\u{2713} \(candidate.text)"
         default: candidate.text
+        }
+    }
+}
+
+/// Hold a suggested word to stop it being suggested, and the same as a
+/// VoiceOver action. Only on chips that are words the keyboard chose
+/// (``TypingCandidate/isBlockable``); nothing is attached to the rest.
+private struct BlockWordModifier: ViewModifier {
+    let candidate: TypingCandidate
+    let state: TypingRowState
+
+    func body(content: Content) -> some View {
+        if candidate.isBlockable {
+            content
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: TypingCandidate.blockHoldDuration)
+                        .onEnded { _ in
+                            state.blockedByHold = candidate.identity
+                            state.onBlock?(candidate)
+                        }
+                )
+                .accessibilityAction(named: Text(TypingCandidate.blockActionName)) {
+                    state.onBlock?(candidate)
+                }
+        } else {
+            content
         }
     }
 }

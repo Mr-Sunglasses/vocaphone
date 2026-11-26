@@ -229,6 +229,11 @@ final class KeyGridView: UIView {
     /// commit nonsense.
     var swipeWordList: TypingWordList?
 
+    /// Whether the field allows swipe typing at all
+    /// (``TypingFieldPolicy/allowsSwipeTyping``): not in a password, a
+    /// one-time code or a card number.
+    var allowsSwipeTyping = true
+
     /// The field's own keyboard type, which decides whether a long press on `.`
     /// offers domains.
     var keyboardType: UIKeyboardType = .default {
@@ -1621,11 +1626,16 @@ final class KeyGridView: UIView {
 
     private var swipeTypingIsAvailable: Bool {
         KeyboardPreferences.swipeTypingEnabled
+            && allowsSwipeTyping
             // Only where there are letters to trace across. On the numbers and
             // symbols planes, and on the numeric keypads, a long drag is a
             // finger changing its mind about a key.
             && plane == .letters
-            && swipeWordList?.isEmpty == false
+            // And only against a word list in the layout's own language. The
+            // shipped list is English, and a swipe on a French or Russian
+            // layout ranked against it can only answer with an English word —
+            // or, across Cyrillic keys, with nothing that makes sense at all.
+            && swipeWordList?.serves(layout) == true
             && !UIAccessibility.isVoiceOverRunning
     }
 

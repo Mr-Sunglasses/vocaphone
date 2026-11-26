@@ -186,6 +186,10 @@ struct KeyboardSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var autocorrectEnabled = KeyboardDefaults.autocorrect
     @AppStorage(
+        KeyboardPreferences.autocorrectStrengthKey,
+        store: KeyboardPreferences.defaults
+    ) private var autocorrectStrengthRawValue = KeyboardDefaults.autocorrectStrength.rawValue
+    @AppStorage(
         KeyboardPreferences.nextWordPredictionKey,
         store: KeyboardPreferences.defaults
     ) private var predictionEnabled = KeyboardDefaults.nextWordPrediction
@@ -238,10 +242,16 @@ struct KeyboardSettingsView: View {
     @State private var learnedStore = LearnedWordStore()
     @State private var learnedCount = 0
     @State private var isConfirmingLearnedReset = false
+    @State private var blockedCount = 0
+    @State private var isConfirmingBlockedReset = false
     @State private var learnMore: LearnMoreTopic?
 
     private var selected: KeyboardHeightPreference {
         KeyboardHeightPreference(rawValue: keyboardHeightRawValue) ?? .standard
+    }
+
+    private var autocorrectStrength: AutocorrectStrength {
+        AutocorrectStrength(rawValue: autocorrectStrengthRawValue) ?? KeyboardDefaults.autocorrectStrength
     }
 
     var body: some View {
@@ -275,6 +285,7 @@ struct KeyboardSettingsView: View {
             // Words and typo fixes alike: Reset forgets both.
             let learned = learnedStore.snapshot()
             learnedCount = learned.count + learned.learnedFixCount
+            blockedCount = learned.blockedCount
         }
         .confirmationDialog(
             "Forget \(learnedCount) learned word\(learnedCount == 1 ? "" : "s")?",
@@ -291,6 +302,21 @@ struct KeyboardSettingsView: View {
                 "The keyboard will start correcting these words again until it "
                     + "learns them a second time. Nothing else is affected."
             )
+        }
+        // A second dialog on the List rather than the row, for the reason the
+        // sheets above give.
+        .confirmationDialog(
+            "Suggest \(blockedCount) blocked word\(blockedCount == 1 ? "" : "s") again?",
+            isPresented: $isConfirmingBlockedReset,
+            titleVisibility: .visible
+        ) {
+            Button("Unblock them", role: .destructive) {
+                learnedStore.removeAllBlocked()
+                blockedCount = 0
+            }
+            Button("Keep blocked", role: .cancel) {}
+        } message: {
+            Text("Words you held in the suggestion row can be suggested and corrected to again.")
         }
     }
 
@@ -401,6 +427,14 @@ struct KeyboardSettingsView: View {
             }
             Toggle("Autocorrect", isOn: $autocorrectEnabled)
                 .disabled(!suggestionsEnabled)
+            Picker(selection: $autocorrectStrengthRawValue) {
+                ForEach(AutocorrectStrength.allCases) { strength in
+                    Text(strength.displayName).tag(strength.rawValue)
+                }
+            } label: {
+                SettingLabel("Autocorrect strength", detail: autocorrectStrength.detail)
+            }
+            .disabled(!suggestionsEnabled || !autocorrectEnabled)
             Toggle("Predict the next word", isOn: $predictionEnabled)
                 .disabled(!suggestionsEnabled)
             Toggle(isOn: $suggestSwearWords) {
@@ -430,6 +464,12 @@ struct KeyboardSettingsView: View {
                 LabeledContent("Reset learned words", value: "\(learnedCount)")
             }
             .disabled(learnedCount == 0)
+            Button(role: .destructive) {
+                isConfirmingBlockedReset = true
+            } label: {
+                LabeledContent("Reset blocked words", value: "\(blockedCount)")
+            }
+            .disabled(blockedCount == 0)
         } footer: {
             if !learnedStore.isPersistent {
                 Text("Full Access is off, so learned words last only until the keyboard closes.")
@@ -450,7 +490,7 @@ struct KeyboardSettingsView: View {
                 SettingLabel("Emoji suggestions", detail: "“happy” offers 😊.")
             }
             Toggle(isOn: $swipeTypingEnabled) {
-                SettingLabel("Swipe to type", detail: "Slide from letter to letter.")
+                SettingLabel("Swipe to type", detail: "Slide from letter to letter. English only.")
             }
             Toggle(isOn: $quickAccentsEnabled) {
                 SettingLabel("Quick accents", detail: "Hold a letter to type its main accent: e gives é.")
@@ -1582,7 +1622,11 @@ struct SnippetsSettingsView: View {
                     }
                     .onDelete(perform: delete)
                 } footer: {
-                    Text("Say a trigger while dictating and it is replaced by its text. Case does not matter.")
+                    Text(
+                        "Say a trigger while dictating and it is replaced by its text. Case does not "
+                            + "matter. On the vocaphone keyboard, a one-word trigger typed in full is "
+                            + "offered as a suggestion and goes in on space."
+                    )
                 }
             }
         }
