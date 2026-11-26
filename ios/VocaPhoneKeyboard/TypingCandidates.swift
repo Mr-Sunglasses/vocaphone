@@ -308,6 +308,10 @@ enum TypingCandidates {
         var ordered: [String] = []
         // A fix the user has made twice is the likeliest reading of all.
         if let fix = context.learnedFix { ordered.append(matchingCase(of: context.composition, applyingTo: fix)) }
+        // "ill" offers "I'll" without space ever applying it.
+        if let contraction = ShortWordCorrections.suggestion(for: context.composition) {
+            ordered.append(contraction)
+        }
         ordered.append(contentsOf: context.lexiconEntries)
         ordered.append(contentsOf: context.customWords)
         ordered.append(contentsOf: context.learnedWords)

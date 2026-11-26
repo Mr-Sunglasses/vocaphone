@@ -23,8 +23,6 @@ enum ShortWordCorrections {
         // The one every user notices in the first minute.
         "i": "I",
         "im": "I'm",
-        "id": "I'd",
-        "ill": "I'll",
         "ive": "I've",
 
         // Contractions the checker either recognises as other words or has no
@@ -56,11 +54,20 @@ enum ShortWordCorrections {
         "whats": "what's",
         "thats": "that's",
         "wheres": "where's",
-        "hows": "how's",
-        "whos": "who's",
-        "lets": "let's",
         "aint": "ain't",
         "oclock": "o'clock",
+    ]
+
+    /// Contractions whose typed form is itself an English word: "ill",
+    /// "lets", "id", "hows", "whos". Space never rewrites them — "feeling
+    /// ill" and "she lets" are meant — but the strip offers the contraction,
+    /// so it is one tap away. See ``suggestion(for:)``.
+    static let suggestionsOnly: [String: String] = [
+        "id": "I'd",
+        "ill": "I'll",
+        "lets": "let's",
+        "hows": "how's",
+        "whos": "who's",
     ]
 
     /// Words deliberately absent, and why, so nobody adds them back:
@@ -68,7 +75,9 @@ enum ShortWordCorrections {
     /// - "its" and "it's" are different words and only grammar can tell them
     ///   apart. Correcting either way is wrong half the time.
     /// - "were", "well", "hell", "shell" and "wed" are all ordinary words in
-    ///   their own right, and far too common to spend on a contraction.
+    ///   their own right, and far too common to spend on a contraction. So
+    ///   are "ill", "lets", "id", "hows" and "whos", which are offered on the
+    ///   strip instead (``suggestionsOnly``).
     ///   "cant" is borderline and kept, because "can't" wins overwhelmingly.
     /// - "shes", "hes" both map to a possessive reading often enough to leave.
     ///
@@ -85,8 +94,16 @@ enum ShortWordCorrections {
         table[typed.lowercased()] != nil
     }
 
+    /// The contraction the strip offers for a typed word that is itself a
+    /// word, if any. Never applied by space.
+    static func suggestion(for typed: String) -> String? {
+        suggestionsOnly[typed.lowercased()]
+    }
+
     /// Every replacement, lowercased, for ``isCuratedReplacement(_:)``.
-    private static let replacements: Set<String> = Set(table.values.map { $0.lowercased() })
+    private static let replacements: Set<String> = Set(
+        (Array(table.values) + Array(suggestionsOnly.values)).map { $0.lowercased() }
+    )
 
     /// Whether `word` is one of the table's answers — "I", "I'm", "don't" —
     /// which the strip never lets a long press block.

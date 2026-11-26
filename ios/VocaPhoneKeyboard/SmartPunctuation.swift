@@ -213,8 +213,10 @@ enum SentenceBoundary {
     static let abbreviations: Set<String> = [
         "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st",
         "e.g", "i.e", "etc", "vs", "approx", "dept", "est",
-        "fig", "no", "vol", "p", "pp", "al", "inc", "ltd", "co",
+        "fig", "vol", "p", "pp", "al", "inc", "ltd", "co",
     ]
+    // Not "no": "I said no. We" is far commoner than "No. 5", and a sentence
+    // that does not get its capital is the worse mistake.
 
     /// Whether the text before the cursor genuinely ends a sentence.
     static func endsSentence(_ before: String) -> Bool {
@@ -231,10 +233,14 @@ enum SentenceBoundary {
         let token = String(beforeStop.reversed().prefix { !$0.isWhitespace }.reversed())
         guard !token.isEmpty else { return true }
 
-        // A numbered or lettered list item: "3. " and "a. " start an item, not a
-        // sentence — though the item itself is usually capitalized anyway, so
-        // this only avoids forcing it.
-        if token.allSatisfy({ $0.isNumber }) { return false }
+        // A numbered list item: "3. " at the start of its line starts an item,
+        // not a sentence — though the item itself is usually capitalized
+        // anyway, so this only avoids forcing it. Anywhere else a number is
+        // the end of a sentence like any word: "I'm 25. My".
+        if token.allSatisfy({ $0.isNumber }) {
+            let line = beforeStop.dropLast(token.count).reversed().prefix { !$0.isNewline }
+            return !line.allSatisfy(\.isWhitespace)
+        }
         return !abbreviations.contains(token.lowercased())
     }
 }

@@ -93,6 +93,21 @@ struct SentenceBoundaryTests {
     @Test func aNumberedListItemDoesNotEndASentence() {
         #expect(!SentenceBoundary.endsSentence("3. "))
         #expect(!SentenceBoundary.endsSentence("first\n12. "))
+        #expect(!SentenceBoundary.endsSentence("first\n  4. "))
+    }
+
+    /// A number that ends a sentence is not a list item: only the first
+    /// token on its line is.
+    @Test func aNumberMidLineEndsASentence() {
+        #expect(SentenceBoundary.endsSentence("I'm 25. "))
+        #expect(SentenceBoundary.endsSentence("It costs 40. "))
+        #expect(SentenceBoundary.endsSentence("first\nWe won 3. "))
+    }
+
+    /// "no" is far likelier the word than the abbreviation.
+    @Test func noIsAWordNotAnAbbreviation() {
+        #expect(SentenceBoundary.endsSentence("I said no. "))
+        #expect(SentenceBoundary.endsSentence("No. "))
     }
 
     @Test func midSentenceIsNotASentenceStart() {
