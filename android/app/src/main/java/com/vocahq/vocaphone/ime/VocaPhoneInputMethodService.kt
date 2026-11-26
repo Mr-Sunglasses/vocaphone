@@ -85,6 +85,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
      */
     private val suggestionDictionary = MutableStateFlow<SuggestionDictionary?>(null)
     private val emojiCatalog = MutableStateFlow<List<EmojiEntry>>(emptyList())
+    /** Skin-tone groups, built from the catalog with it, off the main thread. */
+    private val emojiTones = MutableStateFlow(EmojiTones.EMPTY)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         // A failed empty dictation owns the suggestion strip. A new copy is
@@ -291,7 +293,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             // Failures are silent on purpose: a keyboard that cannot read its
             // word list still types, and there is no screen here to report on.
             suggestionDictionary.value = runCatching { SuggestionDictionary.load(assets) }.getOrNull()
-            emojiCatalog.value = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
+            val catalog = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
+            emojiTones.value = runCatching { EmojiTones.build(catalog) }.getOrDefault(EmojiTones.EMPTY)
+            emojiCatalog.value = catalog
             runCatching { EmojiSuggestions.load(assets) }
             writingChecker.value = container.writingCheck
         }
@@ -334,6 +338,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val editorText by visibleEditorText.collectAsState()
             val dictionary by suggestionDictionary.collectAsState()
             val emojis by emojiCatalog.collectAsState()
+            val tones by emojiTones.collectAsState()
             val writingReport by writingCheck.report.collectAsState()
             val writingChecking by writingCheck.checking.collectAsState()
             val writingAutoFix by autoFixed.collectAsState()
@@ -355,6 +360,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 editorText = editorText,
                 suggestions = dictionary,
                 emojiCatalog = emojis,
+                emojiTones = tones,
+                onEmojiSkinTone = { tone -> scope.launch { container.settings.setEmojiSkinTone(tone) } },
                 writing = writing,
                 onCommand = ::handleCommand,
                 onMicTap = ::toggleDictation,

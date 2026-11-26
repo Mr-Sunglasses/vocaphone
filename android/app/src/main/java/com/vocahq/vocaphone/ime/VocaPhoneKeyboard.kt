@@ -172,6 +172,8 @@ internal fun VocaPhoneKeyboard(
     editorText: EditorTextWindow,
     suggestions: SuggestionDictionary?,
     emojiCatalog: List<EmojiEntry>,
+    emojiTones: EmojiTones = EmojiTones.EMPTY,
+    onEmojiSkinTone: (Int) -> Unit = {},
     writing: WritingStripState? = null,
     onCommand: (KeyboardCommand) -> Unit,
     onMicTap: () -> Unit,
@@ -249,6 +251,14 @@ internal fun VocaPhoneKeyboard(
         }
     }
     var emojiCategory by remember { mutableStateOf(EmojiCategory.SMILEYS) }
+    // Emoji search: null when not searching. While searching, the letter keys
+    // type into the query instead of the editor (EmojiSearchPanel).
+    var emojiQuery by remember { mutableStateOf<String?>(null) }
+    var emojiResults by remember { mutableStateOf(emptyList<String>()) }
+    // The emoji whose skin tones are on offer after a hold, if any.
+    var toneTarget by remember { mutableStateOf<String?>(null) }
+    var skinTone by remember { mutableStateOf(settings.emojiSkinTone) }
+    LaunchedEffect(settings.emojiSkinTone) { skinTone = settings.emojiSkinTone }
     var swipeChoices by remember { mutableStateOf<List<String>>(emptyList()) }
     var swipeWord by remember { mutableStateOf<String?>(null) }
     var suggestionStrip by remember { mutableStateOf(SuggestionStrip(emptyList())) }
@@ -321,6 +331,25 @@ internal fun VocaPhoneKeyboard(
         tapTrace.clear()
         learnedUndo[0] = null
         deleteSlide[0] = null
+        emojiQuery = null
+        toneTarget = null
+    }
+    LaunchedEffect(keyboardState.layer) {
+        if (keyboardState.layer != KeyboardLayer.EMOJI) {
+            emojiQuery = null
+            toneTarget = null
+        }
+    }
+    // Off the composition thread, like the strip: 3,800 entries per keystroke.
+    LaunchedEffect(emojiQuery, emojiCatalog, emojiTones) {
+        val query = emojiQuery
+        emojiResults = if (query.isNullOrBlank()) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.Default) {
+                EmojiSearch.search(emojiCatalog, query, emojiTones, shouldAbort = { !isActive })
+            }
+        }
     }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
@@ -514,6 +543,12 @@ internal fun VocaPhoneKeyboard(
     }
 
     fun handleDelete(heldMs: Long) {
+        emojiQuery?.let { query ->
+            if (keyboardState.layer == KeyboardLayer.EMOJI) {
+                emojiQuery = query.dropLast(1)
+                return
+            }
+        }
         if (heldMs == 0L) {
             deleteSlide[0] = null
             // Right after the space bar made a learned fix: put back what was
@@ -635,6 +670,18 @@ internal fun VocaPhoneKeyboard(
             switchLayout(forward = true)
             return
         }
+        // Searching emoji: the letter keys type the query, not into the field.
+        // An emoji picked from the results still goes to the field.
+        val query = emojiQuery
+        if (query != null && keyboardState.layer == KeyboardLayer.EMOJI && !key.id.startsWith("emoji-")) {
+            when (key.type) {
+                KeyboardKeyType.CHARACTER -> emojiQuery = query + key.output.lowercase()
+                KeyboardKeyType.SPACE -> if (query.isNotEmpty() && !query.endsWith(" ")) emojiQuery = "$query "
+                KeyboardKeyType.RETURN, KeyboardKeyType.LAYER_SWITCH -> emojiQuery = null
+                else -> Unit
+            }
+            return
+        }
         learnedUndo[0] = null
         val tapX = tapSink[0]
         val tapY = tapSink[1]
@@ -692,6 +739,13 @@ internal fun VocaPhoneKeyboard(
     }
 
     fun commitLongPressVariant(text: String) {
+        emojiQuery?.let { query ->
+            if (keyboardState.layer == KeyboardLayer.EMOJI) {
+                emojiQuery = query.dropLast(1) + text.lowercase()
+                onKeyPreview(null)
+                return
+            }
+        }
         val reduction = KeyboardReducer.replaceLastCharacter(
             state = keyboardState,
             replacement = text,
@@ -845,6 +899,8 @@ internal fun VocaPhoneKeyboard(
             latestEmojiUsed(glyph)
         }
     }
+    val latestToneTarget by rememberUpdatedState<(String?) -> Unit> { toneTarget = it }
+    val onEmojiHoldStable = remember { { glyph: String -> latestToneTarget(glyph) } }
 
     VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
         ReportKeyboardSurface(MaterialTheme.colorScheme.surfaceContainerLowest)
@@ -1100,8 +1156,37 @@ internal fun VocaPhoneKeyboard(
                         },
                         onClose = { preferencePanel = null },
                     )
-                    null -> if (keyboardState.layer == KeyboardLayer.EMOJI) {
+                    null -> if (keyboardState.layer == KeyboardLayer.EMOJI && emojiQuery != null) {
+                        EmojiSearchPanel(
+                            height = keyAreaHeight,
+                            query = emojiQuery.orEmpty(),
+                            results = emojiResults,
+                            tones = emojiTones,
+                            skinTone = skinTone,
+                            editor = editor,
+                            feedback = keyFeedback,
+                            onEmoji = onEmojiStable,
+                            onKey = onKeyStable,
+                            onKeyHold = onKeyHoldStable,
+                            onCursorMove = onCursorMoveStable,
+                            onPreview = onKeyPreview,
+                            onLongPressVariant = onLongPressVariantStable,
+                            onClose = { emojiQuery = null },
+                        )
+                    } else if (keyboardState.layer == KeyboardLayer.EMOJI) {
                         EmojiLayer(
+                            tones = emojiTones,
+                            skinTone = skinTone,
+                            toneTarget = toneTarget,
+                            onEmojiHold = onEmojiHoldStable,
+                            onTonePicked = { base, tone ->
+                                toneTarget = null
+                                skinTone = tone
+                                onEmojiSkinTone(tone)
+                                onEmojiStable(emojiTones.applied(base, tone))
+                            },
+                            onToneDismiss = { toneTarget = null },
+                            onSearch = { emojiQuery = "" },
                             height = keyAreaHeight,
                             keyHeight = keyHeight,
                             editor = editor,
@@ -2877,6 +2962,13 @@ private fun ClipboardThumb(
 
 @Composable
 private fun EmojiLayer(
+    tones: EmojiTones = EmojiTones.EMPTY,
+    skinTone: Int = 0,
+    toneTarget: String? = null,
+    onEmojiHold: (String) -> Unit = {},
+    onTonePicked: (String, Int) -> Unit = { _, _ -> },
+    onToneDismiss: () -> Unit = {},
+    onSearch: () -> Unit = {},
     height: Dp,
     keyHeight: Dp,
     editor: KeyboardEditorConfig,
@@ -2904,17 +2996,35 @@ private fun EmojiLayer(
     val bottomRow = remember(layer, editor.returnKey, editor.leadingPunctuation, numberRow) {
         KeyboardLayouts.rows(KeyboardLayer.EMOJI, editor, numberRow = numberRow)
     }
-    val glyphs = when (category) {
-        EmojiCategory.RECENTS -> recents
-        EmojiCategory.ASCII -> EmojiCatalog.asciiEmoticons
-        else -> EmojiCatalog.inCategory(catalog, category).map { it.glyph }
+    // Toned forms live behind a hold on their base, not in the grid.
+    val glyphs = remember(category, catalog, tones, recents) {
+        when (category) {
+            EmojiCategory.RECENTS -> recents
+            EmojiCategory.ASCII -> EmojiCatalog.asciiEmoticons
+            else -> EmojiCatalog.inCategory(catalog, category).filterNot { tones.isToned(it.glyph) }.map { it.glyph }
+        }
     }
     Column(Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(EmojiTopStripHeight)
+                .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (toneTarget != null) {
+                EmojiToneRow(base = toneTarget, tones = tones, selectedTone = skinTone, onPick = onTonePicked, onDismiss = onToneDismiss)
+            } else {
+                EmojiSearchPill(onClick = onSearch)
+            }
+        }
         EmojiGrid(
             glyphs = glyphs,
             modifier = Modifier
                 .fillMaxWidth()
-                .height((height - keyHeight - RowGap).coerceAtLeast(48.dp)),
+                .height((height - keyHeight - RowGap - EmojiTopStripHeight).coerceAtLeast(48.dp)),
+            display = { glyph -> tones.applied(glyph, skinTone) },
+            onHold = { glyph -> if (tones.hasTones(glyph)) onEmojiHold(glyph) },
             onEmoji = onEmoji,
         )
         KeyboardRows(
@@ -2933,6 +3043,216 @@ private fun EmojiLayer(
             onKeyHold = onKeyHold,
             onCursorMove = onCursorMove,
             onSpaceLongPress = onSpaceLongPress,
+            onLongPressVariant = onLongPressVariant,
+        )
+    }
+}
+
+private val EmojiTopStripHeight = 36.dp
+
+@Composable
+private fun EmojiSearchPill(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(30.dp)
+            .semantics { contentDescription = "Search emoji" },
+        shape = RoundedCornerShape(15.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_search),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("Search emoji", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** The held emoji in its five tones and untoned; the pick becomes the default. */
+@Composable
+private fun EmojiToneRow(
+    base: String,
+    tones: EmojiTones,
+    selectedTone: Int,
+    onPick: (String, Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(base) + tones.variantsOf(base).orEmpty()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        options.forEachIndexed { tone, glyph ->
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(34.dp)
+                    .semantics {
+                        contentDescription = if (tone == 0) "$glyph default" else glyph
+                        selected = tone == selectedTone
+                    },
+                shape = RoundedCornerShape(8.dp),
+                color = if (tone == selectedTone) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                onClick = { onPick(base, tone) },
+            ) {
+                Box(contentAlignment = Alignment.Center) { Text(glyph, fontSize = 22.sp, maxLines = 1) }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .semantics {
+                    role = Role.Button
+                    contentDescription = "Close skin tones"
+                }
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_cancel),
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Emoji search, Gboard-style: results on top, the query under them, and the
+ * English letter keys typing into the query (the catalog's keywords are
+ * English). Picking a result types it into the field; ABC, ?123 or return
+ * leaves the search.
+ */
+@Composable
+private fun EmojiSearchPanel(
+    height: Dp,
+    query: String,
+    results: List<String>,
+    tones: EmojiTones,
+    skinTone: Int,
+    editor: KeyboardEditorConfig,
+    feedback: KeyFeedback?,
+    onEmoji: (String) -> Unit,
+    onKey: (KeyboardKey) -> Unit,
+    onKeyHold: (KeyboardKey, Long) -> Unit,
+    onCursorMove: (Int, Int) -> Unit,
+    onPreview: (KeyPreview?) -> Unit,
+    onLongPressVariant: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val rows = remember(editor.returnKey, editor.leadingPunctuation) {
+        KeyboardLayouts.rows(KeyboardLayer.LETTERS, editor, numberRow = false)
+    }
+    val bounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
+    val resultsHeight = 44.dp
+    val queryHeight = 34.dp
+    val keyHeight = ((height - resultsHeight - queryHeight - 8.dp - RowGap * (rows.size - 1)) / rows.size)
+        .coerceAtLeast(30.dp)
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(resultsHeight), contentAlignment = Alignment.CenterStart) {
+            if (results.isEmpty()) {
+                Text(
+                    if (query.isBlank()) "Type to search emoji" else "No emoji for “${query.trim()}”",
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                ) {
+                    items(results, key = { it }) { glyph ->
+                        val shown = tones.applied(glyph, skinTone)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = shown
+                                }
+                                .clickable { onEmoji(shown) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(shown, fontSize = 24.sp, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(queryHeight)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(queryHeight)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Close emoji search"
+                    }
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_back),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(vertical = 2.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                shape = RoundedCornerShape(15.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(
+                        text = if (query.isEmpty()) "Search emoji" else "$query|",
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (query.isEmpty()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        KeyboardRows(
+            rows = rows,
+            shift = ShiftState.OFF,
+            layer = KeyboardLayer.LETTERS,
+            returnKey = editor.returnKey,
+            keyHeight = keyHeight,
+            keyBounds = bounds,
+            feedback = feedback,
+            onPreview = onPreview,
+            onKey = onKey,
+            onKeyHold = onKeyHold,
+            onCursorMove = onCursorMove,
             onLongPressVariant = onLongPressVariant,
         )
     }
@@ -2983,6 +3303,8 @@ private fun EmojiCategoryRow(
 private fun EmojiGrid(
     glyphs: List<String>,
     modifier: Modifier,
+    display: (String) -> String = { it },
+    onHold: (String) -> Unit = {},
     onEmoji: (String) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -2992,17 +3314,26 @@ private fun EmojiGrid(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         gridItems(glyphs, key = { it }) { glyph ->
+            val shown = display(glyph)
             Box(
                 modifier = Modifier
                     .height(42.dp)
-                    .clickable { onEmoji(glyph) }
+                    // A hold offers the skin tones (when the emoji has them).
+                    .pointerInput(shown) {
+                        detectTapGestures(
+                            onTap = { onEmoji(shown) },
+                            onLongPress = { onHold(glyph) },
+                        )
+                    }
                     .semantics {
                         role = Role.Button
-                        contentDescription = glyph
+                        contentDescription = shown
+                        onClick { onEmoji(shown); true }
+                        onLongClick(label = "Skin tones") { onHold(glyph); true }
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(glyph, fontSize = if (glyph.length > 2) 14.sp else 22.sp, maxLines = 1)
+                Text(shown, fontSize = if (shown.length > 2 && glyph in EmojiCatalog.asciiEmoticons) 14.sp else 22.sp, maxLines = 1)
             }
         }
     }
