@@ -259,8 +259,13 @@ internal fun VocaPhoneKeyboard(
     // kept sending character deletes.
     val deleteHoldBefore = remember { arrayOf("") }
     val keyPreview = remember { mutableStateOf<KeyPreview?>(null) }
+    // "Popup on keypress" off hides the letter balloon; a held key's accent
+    // row still shows, since picking from it needs to be seen.
+    val popupOn = rememberUpdatedState(settings.keyPopupEnabled)
     val onKeyPreview = remember {
-        { preview: KeyPreview? -> keyPreview.value = preview }
+        { preview: KeyPreview? ->
+            keyPreview.value = preview?.takeIf { popupOn.value || it.accentIndex >= 0 }
+        }
     }
     // Where each letter of the composing word was tapped (TapTrace), and the
     // offset of the tap the key being pressed reports on its way to handleKey.
@@ -276,7 +281,11 @@ internal fun VocaPhoneKeyboard(
     val deleteSlide = remember { arrayOfNulls<DeleteSlide>(1) }
     val context = LocalContext.current
     val keyFeedback = remember { KeyFeedback(context.getSystemService(AudioManager::class.java)) }
-    SideEffect { keyFeedback.soundOn = settings.keySoundEnabled }
+    SideEffect {
+        keyFeedback.soundOn = settings.keySoundEnabled
+        keyFeedback.hapticsOn = settings.keyHapticsEnabled
+        keyFeedback.spaceCursorOn = settings.spaceCursorEnabled
+    }
     // Strip changes cross-fade only once the keyboard has been on screen for a
     // frame: before that, and in every new field, they apply at once, so the
     // capital a field starts with never visibly rolls in.
@@ -447,6 +456,7 @@ internal fun VocaPhoneKeyboard(
         }
     } else {
         KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
+            .let { items -> if (settings.emojiSuggestionsEnabled) items else items.filterNot { it.isEmoji } }
     }
     val swipeReplacesWord = swipeChoicesActive
     // The button is there whenever the field has words to check, typing or
@@ -3285,9 +3295,14 @@ private fun RowScope.KeyButton(
         }
     }
     val haptic = {
-        view.postOnAnimation {
-            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (feedback?.hapticsOn != false) {
+            view.postOnAnimation {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            }
         }
+    }
+    val longPressHaptic = {
+        if (feedback?.hapticsOn != false) view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
     // The key click, with the haptic, on the press only (not on cursor or
     // accent steps). One-way into the audio service, off the down frame.
@@ -3299,9 +3314,10 @@ private fun RowScope.KeyButton(
             pointerKey = key.id,
             onTap = { currentOnPress.value() },
             onCursorMove = { positions, lines -> currentOnCursorMove.value(positions, lines) },
-            onArmed = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) },
+            cursorEnabled = { feedback?.spaceCursorOn != false },
+            onArmed = { longPressHaptic() },
             onLongPress = {
-                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                longPressHaptic()
                 currentOnSpaceLongPress.value()
             },
             onPressedChange = {
@@ -3481,6 +3497,7 @@ private fun Modifier.spacebarGesture(
     pointerKey: String,
     onTap: () -> Unit,
     onCursorMove: (Int, Int) -> Unit,
+    cursorEnabled: () -> Boolean = { true },
     onArmed: () -> Unit,
     onLongPress: () -> Unit,
     onPressedChange: (Boolean) -> Unit,
@@ -3503,6 +3520,7 @@ private fun Modifier.spacebarGesture(
                 downX = down.position.x,
                 downY = down.position.y,
                 downTimeMs = down.uptimeMillis,
+                cursorEnabled = cursorEnabled(),
             )
             val arm = launch {
                 delay(SpacebarGesture.ARM_MS)

@@ -561,6 +561,7 @@ fun SettingsScreen(
                         onCheckedChange = onAsciiEmoji,
                     )
                 }
+                KeyPressSettingsGroup(settings, surface)
                 WritingCheckSettingsGroup(settings, grammarModel, writing, onCancelGrammarDownload)
                 SettingsGroup(title = "Clipboard", learnMore = SettingsHelp.clipboard) {
                     SettingsSwitchRow(

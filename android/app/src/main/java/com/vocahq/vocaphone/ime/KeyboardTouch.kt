@@ -67,10 +67,22 @@ internal object KeyClick {
  * Key-down feedback the keys share: one object for the life of the keyboard,
  * so turning the sound on does not recompose forty keys. [play] is a one-way
  * call into the audio service; nothing is loaded on the press.
+ *
+ * The switches here are read by the gestures when a finger moves, never
+ * during composition, so flipping one in Settings does not restart forty
+ * `pointerInput` blocks.
  */
 internal class KeyFeedback(private val audio: AudioManager?) {
     @Volatile
     var soundOn: Boolean = false
+
+    /** "Haptic feedback on keypress". On, the system `KEYBOARD_TAP` (which follows the system's own switch). */
+    @Volatile
+    var hapticsOn: Boolean = true
+
+    /** "Space-bar cursor control": a held space bar becomes a trackpad. */
+    @Volatile
+    var spaceCursorOn: Boolean = true
 
     fun play(type: KeyboardKeyType) {
         if (!soundOn) return

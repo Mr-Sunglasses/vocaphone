@@ -699,6 +699,10 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     /** Writes for the keyboard-surface settings rows; see [KeyboardSurfaceActions]. */
     val keyboardSurfaceActions = KeyboardSurfaceActions(
         onClipboardRetention = { viewModelScope.launch { container.settings.setClipboardRetention(it) } },
+        onKeyHaptics = { viewModelScope.launch { container.settings.setKeyHapticsEnabled(it) } },
+        onKeyPopup = { viewModelScope.launch { container.settings.setKeyPopupEnabled(it) } },
+        onSpaceCursor = { viewModelScope.launch { container.settings.setSpaceCursorEnabled(it) } },
+        onEmojiSuggestions = { viewModelScope.launch { container.settings.setEmojiSuggestionsEnabled(it) } },
     )
 
     fun setOnboardingStage(stage: String) =

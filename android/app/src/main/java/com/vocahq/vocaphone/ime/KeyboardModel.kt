@@ -87,7 +87,11 @@ internal sealed interface KeyboardCommand {
  * the popup is up does not become a swipe.
  */
 internal object AccentPicker {
-    const val HOLD_MS = 380L
+    /**
+     * AOSP LatinIME's `config_default_longpress_key_timeout` and Gboard's
+     * default "Key long press delay": 300 ms. Was 380 ms with no recorded reason.
+     */
+    const val HOLD_MS = 300L
     const val CELL_DP = 36
 
     fun rowLeft(centerX: Float, count: Int, cellPx: Float, parentWidth: Float): Float {
@@ -106,8 +110,9 @@ internal object AccentPicker {
 
 /** Hold-delete starts on characters, then words, then the rest of the line. */
 internal object DeleteHold {
-    const val REPEAT_DELAY_MS = 380L
-    const val CHAR_INTERVAL_MS = 55L
+    /** LatinIME `config_key_repeat_start_timeout` (400 ms) and `config_key_repeat_interval` (50 ms). */
+    const val REPEAT_DELAY_MS = 400L
+    const val CHAR_INTERVAL_MS = 50L
     const val WORD_AFTER_MS = 1_000L
     const val LINE_AFTER_MS = 2_200L
     const val WORD_INTERVAL_MS = 130L
@@ -528,7 +533,8 @@ internal fun planCaseCycle(
 
 /** Pure keyboard-state reducer so behavior stays testable outside the IME process. */
 internal object KeyboardReducer {
-    const val CAPS_LOCK_WINDOW_MILLIS = 350L
+    /** LatinIME's double-tap-shift window is `ViewConfiguration.getDoubleTapTimeout()`, 300 ms. */
+    const val CAPS_LOCK_WINDOW_MILLIS = 300L
 
     fun press(
         state: KeyboardState,

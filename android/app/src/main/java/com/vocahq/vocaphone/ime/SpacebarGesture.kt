@@ -27,6 +27,8 @@ internal class SpacebarGesture(
     private val downX: Float,
     private val downY: Float,
     downTimeMs: Long,
+    /** "Space-bar cursor control". Off, a hold never arms; held still, it opens the picker. */
+    private val cursorEnabled: Boolean = true,
 ) {
     /** Cursor steps for one pointer move. */
     data class Step(val characters: Int, val lines: Int) {
@@ -49,7 +51,7 @@ internal class SpacebarGesture(
 
     /** The [ARM_MS] timer fired. True when that arms the trackpad (a haptic). */
     fun armElapsed(): Boolean {
-        if (armed || movedBeforeArming || pickerOpened) return false
+        if (!cursorEnabled || armed || movedBeforeArming || pickerOpened) return false
         armed = true
         armX = lastX
         armY = lastY
@@ -60,6 +62,11 @@ internal class SpacebarGesture(
 
     /** The [PICKER_MS] timer fired. True when that opens the keyboard picker. */
     fun pickerElapsed(): Boolean {
+        if (!cursorEnabled) {
+            if (movedBeforeArming || pickerOpened) return false
+            pickerOpened = true
+            return true
+        }
         if (!armed || movedSinceArming || pickerOpened) return false
         pickerOpened = true
         return true
