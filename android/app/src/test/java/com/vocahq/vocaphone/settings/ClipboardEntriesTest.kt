@@ -91,4 +91,22 @@ class ClipboardEntriesTest {
         assertEquals(ClipboardRetention.ONE_HOUR, ClipboardRetention.fromStored(null))
         assertEquals(ClipboardRetention.ONE_HOUR, ClipboardRetention.fromStored("forever"))
     }
+
+    @Test
+    fun anUpgradeWithAnOldHistoryKeepsItAWeek() {
+        val legacy = listOf("one", "two")
+        // Never chose, history in the old format: a week, stored as theirs.
+        assertEquals(ClipboardRetention.ONE_WEEK, ClipboardEntries.upgradeRetention(null, hasEntries = false, legacy = legacy))
+        assertEquals(ClipboardRetention.ONE_WEEK, ClipboardEntries.retention(null, hasEntries = false, legacy = legacy))
+        // The migrated clips are still there an hour and a day later.
+        val migrated = ClipboardEntries.migrate(legacy, nowMillis = 0L)
+        val week = ClipboardEntries.retention(null, hasEntries = false, legacy = legacy)
+        assertEquals(migrated, ClipboardEntries.prune(migrated, nowMillis = 2 * ClipboardRetention.ONE_DAY.millis, retention = week))
+        // A choice already made stands.
+        assertEquals(null, ClipboardEntries.upgradeRetention("1h", hasEntries = false, legacy = legacy))
+        assertEquals(ClipboardRetention.ONE_HOUR, ClipboardEntries.retention("1h", hasEntries = false, legacy = legacy))
+        // Already migrated, or a fresh install: Gboard's hour.
+        assertEquals(null, ClipboardEntries.upgradeRetention(null, hasEntries = true, legacy = emptyList()))
+        assertEquals(ClipboardRetention.ONE_HOUR, ClipboardEntries.retention(null, hasEntries = false, legacy = emptyList()))
+    }
 }

@@ -841,6 +841,10 @@ class SettingsRepository(private val context: Context) {
         var next: List<ClipEntry> = emptyList()
         context.dataStore.edit { preferences ->
             val now = System.currentTimeMillis()
+            // Moving an old history over: keep it a week rather than an hour.
+            preferences.upgradeClipboardRetention()?.let {
+                preferences[Keys.CLIPBOARD_RETENTION] = it.storedValue
+            }
             val retention = ClipboardRetention.fromStored(preferences[Keys.CLIPBOARD_RETENTION])
             val current = preferences.clipboardEntries(now)
             next = ClipboardEntries.prune(change(current, now, retention), now, retention)
@@ -849,6 +853,22 @@ class SettingsRepository(private val context: Context) {
         }
         ClipboardImages.prune(context, ClipboardEntries.imagePaths(next))
     }
+
+    private fun Preferences.legacyClipboard(): List<String> =
+        if (this[Keys.CLIPBOARD_ENTRIES] != null) emptyList() else ClipboardHistory.decode(this[Keys.CLIPBOARD_HISTORY])
+
+    private fun Preferences.upgradeClipboardRetention(): ClipboardRetention? = ClipboardEntries.upgradeRetention(
+        this[Keys.CLIPBOARD_RETENTION],
+        hasEntries = this[Keys.CLIPBOARD_ENTRIES] != null,
+        legacy = legacyClipboard(),
+    )
+
+    /** What the stored retention means, an upgrader's week included ([ClipboardEntries.retention]). */
+    private fun Preferences.clipboardRetention(): ClipboardRetention = ClipboardEntries.retention(
+        this[Keys.CLIPBOARD_RETENTION],
+        hasEntries = this[Keys.CLIPBOARD_ENTRIES] != null,
+        legacy = legacyClipboard(),
+    )
 
     private fun Preferences.clipboardEntries(nowMillis: Long): List<ClipEntry> =
         this[Keys.CLIPBOARD_ENTRIES]?.let(ClipboardEntries::decode)
@@ -1148,7 +1168,7 @@ class SettingsRepository(private val context: Context) {
         excludedPackages = this[Keys.EXCLUDED_PACKAGES].orEmpty(),
         disclosureAccepted = this[Keys.DISCLOSURE_ACCEPTED] ?: false,
         clipboardEntries = clipboardEntriesForDisplay(),
-        clipboardRetention = ClipboardRetention.fromStored(this[Keys.CLIPBOARD_RETENTION]),
+        clipboardRetention = clipboardRetention(),
         keyboardLayouts = this[Keys.KEYBOARD_LAYOUTS].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() },
         activeKeyboardLayout = this[Keys.ACTIVE_KEYBOARD_LAYOUT].orEmpty(),
         keyHapticsEnabled = this[Keys.KEY_HAPTICS] ?: true,
@@ -1166,7 +1186,7 @@ class SettingsRepository(private val context: Context) {
      */
     private fun Preferences.clipboardEntriesForDisplay(): List<ClipEntry> {
         val now = System.currentTimeMillis()
-        val retention = ClipboardRetention.fromStored(this[Keys.CLIPBOARD_RETENTION])
+        val retention = clipboardRetention()
         return ClipboardEntries.forDisplay(ClipboardEntries.prune(clipboardEntries(now), now, retention))
     }
 

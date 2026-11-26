@@ -72,6 +72,21 @@ object ClipboardEntries {
         legacy.distinct().map { ClipEntry(it, nowMillis) }
 
     /**
+     * The retention in force given the stored choice. Someone upgrading with
+     * a history in the old format never had clips expire, and never chose a
+     * retention: an hour, the fresh-install default, would delete the whole
+     * history an hour after the upgrade. They get a week instead, and that is
+     * written down as theirs ([upgradeRetention]) so it does not change once
+     * the old history is gone. Fresh installs keep Gboard's hour.
+     */
+    fun retention(stored: String?, hasEntries: Boolean, legacy: List<String>): ClipboardRetention =
+        upgradeRetention(stored, hasEntries, legacy) ?: ClipboardRetention.fromStored(stored)
+
+    /** The retention to store for an upgrader ([retention]), or null when there is nothing to store. */
+    fun upgradeRetention(stored: String?, hasEntries: Boolean, legacy: List<String>): ClipboardRetention? =
+        ClipboardRetention.ONE_WEEK.takeIf { stored == null && !hasEntries && legacy.isNotEmpty() }
+
+    /**
      * [incoming] at the top. Copying a pinned clip again keeps it pinned.
      * Expired clips go, and the recent part is capped at [MAX_RECENT].
      */
