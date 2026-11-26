@@ -146,6 +146,16 @@ struct KeyboardSurfacesTests {
             == .unavailable)
     }
 
+    /// A paste over a selection: Undo takes the paste out and puts the
+    /// selected text back.
+    @Test func undoOfAPasteOverASelectionRestoresTheSelection() {
+        let edit = KeyboardEdit.inserted(text: "there", following: "", documentID: "a", replaced: "world")
+        #expect(KeyboardEditUndo.step(for: edit, before: "Hello there", after: "", currentDocumentID: "a")
+            == .replaceBackward(count: 5, restoring: "world"))
+        #expect(KeyboardEditUndo.step(for: edit, before: "Hello there!", after: "", currentDocumentID: "a")
+            == .unavailable)
+    }
+
     @Test func undoPutsBackACutOnlyWhereItCameFrom() {
         let edit = KeyboardEdit.removed(text: "world", before: "Hello ", after: "!", documentID: "a")
         #expect(KeyboardEditUndo.step(for: edit, before: "Hello ", after: "!", currentDocumentID: "a")
@@ -322,6 +332,35 @@ struct KeyboardSurfacesTests {
         #expect(ClipboardCapture.captureIfChanged(
             board, isEnabled: true, fieldAllows: true, store: store,
             retention: 3_600, defaults: defaults, now: Self.now
+        ))
+    }
+
+    /// The same copy, met in a password field and then pasted in an ordinary
+    /// one, is still never kept: the paste hands the text over directly, so
+    /// "seen" alone could not stop it.
+    @Test func aCopyThatMetAPasswordFieldIsNotKeptWhenPastedLater() {
+        let (defaults, suite, store) = Self.captureFixture()
+        defer { defaults?.removePersistentDomain(forName: suite); store.removeAll() }
+        let board = FakeClipboard(text: "hunter2", changeCount: 7)
+        ClipboardCapture.noteSecretField(board, defaults: defaults)
+        #expect(!ClipboardCapture.keep(
+            "hunter2", types: board.firstItemTypes, changeCount: 7,
+            isEnabled: true, fieldAllows: true, store: store, defaults: defaults, now: Self.now
+        ))
+        // Pasted into a password field first, then into an ordinary one.
+        #expect(!ClipboardCapture.keep(
+            "otp-1", changeCount: 8, isEnabled: true, fieldAllows: false,
+            store: store, defaults: defaults, now: Self.now
+        ))
+        #expect(!ClipboardCapture.keep(
+            "otp-1", changeCount: 8, isEnabled: true, fieldAllows: true,
+            store: store, defaults: defaults, now: Self.now
+        ))
+        #expect(store.load().clips.isEmpty)
+        // A later, ordinary copy is kept.
+        #expect(ClipboardCapture.keep(
+            "lunch at 1", changeCount: 9, isEnabled: true, fieldAllows: true,
+            store: store, defaults: defaults, now: Self.now
         ))
     }
 

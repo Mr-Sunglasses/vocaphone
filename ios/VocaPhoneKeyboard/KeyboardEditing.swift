@@ -49,8 +49,9 @@ enum OneHandedPreferenceSync {
 /// Something this keyboard did to the document that Undo can take back.
 enum KeyboardEdit: Equatable, Sendable {
     /// Text the keyboard put in at the cursor: a paste, a clip, a dictation.
-    /// `following` is the document after the cursor when it went in.
-    case inserted(text: String, following: String?, documentID: String?)
+    /// `following` is the document after the cursor when it went in, and
+    /// `replaced` the selection it took the place of, if there was one.
+    case inserted(text: String, following: String?, documentID: String?, replaced: String? = nil)
     /// Text the keyboard cut. `before` and `after` are the windows either
     /// side of the cursor straight after the cut.
     case removed(text: String, before: String?, after: String?, documentID: String?)
@@ -59,6 +60,9 @@ enum KeyboardEdit: Equatable, Sendable {
 enum KeyboardEditUndo {
     enum Step: Equatable {
         case deleteBackward(count: Int)
+        /// Takes the insertion back out and puts the selection it replaced
+        /// back where it was.
+        case replaceBackward(count: Int, restoring: String)
         case insert(String)
         /// The cursor or the document moved on; doing anything now would
         /// edit text the keyboard did not write.
@@ -73,7 +77,7 @@ enum KeyboardEditUndo {
         currentDocumentID: String?
     ) -> Step {
         switch edit {
-        case let .inserted(text, following, documentID):
+        case let .inserted(text, following, documentID, replaced):
             // The same check dictation's Undo makes: the insertion is still
             // the tail of the text before the cursor, in the same field.
             guard InsertionUndo.isAtCursor(
@@ -84,6 +88,9 @@ enum KeyboardEditUndo {
                 after: after,
                 currentDocumentID: currentDocumentID
             ) else { return .unavailable }
+            if let replaced, !replaced.isEmpty {
+                return .replaceBackward(count: text.count, restoring: replaced)
+            }
             return .deleteBackward(count: text.count)
         case let .removed(text, storedBefore, storedAfter, documentID):
             if let documentID, let currentDocumentID, documentID != currentDocumentID {
@@ -136,6 +143,14 @@ extension UIPasteboard: ClipboardReading {
 @MainActor
 enum ClipboardCapture {
     static let capturedChangeCountKey = "clipboardHistoryCapturedChangeCount"
+    /// The last copy that must never be kept: seen in a secret field, pasted
+    /// into one, or marked do-not-keep. Separate from "seen", because a copy
+    /// can be seen and still be pasted later in an ordinary field.
+    static let refusedChangeCountKey = "clipboardHistoryRefusedChangeCount"
+
+    static func isRefused(_ changeCount: Int, defaults: UserDefaults?) -> Bool {
+        defaults?.object(forKey: refusedChangeCountKey) as? Int == changeCount
+    }
 
     /// Whether the clipboard holds a copy history has not looked at yet.
     static func hasUnseenCopy(
@@ -190,7 +205,14 @@ enum ClipboardCapture {
         defaults: UserDefaults? = KeyboardPreferences.defaults,
         now: Date = Date()
     ) -> Bool {
-        if let changeCount { markSeen(changeCount, defaults: defaults) }
+        if let changeCount {
+            markSeen(changeCount, defaults: defaults)
+            // A copy once refused stays refused, wherever it is pasted next.
+            if isRefused(changeCount, defaults: defaults) { return false }
+            if !fieldAllows || !ClipboardHistoryPolicy.mayKeep(types: types) {
+                markRefused(changeCount, defaults: defaults)
+            }
+        }
         guard isEnabled, fieldAllows,
               ClipboardHistoryPolicy.mayKeep(types: types),
               ClipboardHistoryPolicy.mayKeep(text: text)
@@ -209,6 +231,12 @@ enum ClipboardCapture {
         defaults: UserDefaults? = KeyboardPreferences.defaults
     ) {
         markSeen(pasteboard.changeCount, defaults: defaults)
+        markRefused(pasteboard.changeCount, defaults: defaults)
+    }
+
+    private static func markRefused(_ changeCount: Int, defaults: UserDefaults?) {
+        guard !isRefused(changeCount, defaults: defaults) else { return }
+        defaults?.set(changeCount, forKey: refusedChangeCountKey)
     }
 
     private static func markSeen(_ changeCount: Int, defaults: UserDefaults?) {

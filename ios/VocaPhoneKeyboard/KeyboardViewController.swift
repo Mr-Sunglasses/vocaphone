@@ -875,8 +875,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// remembered so the edit row's Undo can take it back.
     private func insertOwnText(_ text: String) {
         let following = textDocumentProxy.documentContextAfterInput
+        // A paste over a selection replaces it, and Undo has to put it back.
+        // A selection too long to trust the proxy with is not restorable, so
+        // that paste gets no Undo rather than one that loses text.
+        let replaced = textDocumentProxy.selectedText ?? ""
         textDocumentProxy.insertText(text)
-        lastEdit = .inserted(text: text, following: following, documentID: currentDocumentID)
+        if replaced.isEmpty {
+            lastEdit = .inserted(text: text, following: following, documentID: currentDocumentID)
+        } else if SelectionEditGuard.allows(replaced) {
+            lastEdit = .inserted(
+                text: text,
+                following: following,
+                documentID: currentDocumentID,
+                replaced: replaced
+            )
+        } else {
+            lastEdit = nil
+        }
         typing.resetComposition(origin: .suggestion, document: refreshDocument())
     }
 
@@ -4054,6 +4069,9 @@ extension KeyboardViewController {
         switch step {
         case let .deleteBackward(count):
             for _ in 0..<count { textDocumentProxy.deleteBackward() }
+        case let .replaceBackward(count, restoring):
+            for _ in 0..<count { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(restoring)
         case let .insert(text):
             textDocumentProxy.insertText(text)
         case .unavailable:
