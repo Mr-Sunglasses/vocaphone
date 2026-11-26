@@ -42,10 +42,20 @@ class TypingCorrectorTest {
     }
 
     @Test
-    fun `a learned fix comes first and works without autocorrect`() {
+    fun `a learned fix comes before the strip's`() {
         assertEquals("tea", correction("teh", learned = "tea"))
-        assertEquals("tea", correction("teh", learned = "tea", autocorrect = false))
         assertNull(correction("teh", autocorrect = false))
+    }
+
+    @Test
+    fun `a learned fix is gated like any other correction`() {
+        // Corrections off, or a field that takes none (an address, a link).
+        assertNull(correction("teh", learned = "tea", autocorrect = false))
+        // Put back in this field: it stays put back.
+        assertNull(correction("teh", learned = "tea", asserted = setOf("teh")))
+        // An abbreviation before its period is typed on purpose.
+        assertNull(correction("etc", boundary = ".", learned = "etch"))
+        assertEquals("etch", correction("etc", boundary = ",", learned = "etch"))
     }
 
     @Test

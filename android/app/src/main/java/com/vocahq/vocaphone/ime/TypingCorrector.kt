@@ -113,12 +113,15 @@ internal class TypingCorrector {
         /**
          * What [typed] becomes when [boundary] ends it, or null to leave it.
          *
-         * A learned fix ([learned]) first: it is the user's own correction.
-         * Then the strip's decision, only if it was worked out for this very
-         * word — space can arrive before the strip has caught up with the last
-         * letter, and a fix meant for the word as it was a keystroke ago must
-         * not land on the word as it is now. The short-word table needs no
-         * scan, so it is applied even then.
+         * Nothing when corrections are off or the field takes none
+         * ([autocorrect]: an address, a link, a password), when the user put
+         * this word back in this field ([asserted]), or for an abbreviation
+         * before its period. Then a learned fix ([learned]): it is the user's
+         * own correction. Then the strip's decision, only if it was worked out
+         * for this very word — space can arrive before the strip has caught up
+         * with the last letter, and a fix meant for the word as it was a
+         * keystroke ago must not land on the word as it is now. The short-word
+         * table needs no scan, so it is applied even then.
          */
         fun correction(
             typed: String,
@@ -134,10 +137,10 @@ internal class TypingCorrector {
                 // "i'" can only be I'm, I'll, I've or I'd.
                 return ShortWordCorrections.beforeApostrophe(typed).takeIf { autocorrect }
             }
-            learned?.takeIf { it != typed }?.let { return it }
             if (!autocorrect || typed.lowercase(Locale.ROOT) in asserted) return null
             // "Mr." and "etc." are typed on purpose.
             if (boundary == "." && SentenceBoundary.isAbbreviation(typed)) return null
+            learned?.takeIf { it != typed }?.let { return it }
             // The strip has decided for this word, correction or none.
             if (strip.forWord == typed) return strip.autocorrection?.takeIf { it != typed }
             return ShortWordCorrections.replacement(typed)
