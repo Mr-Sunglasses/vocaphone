@@ -216,4 +216,15 @@ class DictationCommitTest {
         assertEquals(DictationSelection.Target.AsIs, DictationSelection.target(started, 4, 9, "quick"))
         assertEquals(DictationSelection.Target.AsIs, DictationSelection.target(started, 7, 7, null))
     }
+
+    @Test
+    fun `dictation undo needs the exact text right before the cursor where it was put`() {
+        assertTrue(DictationUndo.matches("Hello there. ", 5, "Hello there. ", 18))
+        assertTrue(DictationUndo.matches("Hello there. ", -1, "Hello there. ", 40))
+        assertTrue(DictationUndo.matches("Hello there. ", 5, "Hello there. ", -1))
+        assertFalse(DictationUndo.matches("Hello there. ", 5, "Hello there! ", 18))
+        assertFalse(DictationUndo.matches("Hello there. ", 5, "Hello there. ", 20))
+        assertFalse(DictationUndo.matches("Hello there. ", 5, null, 18))
+        assertFalse(DictationUndo.matches("", 5, "", 5))
+    }
 }

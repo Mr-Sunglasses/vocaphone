@@ -145,6 +145,9 @@ class DictationController(
 
     private var lastInsertion: AppliedInsertion? = null
 
+    /** Which inserter wrote [lastInsertion]: only that one can take it back. */
+    private var lastInsertionSource: DictationSource? = null
+
     val canUndo: Boolean get() = lastInsertion != null
 
     private var pipeline: Job? = null
@@ -887,7 +890,8 @@ class DictationController(
     /** Removes the last insertion when the exact text is still where it was put. */
     suspend fun undoLast(): Boolean {
         val insertion = lastInsertion ?: return false
-        val removed = floatingInserter?.undo(insertion) ?: false
+        val inserter = if (lastInsertionSource == DictationSource.IME) imeInserter else floatingInserter
+        val removed = inserter?.undo(insertion) ?: false
         if (removed) lastInsertion = null
         return removed
     }
@@ -1776,6 +1780,7 @@ class DictationController(
         // actually looking at.
         val report = target.insert(transcript)
         lastInsertion = report.applied
+        lastInsertionSource = source
         history.recordSuccess(
             sessionId = sessionId.toString(),
             language = configuration.effectiveLanguage.wireValue,
