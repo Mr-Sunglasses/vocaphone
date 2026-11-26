@@ -415,6 +415,33 @@ data class VocaPhoneSettings(
      * only — the keyboard build never asks for accessibility access.
      */
     val disclosureAccepted: Boolean = false,
+    /**
+     * Clipboard history with copy times and pins, newest first, expired
+     * clips already left out. [clipboardHistory] is the same texts.
+     */
+    val clipboardEntries: List<ClipEntry> = emptyList(),
+    /** How long an unpinned clip is kept. Pinned clips are kept until unpinned. */
+    val clipboardRetention: ClipboardRetention = ClipboardRetention.DEFAULT,
+    /**
+     * Typing layouts turned on, by id ([com.vocahq.vocaphone.ime.KeyboardLanguages]),
+     * in the order the language key cycles them. Empty follows the phone's
+     * languages, the way iOS picks a fresh install's layouts.
+     */
+    val keyboardLayouts: List<String> = emptyList(),
+    /** The layout the keyboard was last on; blank means the first enabled one. */
+    val activeKeyboardLayout: String = "",
+    /** "Haptic feedback on keypress". On follows the system's touch feedback; off is silent. */
+    val keyHapticsEnabled: Boolean = true,
+    /** "Popup on keypress": the enlarged letter above a pressed key. */
+    val keyPopupEnabled: Boolean = true,
+    /** "Space-bar cursor control": hold space, then slide to move the cursor. */
+    val spaceCursorEnabled: Boolean = true,
+    /** "Emoji suggestions": emoji on the suggestion strip for words like "pizza". */
+    val emojiSuggestionsEnabled: Boolean = true,
+    /** One-handed keyboard on a phone in portrait. */
+    val oneHandedMode: OneHandedMode = OneHandedMode.OFF,
+    /** Default skin tone for emoji that have one: 0 none (yellow), 1-5 light to dark. */
+    val emojiSkinTone: Int = 0,
 ) {
 
     /**
@@ -754,29 +781,68 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDismissedClipboardText(text: String) = put(Keys.DISMISSED_CLIPBOARD, text)
 
-    suspend fun recordClipboardHistory(text: String) {
-        var next: List<String> = emptyList()
-        context.dataStore.edit { preferences ->
-            val current = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY])
-            next = ClipboardHistory.remember(current, text)
-            preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(next)
-        }
-        ClipboardImages.prune(context, ClipboardHistory.imagePaths(next))
+    suspend fun recordClipboardHistory(text: String) = editClipboard { entries, now, retention ->
+        ClipboardEntries.remember(entries, text, now, retention)
     }
 
-    suspend fun removeClipboardHistory(text: String) {
-        var next: List<String> = emptyList()
-        context.dataStore.edit { preferences ->
-            next = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY]).filter { it != text }
-            preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(next)
-        }
-        ClipboardImages.prune(context, ClipboardHistory.imagePaths(next))
+    suspend fun removeClipboardHistory(text: String) = editClipboard { entries, _, _ ->
+        ClipboardEntries.remove(entries, text)
     }
 
-    suspend fun clearClipboardHistory() {
-        context.dataStore.edit { it.remove(Keys.CLIPBOARD_HISTORY) }
-        ClipboardImages.prune(context, emptySet())
+    suspend fun setClipboardPinned(text: String, pinned: Boolean) = editClipboard { entries, _, _ ->
+        ClipboardEntries.setPinned(entries, text, pinned)
     }
+
+    /** Clear keeps pinned clips; unpin one first to clear it. */
+    suspend fun clearClipboardHistory() = editClipboard { entries, _, _ -> ClipboardEntries.clear(entries) }
+
+    /** Drops expired clips (and their cached images). Also moves the old storage format over. */
+    suspend fun pruneClipboardHistory() = editClipboard { entries, _, _ -> entries }
+
+    suspend fun setClipboardRetention(retention: ClipboardRetention) {
+        put(Keys.CLIPBOARD_RETENTION, retention.storedValue)
+        pruneClipboardHistory()
+    }
+
+    /**
+     * One edit for every history change: read (migrating the old list once),
+     * change, drop what has expired, write, then delete cached images no
+     * longer referenced.
+     */
+    private suspend fun editClipboard(
+        change: (List<ClipEntry>, Long, ClipboardRetention) -> List<ClipEntry>,
+    ) {
+        var next: List<ClipEntry> = emptyList()
+        context.dataStore.edit { preferences ->
+            val now = System.currentTimeMillis()
+            val retention = ClipboardRetention.fromStored(preferences[Keys.CLIPBOARD_RETENTION])
+            val current = preferences.clipboardEntries(now)
+            next = ClipboardEntries.prune(change(current, now, retention), now, retention)
+            preferences[Keys.CLIPBOARD_ENTRIES] = ClipboardEntries.encode(next)
+            preferences.remove(Keys.CLIPBOARD_HISTORY)
+        }
+        ClipboardImages.prune(context, ClipboardEntries.imagePaths(next))
+    }
+
+    private fun Preferences.clipboardEntries(nowMillis: Long): List<ClipEntry> =
+        this[Keys.CLIPBOARD_ENTRIES]?.let(ClipboardEntries::decode)
+            ?: ClipboardEntries.migrate(ClipboardHistory.decode(this[Keys.CLIPBOARD_HISTORY]), nowMillis)
+
+    suspend fun setKeyboardLayouts(ids: List<String>) = put(Keys.KEYBOARD_LAYOUTS, ids.joinToString(","))
+
+    suspend fun setActiveKeyboardLayout(id: String) = put(Keys.ACTIVE_KEYBOARD_LAYOUT, id)
+
+    suspend fun setKeyHapticsEnabled(enabled: Boolean) = put(Keys.KEY_HAPTICS, enabled)
+
+    suspend fun setKeyPopupEnabled(enabled: Boolean) = put(Keys.KEY_POPUP, enabled)
+
+    suspend fun setSpaceCursorEnabled(enabled: Boolean) = put(Keys.SPACE_CURSOR, enabled)
+
+    suspend fun setEmojiSuggestionsEnabled(enabled: Boolean) = put(Keys.EMOJI_SUGGESTIONS, enabled)
+
+    suspend fun setOneHandedMode(mode: OneHandedMode) = put(Keys.ONE_HANDED, mode.storedValue)
+
+    suspend fun setEmojiSkinTone(tone: Int) = put(Keys.EMOJI_SKIN_TONE, tone.coerceIn(0, 5))
 
     suspend fun recordEmojiRecent(emoji: String) {
         context.dataStore.edit { preferences ->
@@ -1038,7 +1104,7 @@ class SettingsRepository(private val context: Context) {
         swipeTypingEnabled = this[Keys.SWIPE_TYPING] ?: true,
         clipboardChipEnabled = this[Keys.CLIPBOARD_CHIP] ?: true,
         clipboardHistoryEnabled = this[Keys.CLIPBOARD_HISTORY_ENABLED] ?: true,
-        clipboardHistory = ClipboardHistory.decode(this[Keys.CLIPBOARD_HISTORY]),
+        clipboardHistory = clipboardEntriesForDisplay().map { it.text },
         dismissedClipboardText = this[Keys.DISMISSED_CLIPBOARD].orEmpty(),
         emojiRecents = decodeEmojiRecents(this[Keys.EMOJI_RECENTS]),
         telemetryEnabled = this[Keys.TELEMETRY_ENABLED]
@@ -1052,7 +1118,28 @@ class SettingsRepository(private val context: Context) {
         } ?: BubbleBehavior.EVERY_EDITABLE_FIELD,
         excludedPackages = this[Keys.EXCLUDED_PACKAGES].orEmpty(),
         disclosureAccepted = this[Keys.DISCLOSURE_ACCEPTED] ?: false,
+        clipboardEntries = clipboardEntriesForDisplay(),
+        clipboardRetention = ClipboardRetention.fromStored(this[Keys.CLIPBOARD_RETENTION]),
+        keyboardLayouts = this[Keys.KEYBOARD_LAYOUTS].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() },
+        activeKeyboardLayout = this[Keys.ACTIVE_KEYBOARD_LAYOUT].orEmpty(),
+        keyHapticsEnabled = this[Keys.KEY_HAPTICS] ?: true,
+        keyPopupEnabled = this[Keys.KEY_POPUP] ?: true,
+        spaceCursorEnabled = this[Keys.SPACE_CURSOR] ?: true,
+        emojiSuggestionsEnabled = this[Keys.EMOJI_SUGGESTIONS] ?: true,
+        oneHandedMode = OneHandedMode.fromStored(this[Keys.ONE_HANDED]),
+        emojiSkinTone = (this[Keys.EMOJI_SKIN_TONE] ?: 0).coerceIn(0, 5),
     )
+
+    /**
+     * What the keyboard may show now: expired clips are left out at read
+     * time too, so one copied a week ago never reappears just because nothing
+     * has written the store since. [pruneClipboardHistory] deletes them.
+     */
+    private fun Preferences.clipboardEntriesForDisplay(): List<ClipEntry> {
+        val now = System.currentTimeMillis()
+        val retention = ClipboardRetention.fromStored(this[Keys.CLIPBOARD_RETENTION])
+        return ClipboardEntries.forDisplay(ClipboardEntries.prune(clipboardEntries(now), now, retention))
+    }
 
     private object Keys {
         val GATEWAY_URL = stringPreferencesKey("gateway_url")
@@ -1129,6 +1216,16 @@ class SettingsRepository(private val context: Context) {
         val EXCLUDED_PACKAGES = stringSetPreferencesKey("excluded_packages")
         val DISCLOSURE_ACCEPTED = booleanPreferencesKey("disclosure_accepted")
         val LAST_REPORTED_EXIT_AT = longPreferencesKey("last_reported_process_exit_at")
+        val CLIPBOARD_ENTRIES = stringPreferencesKey("keyboard_clipboard_entries")
+        val CLIPBOARD_RETENTION = stringPreferencesKey("keyboard_clipboard_retention")
+        val KEYBOARD_LAYOUTS = stringPreferencesKey("keyboard_layouts")
+        val ACTIVE_KEYBOARD_LAYOUT = stringPreferencesKey("keyboard_active_layout")
+        val KEY_HAPTICS = booleanPreferencesKey("keyboard_key_haptics")
+        val KEY_POPUP = booleanPreferencesKey("keyboard_key_popup")
+        val SPACE_CURSOR = booleanPreferencesKey("keyboard_space_cursor")
+        val EMOJI_SUGGESTIONS = booleanPreferencesKey("keyboard_emoji_suggestions")
+        val ONE_HANDED = stringPreferencesKey("keyboard_one_handed")
+        val EMOJI_SKIN_TONE = intPreferencesKey("keyboard_emoji_skin_tone")
     }
 
     private companion object {

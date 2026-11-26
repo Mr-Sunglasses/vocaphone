@@ -696,6 +696,11 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     fun clearClipboardHistory() =
         viewModelScope.launch { container.settings.clearClipboardHistory() }
 
+    /** Writes for the keyboard-surface settings rows; see [KeyboardSurfaceActions]. */
+    val keyboardSurfaceActions = KeyboardSurfaceActions(
+        onClipboardRetention = { viewModelScope.launch { container.settings.setClipboardRetention(it) } },
+    )
+
     fun setOnboardingStage(stage: String) =
         viewModelScope.launch { container.settings.setOnboardingStage(stage) }
 

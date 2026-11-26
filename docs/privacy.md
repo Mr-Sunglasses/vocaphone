@@ -538,6 +538,19 @@ optional clipboard history read
 clips only while the input view is showing; history stays on the phone. Neither
 path is used to insert a transcript.
 
+Clipboard history (Android) keeps at most 20 unpinned clips, each for the
+period chosen under Settings › Keyboard › Clipboard › Keep clips for: 1 hour
+(the default), 1 day or 1 week from when it was copied. Expired clips are
+hidden at once and deleted from the phone, with any cached image, the next
+time the keyboard opens. A pinned clip is kept until it is unpinned or
+deleted (up to 50 pins); Clear removes everything except pins. A clip is never
+recorded or offered on the chip when the copying app marks it sensitive
+(`ClipDescription.EXTRA_IS_SENSITIVE`, which password managers also set on
+releases before Android 13), when the keyboard is in a password field, or when
+the clip changed while a password field had the keyboard; for that last check
+the keyboard remembers only the clip's timestamp and a hash of its text, in
+memory, for the life of the process.
+
 ## Android floating mic (VocaPhoneX, x flavor)
 
 The `x` sideload build (VocaPhoneX) replaces the keyboard with a floating

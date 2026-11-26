@@ -88,6 +88,7 @@ import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import com.vocahq.vocaphone.settings.SplitKeyboard
+import com.vocahq.vocaphone.settings.ClipboardRetention
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
 import kotlin.math.abs
@@ -173,6 +174,7 @@ fun SettingsScreen(
     onNumberKeyHints: (Boolean) -> Unit,
     onLongPressSymbols: (Boolean) -> Unit,
     typing: KeyboardTypingActions = KeyboardTypingActions(),
+    surface: KeyboardSurfaceActions = KeyboardSurfaceActions(),
     onAutoCapitalize: (Boolean) -> Unit,
     onPersonalDictionary: (String) -> Unit,
     onAddSnippet: (trigger: String, expansion: String) -> Unit,
@@ -570,10 +572,21 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsSwitchRow(
                         title = "Clipboard history",
-                        supporting = "Kept on this phone. Off in passwords.",
+                        supporting = "Kept on this phone. Off in passwords and for clips apps mark sensitive.",
                         checked = settings.clipboardHistoryEnabled,
                         onCheckedChange = onClipboardHistory,
                     )
+                    if (settings.clipboardHistoryEnabled) {
+                        SettingsDivider()
+                        SettingsChoiceRow(
+                            title = "Keep clips for",
+                            options = ClipboardRetention.entries,
+                            selected = settings.clipboardRetention,
+                            label = { it.displayName },
+                            supporting = "${settings.clipboardRetention.displayName}. Pinned clips stay until you unpin them.",
+                            onSelect = surface.onClipboardRetention,
+                        )
+                    }
                 }
             }
 

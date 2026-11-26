@@ -130,6 +130,11 @@ import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.settings.ClipboardHistory
+import com.vocahq.vocaphone.settings.ClipEntry
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import java.io.File
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
@@ -181,6 +186,7 @@ internal fun VocaPhoneKeyboard(
     onRemoveClipboardHistory: (String) -> Unit,
     onClearClipboardHistory: () -> Unit,
     onEmojiUsed: (String) -> Unit,
+    onPinClipboardHistory: (String, Boolean) -> Unit = { _, _ -> },
     onSpaceLongPress: () -> Unit = {},
     onWritingApply: (WritingSuggestion) -> Unit = {},
     onWritingDismiss: (WritingSuggestion) -> Unit = {},
@@ -854,7 +860,8 @@ internal fun VocaPhoneKeyboard(
                     },
                     panelActionLabel = if (
                         preferencePanel == PreferencePanel.CLIPBOARD &&
-                            settings.clipboardHistory.isNotEmpty()
+                            // Clear keeps pins, so with only pins there is nothing to clear.
+                            settings.clipboardEntries.any { !it.pinned }
                     ) {
                         if (confirmingClipboardClear) "Clear all?" else "Clear"
                     } else {
@@ -948,7 +955,7 @@ internal fun VocaPhoneKeyboard(
                         onClose = { preferencePanel = null },
                     )
                     PreferencePanel.CLIPBOARD -> ClipboardHistoryPanel(
-                        items = settings.clipboardHistory,
+                        items = settings.clipboardEntries,
                         height = keyAreaHeight,
                         enabled = !isPreferenceWritePending,
                         onPaste = { text ->
@@ -956,6 +963,7 @@ internal fun VocaPhoneKeyboard(
                             onPasteClipboard(text)
                         },
                         onRemove = onRemoveClipboardHistory,
+                        onPin = onPinClipboardHistory,
                         onClose = { preferencePanel = null },
                     )
                     PreferencePanel.LANGUAGE -> LanguagePreferencePanel(
@@ -1882,11 +1890,12 @@ private fun RowScope.ToolbarMenuTile(
 
 @Composable
 private fun ClipboardHistoryPanel(
-    items: List<String>,
+    items: List<ClipEntry>,
     height: Dp,
     enabled: Boolean,
     onPaste: (String) -> Unit,
     onRemove: (String) -> Unit,
+    onPin: (String, Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     PreferencePanelShell(height = height) {
@@ -1915,13 +1924,15 @@ private fun ClipboardHistoryPanel(
             ) {
                 gridItems(
                     items,
-                    key = { it.hashCode().toString() + it.take(12) },
-                ) { stored ->
+                    key = { it.text.hashCode().toString() + it.text.take(12) },
+                ) { entry ->
                     ClipboardHistoryTile(
-                        stored = stored,
+                        stored = entry.text,
+                        pinned = entry.pinned,
                         enabled = enabled,
-                        onPaste = { onPaste(stored) },
-                        onRemove = { onRemove(stored) },
+                        onPaste = { onPaste(entry.text) },
+                        onRemove = { onRemove(entry.text) },
+                        onPin = { onPin(entry.text, !entry.pinned) },
                     )
                 }
             }
@@ -1932,9 +1943,11 @@ private fun ClipboardHistoryPanel(
 @Composable
 private fun ClipboardHistoryTile(
     stored: String,
+    pinned: Boolean,
     enabled: Boolean,
     onPaste: () -> Unit,
     onRemove: () -> Unit,
+    onPin: () -> Unit,
 ) {
     val image = ClipboardHistory.parseImage(stored)
     val preview = if (image != null) {
@@ -1944,10 +1957,40 @@ private fun ClipboardHistoryTile(
             if (short == "Copied JSON") short else ClipboardHistory.preview(stored)
         }
     }
+    // Swipe a tile sideways past a third of its width to delete it, as in
+    // Gboard; the x stays as the explicit way.
+    var dragX by remember(stored) { mutableStateOf(0f) }
     Surface(
-        modifier = Modifier.height(88.dp),
+        modifier = Modifier
+            .height(88.dp)
+            .semantics {
+                customActions = listOf(
+                    CustomAccessibilityAction(if (pinned) "Unpin" else "Pin") { onPin(); true },
+                    CustomAccessibilityAction("Delete") { onRemove(); true },
+                )
+            }
+            .graphicsLayer {
+                translationX = dragX
+                alpha = 1f - (kotlin.math.abs(dragX) / size.width.coerceAtLeast(1f)).coerceIn(0f, 0.6f)
+            }
+            .pointerInput(stored, enabled) {
+                if (!enabled) return@pointerInput
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (ClipboardSwipe.deletes(dragX, size.width.toFloat())) onRemove() else dragX = 0f
+                    },
+                    onDragCancel = { dragX = 0f },
+                ) { change, amount ->
+                    change.consume()
+                    dragX += amount
+                }
+            },
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (pinned) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
         enabled = enabled,
         onClick = onPaste,
     ) {
@@ -1991,6 +2034,30 @@ private fun ClipboardHistoryTile(
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // Pinned clips survive Clear and the retention limit.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(MinimumTouchTarget)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = if (pinned) "Unpin" else "Pin"
+                        selected = pinned
+                    }
+                    .clickable(enabled = enabled, onClick = onPin),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_pin),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = if (pinned) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    },
                 )
             }
         }

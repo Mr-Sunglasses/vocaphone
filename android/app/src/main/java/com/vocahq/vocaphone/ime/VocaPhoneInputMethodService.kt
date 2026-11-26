@@ -92,7 +92,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (lastState.phase == DictationPhase.FAILED) {
             container.dictation.clearTransient()
         }
-        refreshClipboard()
+        refreshClipboard(changed = true)
     }
     private val preferenceWrites by lazy {
         KeyboardPreferenceCoordinator(scope) {
@@ -148,6 +148,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var dictationEditorSession = -1
     private var ignoredClipboardText: String? = null
     private var lastRecordedClip: String? = null
+    private var lastClipboardPrune = Long.MIN_VALUE / 2
+    /** Clips that changed while a sensitive field was focused; see [ClipboardPrivacy]. */
+    private val sensitiveClips = SensitiveClips()
     private var lastImageSource: String? = null
     private var editorSession = 0
     private var editorIdentity: EditorIdentity? = null
@@ -365,6 +368,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onDismissClipboard = ::dismissClipboard,
                 onRemoveClipboardHistory = ::removeClipboardHistory,
                 onClearClipboardHistory = ::clearClipboardHistory,
+                onPinClipboardHistory = ::pinClipboardHistory,
                 onEmojiUsed = ::recordEmojiRecent,
                 onSpaceLongPress = ::showKeyboardPicker,
                 onWritingApply = ::applyWriting,
@@ -449,6 +453,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         viewShows.value += 1
         applyVoiceShortcutSubtype(currentSubtype())
         if (!voiceShortcutActive) {
+            pruneClipboardHistory()
             startClipboardWatch()
             refreshEditorText()
         }
@@ -903,6 +908,22 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         persistPreference { container.settings.clearClipboardHistory() }
     }
 
+    private fun pinClipboardHistory(text: String, pinned: Boolean) {
+        persistPreference { container.settings.setClipboardPinned(text, pinned) }
+    }
+
+    /**
+     * Deletes clips past the retention limit, and their cached images, at
+     * most once a minute as the keyboard comes up. Reading already hides
+     * them; this is what removes them from the phone.
+     */
+    private fun pruneClipboardHistory() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastClipboardPrune < CLIPBOARD_PRUNE_INTERVAL_MS) return
+        lastClipboardPrune = now
+        scope.launch { runCatching { container.settings.pruneClipboardHistory() } }
+    }
+
     private fun recordEmojiRecent(emoji: String) {
         persistPreference { container.settings.recordEmojiRecent(emoji) }
     }
@@ -1339,29 +1360,57 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             ?.removePrimaryClipChangedListener(clipboardListener)
     }
 
-    private fun refreshClipboard() {
+    /**
+     * [changed] is true when the system just told us the primary clip changed,
+     * as opposed to the keyboard re-reading it on show or on a settings update.
+     */
+    private fun refreshClipboard(changed: Boolean = false) {
         if (destroyed) return
         mainHandler.post {
             // The settings collector and the clipboard listener can both get
             // here in the frame onDestroy runs; the post then lands after it.
             if (destroyed) return@post
             val settings = visibleSettings.value
+            val manager = getSystemService(ClipboardManager::class.java)
+            val description = manager?.primaryClipDescription
             if (editorConfig.sensitive) {
+                // A copy made while a password field has the keyboard came
+                // from the secret: remember that, so moving to a normal field
+                // does not record it. Only on a change, so merely tapping
+                // into a password field does not taint an older clip.
+                if (changed && description != null) {
+                    val text = runCatching {
+                        manager?.primaryClip?.getItemAt(0)?.let { it.text?.toString() ?: it.uri?.toString() }
+                    }.getOrNull()
+                    sensitiveClips.mark(SensitiveClips.of(description.timestamp, text))
+                }
                 visibleClipboard.value = null
                 return@post
             }
-            val manager = getSystemService(ClipboardManager::class.java)
-            val description = manager?.primaryClipDescription
+            if (ClipboardPrivacy.markedSensitive(clipSensitiveExtra(description))) {
+                visibleClipboard.value = null
+                return@post
+            }
             val clip = manager?.primaryClip
+            val firstItem = runCatching { clip?.getItemAt(0) }.getOrNull()
+            if (
+                description != null &&
+                sensitiveClips.contains(
+                    SensitiveClips.of(description.timestamp, firstItem?.let { it.text?.toString() ?: it.uri?.toString() }),
+                )
+            ) {
+                visibleClipboard.value = null
+                return@post
+            }
             val imageMime = clipImageMime(description)
             val rawText = runCatching {
-                clip?.getItemAt(0)?.coerceToText(this)?.toString()
+                firstItem?.coerceToText(this)?.toString()
             }.getOrNull()?.trim().orEmpty()
             val text = rawText.takeIf { it.isNotEmpty() && !isImageUriText(it, imageMime != null) }
             when {
                 !text.isNullOrEmpty() -> showClipboardText(text, settings)
                 imageMime != null -> {
-                    val uri = clip?.getItemAt(0)?.uri
+                    val uri = firstItem?.uri
                     if (uri != null) showClipboardImage(uri, imageMime, settings)
                     else visibleClipboard.value = null
                 }
@@ -1422,6 +1471,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             }
         }
     }
+
+    /** The raw [ClipboardPrivacy.EXTRA_IS_SENSITIVE] value, whatever type the copying app used. */
+    @Suppress("DEPRECATION")
+    private fun clipSensitiveExtra(description: ClipDescription?): Any? =
+        runCatching { description?.extras?.get(ClipboardPrivacy.EXTRA_IS_SENSITIVE) }.getOrNull()
 
     private fun clipImageMime(description: ClipDescription?): String? {
         if (description == null) return null
@@ -1863,6 +1917,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private companion object {
         const val MAX_CURSOR_STEPS_PER_EVENT = 12
+        const val CLIPBOARD_PRUNE_INTERVAL_MS = 60_000L
         /** Enough text for the words a delete slide can reach. */
         const val DELETE_SLIDE_CONTEXT = 1_000
 
