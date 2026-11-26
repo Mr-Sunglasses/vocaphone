@@ -12,6 +12,10 @@ import UIKit
 struct KeyboardPreview: View {
     var preference: KeyboardHeightPreference
     var showsSuggestions: Bool
+    /// The digits above the letters, and the keys pushed toward one thumb:
+    /// both change the shape of the keyboard, so both show here.
+    var numberRow: Bool = false
+    var oneHanded: OneHandedKeyboard = .off
     /// The row above the keys is the SwiftUI surface when compact controls are
     /// on — the default — and the older UIKit bar otherwise. Drawing the bar
     /// here while the keyboard shows the compact row previewed a keyboard
@@ -26,7 +30,9 @@ struct KeyboardPreview: View {
             preference: preference,
             showsSuggestions: showsSuggestions,
             isDark: colorScheme == .dark,
-            showsBar: !usesCompactControls
+            showsBar: !usesCompactControls,
+            numberRow: numberRow,
+            oneHanded: oneHanded
         )
         .overlay(alignment: .top) {
             if usesCompactControls {
@@ -38,7 +44,7 @@ struct KeyboardPreview: View {
         .onAppear { syncSurface() }
         .onChange(of: showsSuggestions) { syncSurface() }
         .onChange(of: colorScheme) { syncSurface() }
-        .frame(height: KeyboardPreviewRepresentable.height(for: preference))
+        .frame(height: KeyboardPreviewRepresentable.height(for: preference, numberRow: numberRow))
         .clipShape(RoundedRectangle(cornerRadius: VocaMetrics.fieldRadius, style: .continuous))
         .accessibilityElement()
         .accessibilityLabel("Keyboard preview")
@@ -69,15 +75,17 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
     let showsSuggestions: Bool
     let isDark: Bool
     let showsBar: Bool
+    var numberRow = false
+    var oneHanded: OneHandedKeyboard = .off
 
     /// The same arithmetic the extension does, so the preview is the height the
     /// keyboard will actually be.
     static let chromeInset: CGFloat = 6
     static let chromeSpacing: CGFloat = 12
 
-    static func height(for preference: KeyboardHeightPreference) -> CGFloat {
+    static func height(for preference: KeyboardHeightPreference, numberRow: Bool = false) -> CGFloat {
         let traits = UITraitCollection { $0.verticalSizeClass = .regular }
-        let grid = KeyboardMetrics.resolved(for: traits, preference: preference)
+        let grid = KeyboardMetrics.resolved(for: traits, preference: preference).withNumberRow(numberRow)
         let bar = DictationBarMetrics.resolved(for: traits, preference: preference)
         return 2 * chromeInset + bar.stripHeight + chromeSpacing + grid.gridHeight
     }
@@ -98,7 +106,9 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
             preference: preference,
             showsSuggestions: showsSuggestions,
             isDark: isDark,
-            showsBar: showsBar
+            showsBar: showsBar,
+            numberRow: numberRow,
+            oneHanded: oneHanded
         )
     }
 }
@@ -109,7 +119,7 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
 final class KeyboardPreviewContainer: UIView {
     private var grid: KeyGridView?
     private var bar: DictationBarView?
-    private var rendered: (KeyboardHeightPreference, Bool, Bool, Bool)?
+    private var rendered: (KeyboardHeightPreference, Bool, Bool, Bool, Bool, OneHandedKeyboard)?
 
     /// Something recognisable rather than a real correction: the preview must
     /// never look like it is proposing to change text the user has not typed.
@@ -134,16 +144,21 @@ final class KeyboardPreviewContainer: UIView {
         preference: KeyboardHeightPreference,
         showsSuggestions: Bool,
         isDark: Bool,
-        showsBar: Bool
+        showsBar: Bool,
+        numberRow: Bool = false,
+        oneHanded: OneHandedKeyboard = .off
     ) {
-        guard rendered == nil || rendered! != (preference, showsSuggestions, isDark, showsBar) else {
+        guard rendered == nil
+            || rendered! != (preference, showsSuggestions, isDark, showsBar, numberRow, oneHanded)
+        else {
             return
         }
-        rendered = (preference, showsSuggestions, isDark, showsBar)
+        rendered = (preference, showsSuggestions, isDark, showsBar, numberRow, oneHanded)
 
         let traits = UITraitCollection { $0.verticalSizeClass = .regular }
         let palette = KeyboardPalette(isDark: isDark)
         let gridMetrics = KeyboardMetrics.resolved(for: traits, preference: preference)
+            .withNumberRow(numberRow)
         let barMetrics = DictationBarMetrics.resolved(for: traits, preference: preference)
         backgroundColor = palette.background
 
@@ -156,6 +171,8 @@ final class KeyboardPreviewContainer: UIView {
         grid.metrics = gridMetrics
         grid.palette = palette
         grid.showsGlobeKey = true
+        grid.showsNumberRow = numberRow
+        grid.oneHandedSide = oneHanded
         grid.shiftState = .off
 
         let bar = self.bar ?? {
@@ -184,6 +201,7 @@ final class KeyboardPreviewContainer: UIView {
         guard let grid, let bar, let rendered else { return }
         let traits = UITraitCollection { $0.verticalSizeClass = .regular }
         let gridMetrics = KeyboardMetrics.resolved(for: traits, preference: rendered.0)
+            .withNumberRow(rendered.4)
         let barMetrics = DictationBarMetrics.resolved(for: traits, preference: rendered.0)
         let inset = KeyboardPreviewRepresentable.chromeInset
         let spacing = KeyboardPreviewRepresentable.chromeSpacing

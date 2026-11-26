@@ -189,13 +189,14 @@ enum KeyLayout {
         includesGlobe: Bool,
         includesLayoutSwitch: Bool = false,
         returnIsProminent: Bool,
-        punctuation: BottomRowPunctuation? = nil
+        punctuation: BottomRowPunctuation? = nil,
+        numberRow: Bool = false
     ) -> [KeyRow] {
         switch plane {
         case .numberPad, .phonePad, .decimalPad:
             return keypadRows(for: plane, includesGlobe: includesGlobe)
         case .letters:
-            return letterRows(for: layout) + [
+            return (numberRow ? [numberRowKeys] : []) + letterRows(for: layout) + [
                 bottomRow(
                     planeSwitch: .numbers,
                     punctuation: punctuation,
@@ -240,6 +241,15 @@ enum KeyLayout {
             ]
         }
     }
+
+    /// The digits above the letters, when Settings asks for them.
+    ///
+    /// Apple's iPhone keyboard has no such row; this is the one Android
+    /// keyboards offer. The digits share the width evenly and are measured
+    /// against ten columns whatever the alphabet: an eleven-key ЙЦУКЕН row
+    /// below must not squeeze `0` off the end, and ten keys a tenth of the
+    /// row apiece line up with QWERTY's columns exactly.
+    static let numberRowKeys = KeyRow(keys: fillMap("1234567890"), columnReference: 10)
 
     /// Apple's iPhone bottom row gives Return two and a half letter columns.
     /// Besides matching its visual weight, this keeps longer return labels such
@@ -558,10 +568,31 @@ struct KeyboardMetrics: Equatable {
     var letterFontSize: CGFloat
     var functionFontSize: CGFloat
     var cornerRadius: CGFloat
+    /// How many rows of keys the keyboard is tall: four, or five with the
+    /// number row. Every plane is laid out in this height — a plane with
+    /// fewer rows than this stretches its keys to fill it — so the keyboard
+    /// does not change size under the host app when `123` is tapped.
+    var rowCount: Int = 4
 
     var showsPreview: Bool { keyHeight >= 34 }
 
-    var gridHeight: CGFloat { 4 * keyHeight + 3 * rowGap }
+    var gridHeight: CGFloat {
+        CGFloat(rowCount) * keyHeight + CGFloat(max(rowCount - 1, 0)) * rowGap
+    }
+
+    /// How tall each key is on a plane of `rows` rows, inside ``gridHeight``.
+    /// Exactly ``keyHeight`` when the plane has ``rowCount`` rows.
+    func keyHeight(forRows rows: Int) -> CGFloat {
+        guard rows > 0, rows != rowCount else { return keyHeight }
+        return (gridHeight - CGFloat(rows - 1) * rowGap) / CGFloat(rows)
+    }
+
+    /// The same geometry, with or without the number row.
+    func withNumberRow(_ shows: Bool) -> KeyboardMetrics {
+        var copy = self
+        copy.rowCount = shows ? 5 : 4
+        return copy
+    }
 
     /// Portrait iPhone geometry for one height preference.
     ///

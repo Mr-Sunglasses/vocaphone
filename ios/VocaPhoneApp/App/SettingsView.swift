@@ -225,6 +225,23 @@ struct KeyboardSettingsView: View {
         KeyboardPreferences.spacebarCursorKey,
         store: KeyboardPreferences.defaults
     ) private var spacebarCursorEnabled = KeyboardDefaults.spacebarCursor
+    @AppStorage(
+        KeyboardPreferences.numberRowKey,
+        store: KeyboardPreferences.defaults
+    ) private var numberRowEnabled = KeyboardDefaults.numberRow
+    @AppStorage(
+        KeyboardPreferences.oneHandedKeyboardKey,
+        store: KeyboardPreferences.defaults
+    ) private var oneHandedRawValue = KeyboardDefaults.oneHandedKeyboard.rawValue
+    @AppStorage(
+        KeyboardPreferences.clipboardHistoryKey,
+        store: KeyboardPreferences.defaults
+    ) private var clipboardHistoryEnabled = KeyboardDefaults.clipboardHistory
+    @AppStorage(
+        KeyboardPreferences.clipboardRetentionKey,
+        store: KeyboardPreferences.defaults
+    ) private var clipboardRetentionRawValue = KeyboardDefaults.clipboardRetention.rawValue
+    @State private var isConfirmingClipboardClear = false
 
     /// Held rather than read straight from ``KeyboardPreferences`` on every
     /// redraw: the list has to keep its order, and the order is the order the
@@ -249,6 +266,7 @@ struct KeyboardSettingsView: View {
             previewSection
             languagesSection
             heightSection
+            layoutSection
             feedbackSection
             suggestionsSection
             WritingCheckSettingsSection(
@@ -259,6 +277,7 @@ struct KeyboardSettingsView: View {
             )
             learningSection
             typingDetailSection
+            clipboardSection
         }
         .navigationTitle("Keyboard")
         .navigationBarTitleDisplayMode(.inline)
@@ -292,12 +311,29 @@ struct KeyboardSettingsView: View {
                     + "learns them a second time. Nothing else is affected."
             )
         }
+        // On the List, like the dialog above, so re-rendering the section
+        // cannot take it down with it.
+        .confirmationDialog(
+            "Clear clipboard history?",
+            isPresented: $isConfirmingClipboardClear,
+            titleVisibility: .visible
+        ) {
+            Button("Clear", role: .destructive) { ClipboardHistoryStore.shared.removeAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes every clip the keyboard kept, pinned ones too.")
+        }
     }
 
     /// The real keyboard, at the chosen height, redrawing as the switches move.
     private var previewSection: some View {
         Section {
-            KeyboardPreview(preference: selected, showsSuggestions: suggestionsEnabled)
+            KeyboardPreview(
+                preference: selected,
+                showsSuggestions: suggestionsEnabled,
+                numberRow: numberRowEnabled,
+                oneHanded: OneHandedKeyboard(rawValue: oneHandedRawValue) ?? .off
+            )
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
         }
@@ -373,6 +409,53 @@ struct KeyboardSettingsView: View {
             Text("Height")
         } footer: {
             Text(selected.detail)
+        }
+    }
+
+    /// The shape of the keys: a number row, and Apple's one-handed keyboard.
+    private var layoutSection: some View {
+        Section {
+            Toggle(isOn: $numberRowEnabled) {
+                SettingLabel("Number row", detail: "Digits above the letters. The keyboard gets a row taller.")
+            }
+            Picker(selection: $oneHandedRawValue) {
+                ForEach(OneHandedKeyboard.allCases) { side in
+                    Text(side.displayName).tag(side.rawValue)
+                }
+            } label: {
+                SettingLabel("One-handed keyboard", detail: "Keys toward one thumb, iPhone upright.")
+            }
+        } footer: {
+            Text("Switch one-handed from More on the keyboard too. Tap the chevron beside the keys "
+                + "to go back to full width.")
+        }
+    }
+
+    /// Recent clips, kept only when asked for.
+    private var clipboardSection: some View {
+        Section {
+            Toggle(isOn: $clipboardHistoryEnabled) {
+                SettingLabel("Clipboard history", detail: "Recent text you copy, beside Paste and in More.")
+            }
+            .onChange(of: clipboardHistoryEnabled) { _, enabled in
+                // Off means nothing kept, pins included.
+                if !enabled { ClipboardHistoryStore.shared.removeAll() }
+            }
+            Picker("Keep clips for", selection: $clipboardRetentionRawValue) {
+                ForEach(ClipboardRetention.allCases) { retention in
+                    Text(retention.displayName).tag(retention.rawValue)
+                }
+            }
+            .disabled(!clipboardHistoryEnabled)
+            Button("Clear clipboard history", role: .destructive) {
+                isConfirmingClipboardClear = true
+            }
+        } header: {
+            LearnMoreHeader(title: "Clipboard", topic: SettingsHelp.clipboard, presented: $learnMore)
+        } footer: {
+            Text("Needs Full Access. Kept only on this iPhone: never synced or backed up. Passwords "
+                + "and anything a password manager marks secret are skipped. Pinned clips stay "
+                + "until you unpin or clear them.")
         }
     }
 

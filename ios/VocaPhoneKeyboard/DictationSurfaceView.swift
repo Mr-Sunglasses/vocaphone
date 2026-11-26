@@ -118,6 +118,15 @@ final class DictationSurfaceState: ObservableObject {
     let typing = TypingRowState()
     /// What the Writing check panel shows; the controller keeps it current.
     let writing = WritingPanelModel()
+    /// The clipboard history panel's clips; loaded when it opens.
+    let clipboard = ClipboardPanelModel()
+    /// What the edit row behind More can do, read as More opens.
+    private var storedEditAvailability = KeyboardEditAvailability()
+    var editAvailability: KeyboardEditAvailability {
+        get { storedEditAvailability }
+        set { change(&storedEditAvailability, to: newValue) }
+    }
+    var onEditAction: ((KeyboardEditAction) -> Void)?
     /// Whether the Writing check button leads the row: an English layout, a
     /// field Writing check may read, and some words in it. Changes per field
     /// and per first or last letter, not per keystroke.
@@ -478,6 +487,8 @@ enum SurfacePanel: Equatable, Sendable {
     case language
     /// Writing check: every suggestion, with its reason, in place of the keys.
     case writing
+    /// Clipboard history: recent text clips, from More or beside Paste.
+    case clipboard
 }
 
 /// The honest, local-only numbers the compact keyboard dashboard can show.
@@ -594,6 +605,8 @@ final class TypingRowState: ObservableObject {
     var onCandidate: ((TypingCandidate) -> Void)?
     /// The text the system paste button handed over, after the user's tap.
     var onPaste: ((String) -> Void)?
+    /// Set while clipboard history is on: a button beside Paste opens it.
+    var onOpenClipboard: (() -> Void)?
     var hapticsEnabled = true
     /// Whether a change of words cross-fades. Off from the moment the keyboard
     /// starts to appear until it is on screen: iOS hands over the field's
@@ -889,6 +902,7 @@ struct DictationSurfaceView: View {
             case .style: pickerControlsRow(title: "Writing style")
             case .language: pickerControlsRow(title: "Dictation language")
             case .writing: pickerControlsRow(title: "Writing check")
+            case .clipboard: pickerControlsRow(title: "Clipboard")
             }
         } else {
             standardControlsRow
@@ -1038,6 +1052,8 @@ struct DictationSurfaceView: View {
 
     private var compactDashboard: some View {
         VStack(spacing: 0) {
+            editToolbar
+                .padding(.bottom, 4)
             GeometryReader { proxy in
                 dashboardPager(size: proxy.size)
             }
@@ -1093,6 +1109,70 @@ struct DictationSurfaceView: View {
         .frame(width: size.width, height: size.height, alignment: .leading)
         .contentShape(.rect)
         .gesture(dashboardSwipe(pageWidth: size.width))
+    }
+
+    /// The edit row: the clipboard, Undo, Cut, Copy, Paste, and the
+    /// one-handed keyboard. In More rather than above the keys, so it costs
+    /// the keyboard no height. No Select All: a keyboard has no way to select.
+    private var editToolbar: some View {
+        let edit = state.editAvailability
+        return HStack(spacing: 6) {
+            if edit.showsClipboard {
+                editButton("doc.on.clipboard", label: "Clipboard history", action: .clipboard)
+            }
+            editButton("arrow.uturn.backward", label: "Undo", action: .undo, enabled: edit.canUndo)
+            editButton("scissors", label: "Cut", action: .cut, enabled: edit.canCutOrCopy)
+            editButton("doc.on.doc", label: "Copy", action: .copy, enabled: edit.canCutOrCopy)
+            if edit.hasFullAccess {
+                // The system's own control, as on the strip: the clipboard is
+                // handed over on this tap only, so iOS asks nothing.
+                PasteButton(payloadType: String.self) { strings in
+                    guard let text = strings.first, !text.isEmpty else { return }
+                    DispatchQueue.main.async { state.onPaste?(text) }
+                }
+                .labelStyle(.iconOnly)
+                .buttonBorderShape(.capsule)
+                .tint(Color(keyPalette.raisedKey))
+                .foregroundStyle(controlForeground)
+                .frame(maxWidth: .infinity)
+            }
+            if edit.offersOneHanded {
+                editButton(
+                    edit.oneHanded == .right ? "keyboard.onehanded.left" : "keyboard.onehanded.right",
+                    label: edit.oneHanded == .right ? "One-handed keyboard, left" : "One-handed keyboard, right",
+                    action: .oneHanded(edit.oneHanded == .right ? .left : .right)
+                )
+                if edit.oneHanded != .off {
+                    editButton("keyboard", label: "Full-width keyboard", action: .oneHanded(.off))
+                }
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private func editButton(
+        _ symbol: String,
+        label: String,
+        action: KeyboardEditAction,
+        enabled: Bool = true
+    ) -> some View {
+        Button {
+            state.onEditAction?(action)
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(controlForeground)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(keyPalette.standardKey))
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(PickerTileButtonStyle(scales: false))
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
+        .accessibilityLabel(label)
     }
 
     private func dashboardPage(_ page: CompactDashboardPage) -> some View {
@@ -1259,7 +1339,7 @@ struct DictationSurfaceView: View {
     private var compactMenuSymbol: String {
         switch state.presentedPanel {
         case .language, .style: "chevron.left"
-        case .dashboard, .writing: "xmark"
+        case .dashboard, .writing, .clipboard: "xmark"
         case nil: "ellipsis"
         }
     }
@@ -1267,7 +1347,7 @@ struct DictationSurfaceView: View {
     private var compactMenuAccessibilityLabel: String {
         switch state.presentedPanel {
         case .language, .style: "Back"
-        case .dashboard, .writing: "Close"
+        case .dashboard, .writing, .clipboard: "Close"
         case nil: "More"
         }
     }
@@ -1381,6 +1461,12 @@ struct DictationSurfaceView: View {
         case .style: stylePicker
         case .language: languagePicker
         case .writing: WritingPanelView(model: state.writing, isDark: state.isDark, foreground: controlForeground)
+        case .clipboard:
+            VStack(spacing: 0) {
+                ClipboardPanelView(model: state.clipboard, isDark: state.isDark, foreground: controlForeground)
+                panelGlobeRow
+            }
+            .transition(panelTransition)
         }
     }
 
@@ -1888,6 +1974,19 @@ private struct CandidateRow: View {
                     .foregroundStyle(state.isDark ? Color.white : Color.black)
                     .frame(minHeight: Self.rowHeight)
                     .padding(.horizontal, 6)
+                    if let openClipboard = state.onOpenClipboard {
+                        Button {
+                            openClipboard()
+                        } label: {
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(state.isDark ? Color.white : Color.black)
+                                .frame(width: Self.rowHeight, height: Self.rowHeight)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clipboard history")
+                    }
                 } else {
                 Button {
                     state.tap()

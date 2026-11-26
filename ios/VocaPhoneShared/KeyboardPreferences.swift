@@ -63,6 +63,15 @@ enum KeyboardDefaults {
     /// A keyboard cannot read that switch, so it matches its default instead.
     static let typingHaptics = false
     static let swipeTyping = true
+    /// Off: Apple's iPhone keyboard has no number row, and a fifth row is
+    /// height taken from the app being typed into.
+    static let numberRow = false
+    /// Full width, as Apple's keyboard starts.
+    static let oneHandedKeyboard = OneHandedKeyboard.off
+    /// Off: keeping what was copied is keeping things people copied, and that
+    /// is asked for, never assumed.
+    static let clipboardHistory = false
+    static let clipboardRetention = ClipboardRetention.day
     static let spacebarCursor = true
     static let numbersAsDigits = true
     static let spokenEmoji = true
@@ -369,6 +378,51 @@ enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable
 /// Landscape is deliberately not derived from this. A compact-height phone has
 /// almost no room to give away, and multiplying an already-tight layout by
 /// `.tall` would cover the field being typed into.
+/// Apple's one-handed keyboard: the keys pushed toward one thumb, with a
+/// chevron in the space left over that puts them back. iPhone portrait only;
+/// landscape and iPad ignore it, as Apple's does.
+enum OneHandedKeyboard: String, CaseIterable, Identifiable, Sendable {
+    case off
+    case left
+    case right
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .off: "Off"
+        case .left: "Left"
+        case .right: "Right"
+        }
+    }
+}
+
+/// How long a copied clip stays in the keyboard's clipboard history. Pinned
+/// clips stay until they are unpinned or cleared.
+enum ClipboardRetention: String, CaseIterable, Identifiable, Sendable {
+    case hour
+    case day
+    case week
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .hour: "1 Hour"
+        case .day: "1 Day"
+        case .week: "1 Week"
+        }
+    }
+
+    var interval: TimeInterval {
+        switch self {
+        case .hour: 60 * 60
+        case .day: 24 * 60 * 60
+        case .week: 7 * 24 * 60 * 60
+        }
+    }
+}
+
 enum KeyboardHeightPreference: String, CaseIterable, Codable, Identifiable, Sendable {
     case compact
     case standard
@@ -576,6 +630,9 @@ enum KeyboardPreferences {
     static let retiredEmojiRecentsKey = "recentEmoji"
     static let swipeTypingKey = "swipeTypingEnabled"
     static let numberRowKey = "numberRowEnabled"
+    static let oneHandedKeyboardKey = "oneHandedKeyboard"
+    static let clipboardHistoryKey = "clipboardHistoryEnabled"
+    static let clipboardRetentionKey = "clipboardRetention"
     /// Debug-only touch and frame instrumentation. Kept off unless a developer
     /// explicitly arms it in the keyboard lab.
     static let touchTraceKey = "touchTraceEnabled"
@@ -869,9 +926,35 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: swipeTypingKey) }
     }
 
+    /// Digits above the letters on the letters plane. Off by default, as on
+    /// Apple's keyboard, which has none; on, the keyboard is one row taller.
     static var numberRowEnabled: Bool {
-        get { boolean(numberRowKey, default: false) }
+        get { boolean(numberRowKey, default: KeyboardDefaults.numberRow) }
         set { defaults?.set(newValue, forKey: numberRowKey) }
+    }
+
+    /// Which thumb the keys lean toward on an iPhone held upright.
+    static var oneHandedKeyboard: OneHandedKeyboard {
+        get {
+            defaults?.string(forKey: oneHandedKeyboardKey).flatMap(OneHandedKeyboard.init(rawValue:))
+                ?? KeyboardDefaults.oneHandedKeyboard
+        }
+        set { defaults?.set(newValue.rawValue, forKey: oneHandedKeyboardKey) }
+    }
+
+    /// Whether the keyboard keeps recent text clips. Needs Full Access, as
+    /// any clipboard does; see ``ClipboardHistoryStore``.
+    static var clipboardHistoryEnabled: Bool {
+        get { boolean(clipboardHistoryKey, default: KeyboardDefaults.clipboardHistory) }
+        set { defaults?.set(newValue, forKey: clipboardHistoryKey) }
+    }
+
+    static var clipboardRetention: ClipboardRetention {
+        get {
+            defaults?.string(forKey: clipboardRetentionKey).flatMap(ClipboardRetention.init(rawValue:))
+                ?? KeyboardDefaults.clipboardRetention
+        }
+        set { defaults?.set(newValue.rawValue, forKey: clipboardRetentionKey) }
     }
 
     static var touchTraceEnabled: Bool {

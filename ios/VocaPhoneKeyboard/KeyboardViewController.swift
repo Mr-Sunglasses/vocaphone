@@ -138,6 +138,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// change in the containing app, which means this extension has been torn
     /// down or at least sent off screen in between.
     private var heightPreference = KeyboardPreferences.keyboardHeight
+    /// Read with the height, for the same reason.
+    private var numberRowPreference = KeyboardPreferences.numberRowEnabled
+    private var oneHandedPreference = KeyboardPreferences.oneHandedKeyboard
+    /// The last thing this keyboard did to the document that the edit row's
+    /// Undo can take back. See ``KeyboardEditUndo``.
+    private var lastEdit: KeyboardEdit?
 
     private lazy var dictationBar = DictationBarView(
         metrics: DictationBarMetrics.resolved(
@@ -402,6 +408,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // is reissued across an app switch, so the offer ends with the
         // appearance it was made in.
         lastInsertedText = nil
+        lastEdit = nil
         // A notice belongs to the appearance it was shown in. One about a
         // missing voice model in particular has usually just been acted on:
         // the button opens vocaphone, and coming back is this.
@@ -423,9 +430,31 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// wait for the keyboard process to be recycled.
     private func applyHeightPreferenceIfChanged() {
         let preference = KeyboardPreferences.keyboardHeight
-        guard preference != heightPreference else { return }
+        let numberRow = KeyboardPreferences.numberRowEnabled
+        let oneHanded = KeyboardPreferences.oneHandedKeyboard
+        guard preference != heightPreference
+            || numberRow != numberRowPreference
+            || oneHanded != oneHandedPreference
+        else { return }
         heightPreference = preference
+        numberRowPreference = numberRow
+        oneHandedPreference = oneHanded
         applyLayoutMetrics()
+    }
+
+    /// Whether the one-handed keyboard applies: an iPhone held upright.
+    private var allowsOneHanded: Bool {
+        traitCollection.userInterfaceIdiom == .phone
+            && traitCollection.horizontalSizeClass == .compact
+            && traitCollection.verticalSizeClass == .regular
+    }
+
+    /// Moves the keys toward one thumb, or back, and remembers it.
+    private func setOneHanded(_ side: OneHandedKeyboard) {
+        KeyboardPreferences.oneHandedKeyboard = side
+        oneHandedPreference = side
+        keyGrid.oneHandedSide = allowsOneHanded ? side : .off
+        refreshEditAvailability()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -792,10 +821,29 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     /// Text handed over by the paste button (or read on the older bar's tap).
     private func paste(_ text: String) {
-        textDocumentProxy.insertText(text)
-        ClipboardWatch.notePasted(changeCount: UIPasteboard.general.changeCount)
-        typing.resetComposition(origin: .suggestion, document: refreshDocument())
+        let changeCount = UIPasteboard.general.changeCount
+        insertOwnText(text)
+        ClipboardWatch.notePasted(changeCount: changeCount)
+        // Handed over by the user's own tap on Paste, so keeping it reads
+        // nothing more. The types are metadata; the text is already in hand.
+        ClipboardCapture.keep(
+            text,
+            types: UIPasteboard.general.firstItemTypes,
+            changeCount: changeCount,
+            isEnabled: clipboardHistoryIsOn,
+            fieldAllows: fieldAllowsClipboardHistory
+        )
+        if dictationSurfaceState.presentedPanel != nil { dictationSurfaceState.present(nil) }
         render(lastRecord)
+    }
+
+    /// Text the keyboard puts in on the user's behalf — a paste or a clip —
+    /// remembered so the edit row's Undo can take it back.
+    private func insertOwnText(_ text: String) {
+        let following = textDocumentProxy.documentContextAfterInput
+        textDocumentProxy.insertText(text)
+        lastEdit = .inserted(text: text, following: following, documentID: currentDocumentID)
+        typing.resetComposition(origin: .suggestion, document: refreshDocument())
     }
 
     private func writingCandidates() -> [TypingCandidate] {
@@ -2068,6 +2116,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             lastInsertedText = prepared.text
             lastInsertedFollowing = prepared.following
             lastInsertedDocumentID = currentDocumentID
+            lastEdit = .inserted(
+                text: prepared.text,
+                following: prepared.following,
+                documentID: currentDocumentID
+            )
             // The session ID makes this append idempotent if the extension is
             // interrupted after insertion. Recording here means an insertion
             // that happened cannot be lost merely because saving the terminal
@@ -2781,6 +2834,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 writingCheck.cancelButtonCheck()
             }
             panelOwnsKeyboard = presented
+            if presented { refreshEditAvailability() }
             render(lastRecord)
         }
         dictationSurfaceState.onVocaPhoneRunningChanged = { [weak self] running in
@@ -2811,6 +2865,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             guard let self, !isPerformingInsertion else { return }
             documentEvent { self.paste(text) }
         }
+        dictationSurfaceState.onEditAction = { [weak self] action in
+            guard let self, !isPerformingInsertion else { return }
+            documentEvent { self.performEdit(action) }
+        }
+        configureClipboardPanel()
         dictationSurfaceState.onLanguageChanged = { [weak self] lang in
             KeyboardPreferences.transcriptionLanguage = lang
             self?.refresh()
@@ -2900,6 +2959,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         configureDictationSurface()
         dictationBar.delegate = self
         keyGrid.delegate = self
+        keyGrid.onRestoreFullWidth = { [weak self] in
+            KeyboardHaptics.shared.action()
+            self?.setOneHanded(.off)
+        }
 
         topBarContainer.translatesAutoresizingMaskIntoConstraints = false
         topBarContainer.clipsToBounds = true
@@ -3035,7 +3098,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let metrics = KeyboardMetrics.resolved(
             for: traitCollection,
             preference: heightPreference
-        )
+        ).withNumberRow(numberRowPreference)
+        keyGrid.showsNumberRow = numberRowPreference
+        keyGrid.oneHandedSide = allowsOneHanded ? oneHandedPreference : .off
         let barMetrics = DictationBarMetrics.resolved(
             for: traitCollection,
             preference: heightPreference
@@ -3165,6 +3230,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // else to go once it is there.
         keyGrid.homePlane = Self.initialPlane(for: keyboardType)
         keyGrid.plane = keyGrid.homePlane
+        refreshClipboardEntryPoint()
         updateReturnKeyEnablement()
         applyTheme()
         // A returning keyboard may already be at the end of "happy". Restore
@@ -3634,4 +3700,173 @@ final class TouchLiftObserver: UIGestureRecognizer, UIGestureRecognizerDelegate 
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool { true }
+}
+
+// MARK: - Edit row and clipboard history
+
+extension KeyboardViewController {
+    /// Clipboard history on, and able to work: it needs Full Access.
+    fileprivate var clipboardHistoryIsOn: Bool {
+        hasFullAccess && KeyboardPreferences.clipboardHistoryEnabled
+    }
+
+    /// Not in a password, one-time code or card number field: nothing is read
+    /// from the clipboard there, and nothing typed there is kept.
+    fileprivate var fieldAllowsClipboardHistory: Bool {
+        switch TypingFieldPolicy.resolve(for: textDocumentProxy).reason {
+        case .secureEntry?, .sensitiveContentType?: false
+        case .numericKeyboard?, nil: true
+        }
+    }
+
+    fileprivate func configureClipboardPanel() {
+        let model = dictationSurfaceState.clipboard
+        model.onInsert = { [weak self] clip in
+            guard let self, !isPerformingInsertion else { return }
+            documentEvent {
+                self.insertOwnText(clip.text)
+                // Used again, so it is recent again.
+                self.updateClipboardHistory { $0.add(clip.text, at: Date()) }
+                self.dictationSurfaceState.present(nil)
+                self.render(self.lastRecord)
+            }
+        }
+        model.onTogglePin = { [weak self] id in
+            self?.updateClipboardHistory { $0.togglePin(id) }
+        }
+        model.onDelete = { [weak self] id in
+            self?.updateClipboardHistory { $0.remove(id) }
+        }
+        model.onClearUnpinned = { [weak self] in
+            self?.updateClipboardHistory { $0.removeUnpinned() }
+        }
+        refreshClipboardEntryPoint()
+    }
+
+    fileprivate func updateClipboardHistory(_ change: (inout ClipboardHistory) -> Void) {
+        let history = ClipboardHistoryStore.shared.update(
+            retention: KeyboardPreferences.clipboardRetention.interval,
+            change
+        )
+        dictationSurfaceState.clipboard.show(history)
+    }
+
+    /// The button beside Paste, while clipboard history is on.
+    fileprivate func refreshClipboardEntryPoint() {
+        dictationSurfaceState.typing.onOpenClipboard = clipboardHistoryIsOn && fieldAllowsClipboardHistory
+            ? { [weak self] in self?.openClipboardHistory() }
+            : nil
+    }
+
+    /// Opening the panel is asking for the clipboard, so this is one of the
+    /// two moments it is read — once per copy, by change count. iOS may ask
+    /// first, exactly as it does for a Paste.
+    fileprivate func openClipboardHistory() {
+        guard clipboardHistoryIsOn, fieldAllowsClipboardHistory else { return }
+        ClipboardCapture.captureIfChanged(UIPasteboard.general, isEnabled: true, fieldAllows: true)
+        dictationSurfaceState.clipboard.show(
+            ClipboardHistoryStore.shared.current(retention: KeyboardPreferences.clipboardRetention.interval)
+        )
+        dictationSurfaceState.present(.clipboard)
+    }
+
+    /// What the edit row behind More can do, read as it opens.
+    fileprivate func refreshEditAvailability() {
+        refreshClipboardEntryPoint()
+        let snapshot = document
+        let canUndo = lastEdit.map {
+            KeyboardEditUndo.step(
+                for: $0,
+                before: snapshot.before,
+                after: snapshot.after,
+                currentDocumentID: currentDocumentID
+            ) != .unavailable
+        } ?? false
+        dictationSurfaceState.editAvailability = KeyboardEditAvailability(
+            hasSelection: textDocumentProxy.selectedText?.isEmpty == false,
+            canUndo: canUndo,
+            hasFullAccess: hasFullAccess,
+            showsClipboard: clipboardHistoryIsOn && fieldAllowsClipboardHistory,
+            offersOneHanded: allowsOneHanded,
+            oneHanded: oneHandedPreference
+        )
+    }
+
+    fileprivate func performEdit(_ action: KeyboardEditAction) {
+        KeyboardHaptics.shared.action()
+        switch action {
+        case .clipboard:
+            openClipboardHistory()
+            return
+        case let .oneHanded(side):
+            setOneHanded(side)
+            dictationSurfaceState.present(nil)
+            return
+        case .undo:
+            undoLastEdit()
+        case .copy, .cut:
+            copySelection(cutting: action == .cut)
+        }
+        dictationSurfaceState.present(nil)
+        render(lastRecord)
+    }
+
+    /// Copies the selection — the one piece of text a keyboard can see is
+    /// selected — and, for Cut, deletes it. Needs Full Access to write.
+    private func copySelection(cutting: Bool) {
+        guard hasFullAccess, let selected = textDocumentProxy.selectedText, !selected.isEmpty else {
+            flash("Select some text first.")
+            return
+        }
+        UIPasteboard.general.string = selected
+        let changeCount = UIPasteboard.general.changeCount
+        // This keyboard's own copy: the Paste chip need not offer it back.
+        ClipboardWatch.notePasted(changeCount: changeCount)
+        ClipboardCapture.keep(
+            selected,
+            changeCount: changeCount,
+            isEnabled: clipboardHistoryIsOn,
+            fieldAllows: fieldAllowsClipboardHistory
+        )
+        guard cutting else {
+            flash("Copied.")
+            return
+        }
+        // Deleting with a selection deletes the selection.
+        textDocumentProxy.deleteBackward()
+        let snapshot = refreshDocument()
+        lastEdit = .removed(
+            text: selected,
+            before: snapshot.before,
+            after: snapshot.after,
+            documentID: currentDocumentID
+        )
+        typing.resetComposition(origin: .suggestion, document: snapshot)
+    }
+
+    /// Takes back what this keyboard last did, if the document still shows it.
+    private func undoLastEdit() {
+        guard let edit = lastEdit else { return }
+        let snapshot = document
+        let step = KeyboardEditUndo.step(
+            for: edit,
+            before: snapshot.before,
+            after: snapshot.after,
+            currentDocumentID: currentDocumentID
+        )
+        lastEdit = nil
+        switch step {
+        case let .deleteBackward(count):
+            for _ in 0..<count { textDocumentProxy.deleteBackward() }
+        case let .insert(text):
+            textDocumentProxy.insertText(text)
+        case .unavailable:
+            flash("The cursor moved, so undo is no longer available.")
+            return
+        }
+        // A dictation's own Undo button is for the same insertion.
+        lastInsertedText = nil
+        typing.resetComposition(origin: .suggestion, document: refreshDocument())
+        flash("Undone.")
+    }
 }
