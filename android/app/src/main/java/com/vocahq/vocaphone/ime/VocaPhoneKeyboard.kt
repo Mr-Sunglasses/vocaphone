@@ -157,6 +157,8 @@ private enum class PreferencePanel {
     STYLE,
     CLIPBOARD,
     WRITING,
+    /** Gboard's text-editing panel ([TextEditingPanel]). */
+    EDIT,
 }
 
 @Composable
@@ -903,6 +905,7 @@ internal fun VocaPhoneKeyboard(
                         PreferencePanel.STYLE -> "Style"
                         PreferencePanel.CLIPBOARD -> "Clipboard"
                         PreferencePanel.WRITING -> "Writing check"
+                        PreferencePanel.EDIT -> "Text editing"
                         null -> null
                     },
                     panelActionLabel = if (
@@ -995,6 +998,7 @@ internal fun VocaPhoneKeyboard(
                         onLanguage = { preferencePanel = PreferencePanel.LANGUAGE },
                         onStyle = { preferencePanel = PreferencePanel.STYLE },
                         onClipboard = { preferencePanel = PreferencePanel.CLIPBOARD },
+                        onEdit = { preferencePanel = PreferencePanel.EDIT },
                         onOpenSettings = { page ->
                             preferencePanel = null
                             onOpenSettings(page)
@@ -1035,6 +1039,22 @@ internal fun VocaPhoneKeyboard(
                             preferencePanel = null
                             onWritingOpenApp()
                         },
+                    )
+                    PreferencePanel.EDIT -> TextEditingPanel(
+                        height = keyAreaHeight,
+                        hapticsOn = { keyFeedback.hapticsOn },
+                        onEdit = { action, selecting ->
+                            clearSwipe()
+                            learnedUndo[0] = null
+                            tapTrace.clear()
+                            keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
+                            onCommand(KeyboardCommand.EditText(action, selecting))
+                        },
+                        onDelete = {
+                            keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
+                            onCommand(KeyboardCommand.DeleteBackward)
+                        },
+                        onClose = { preferencePanel = null },
                     )
                     PreferencePanel.STYLE -> StylePreferencePanel(
                         selected = settings.style,
@@ -1840,6 +1860,8 @@ private fun ToolbarMenuPanel(
     onLanguage: () -> Unit,
     onStyle: () -> Unit,
     onClipboard: () -> Unit,
+    onEdit: () -> Unit = {},
+    oneHandedTile: MenuTile? = null,
     onOpenSettings: (String) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -1850,10 +1872,10 @@ private fun ToolbarMenuPanel(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // Two rows of four: what the keyboard changes in place, then where
-            // in the app to go. About is one tap further, under Settings.
+            // Two rows: what the keyboard changes in place, then where in the
+            // app to go. About is one tap further, under Settings.
             listOf(
-                listOf(
+                listOfNotNull(
                     MenuTile("Language", R.drawable.ic_language, onLanguage),
                     MenuTile("Style", R.drawable.ic_style, onStyle),
                     MenuTile(
@@ -1861,12 +1883,14 @@ private fun ToolbarMenuPanel(
                         R.drawable.ic_clipboard,
                         if (clipboardOn) onClipboard else ({ onOpenSettings("keyboard") }),
                     ),
-                    MenuTile("Models", R.drawable.ic_models) { onOpenSettings("models") },
+                    MenuTile("Edit", R.drawable.ic_text_edit, onEdit),
+                    oneHandedTile,
                 ),
                 listOf(
                     MenuTile("Keyboard", R.drawable.ic_keyboard) { onOpenSettings("keyboard") },
                     MenuTile("Dictation", R.drawable.ic_dictation) { onOpenSettings("dictation") },
                     MenuTile("Speech", R.drawable.ic_connection) { onOpenSettings("connection") },
+                    MenuTile("Models", R.drawable.ic_models) { onOpenSettings("models") },
                     MenuTile("Settings", R.drawable.ic_settings) { onOpenSettings("") },
                 ),
             ).forEach { row ->

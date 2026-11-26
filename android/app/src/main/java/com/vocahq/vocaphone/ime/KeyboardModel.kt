@@ -97,6 +97,8 @@ internal sealed interface KeyboardCommand {
      * snapshot used to arm caps instead of cycling case.
      */
     data object ShiftTap : KeyboardCommand
+    /** A text-editing panel button; [selecting] when its Select is on. See [TextEditing]. */
+    data class EditText(val action: TextEditAction, val selecting: Boolean = false) : KeyboardCommand
 }
 
 /**

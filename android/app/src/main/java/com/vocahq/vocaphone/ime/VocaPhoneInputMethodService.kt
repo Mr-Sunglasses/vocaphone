@@ -149,6 +149,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var ignoredClipboardText: String? = null
     private var lastRecordedClip: String? = null
     private var lastClipboardPrune = Long.MIN_VALUE / 2
+    /** The text-editing panel's selection: where Select started, and the end that moves. */
+    private var editSelectionAnchor: Int? = null
+    private var editSelectionFocus: Int? = null
     /** Clips that changed while a sensitive field was focused; see [ClipboardPrivacy]. */
     private val sensitiveClips = SensitiveClips()
     private var lastImageSource: String? = null
@@ -781,6 +784,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 connection.commitText(". ", 1)
                 connection.endBatchEdit()
                 composingRegionActive = false
+            }
+            is KeyboardCommand.EditText -> {
+                if (composingRegionActive) connection?.finishComposingText()
+                composingRegionActive = false
+                editText(command.action, command.selecting)
             }
             KeyboardCommand.CycleSelectionCase -> cycleSelectionCase()
             KeyboardCommand.ShiftTap -> {
@@ -1513,6 +1521,48 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (lines == 0) return
         val keyCode = if (lines > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
         repeat(abs(lines).coerceAtMost(MAX_CURSOR_STEPS_PER_EVENT)) { sendKey(keyCode) }
+    }
+
+    /**
+     * The text-editing panel. Context-menu actions first (what TextView
+     * understands), the desktop shortcut when the editor declines; arrows
+     * as key events, and left/right with Select on as an exact range from
+     * where selecting started. See [TextEditing].
+     */
+    private fun editText(action: TextEditAction, selecting: Boolean) {
+        val connection = currentInputConnection ?: return
+        TextEditing.contextMenuId(action)?.let { id ->
+            val handled = runCatching { connection.performContextMenuAction(id) }.getOrDefault(false)
+            if (!handled) TextEditing.shortcut(action)?.let { sendKey(it.keyCode, it.metaState) }
+            editSelectionAnchor = null
+            return
+        }
+        if (selecting && lastSelStart >= 0 && lastSelEnd >= 0) {
+            val current = setOf(lastSelStart, lastSelEnd)
+            val anchor = editSelectionAnchor
+            val focus = editSelectionFocus
+            val (from, to) = if (anchor != null && focus != null && current == setOf(anchor, focus)) {
+                anchor to focus
+            } else {
+                lastSelStart to lastSelEnd
+            }
+            TextEditing.extend(from, to, action)?.let { (start, end) ->
+                editSelectionAnchor = start
+                editSelectionFocus = end
+                connection.setSelection(start, end)
+                return
+            }
+        } else if (!selecting) {
+            editSelectionAnchor = null
+        }
+        TextEditing.movement(action, selecting)?.let { sendKey(it.keyCode, it.metaState) }
+    }
+
+    private fun sendKey(keyCode: Int, metaState: Int) {
+        val connection = currentInputConnection ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState))
+        connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, metaState))
     }
 
     private fun sendKey(keyCode: Int) {
