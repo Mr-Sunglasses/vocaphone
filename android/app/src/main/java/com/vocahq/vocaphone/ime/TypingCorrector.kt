@@ -137,11 +137,18 @@ internal class TypingCorrector {
             isPersonal: Boolean = false,
             /** What sits between the last whitespace and [typed]; see [Autocorrect.startsWord]. */
             tokenBefore: String = "",
+            /**
+             * A fix the user has blocked, or undone often enough to unlearn.
+             * The strip filters these itself; the short-word table, which
+             * answers without the strip, has to ask here.
+             */
+            refuses: (typed: String, fix: String) -> Boolean = { _, _ -> false },
         ): String? {
             if (typed.isEmpty()) return null
             if (isApostrophe(boundary)) {
                 // "i'" can only be I'm, I'll, I've or I'd.
-                return ShortWordCorrections.beforeApostrophe(typed).takeIf { autocorrect }
+                return ShortWordCorrections.beforeApostrophe(typed)
+                    ?.takeIf { autocorrect && !refuses(typed, it) }
             }
             if (!autocorrect || typed.lowercase(Locale.ROOT) in asserted) return null
             // "Mr." and "etc." are typed on purpose.
@@ -154,6 +161,7 @@ internal class TypingCorrector {
             if (strip.forWord == typed) return strip.autocorrection?.takeIf { it != typed }
             return ShortWordCorrections.replacement(typed)
                 ?.takeIf { it != typed && (typed.length == 1 || !Autocorrect.isAllCaps(typed)) }
+                ?.takeUnless { refuses(typed, it) }
         }
     }
 }

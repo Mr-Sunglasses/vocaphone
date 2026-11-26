@@ -67,6 +67,15 @@ class TypingCorrectorTest {
     }
 
     @Test
+    fun `a blocked or unlearned short-word fix is refused even before the strip catches up`() {
+        val stale = SuggestionStrip(emptyList(), forWord = "do")
+        val blocked = { _: String, fix: String -> fix == "don't" }
+        assertNull(TypingCorrector.correction("dont", " ", null, stale, true, emptySet(), refuses = blocked))
+        assertNull(TypingCorrector.correction("i", "'", null, stale, true, emptySet(), refuses = { _, _ -> true }))
+        assertEquals("don't", TypingCorrector.correction("dont", " ", null, stale, true, emptySet()))
+    }
+
+    @Test
     fun `a stale strip leaves a handle, an address or a personal word alone`() {
         val stale = SuggestionStrip(emptyList(), forWord = "i")
         assertEquals("I'm", correction("im", strip = stale))

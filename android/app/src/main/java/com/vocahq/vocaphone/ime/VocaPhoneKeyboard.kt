@@ -741,6 +741,12 @@ internal fun VocaPhoneKeyboard(
         onLayoutChanged(next.id)
     }
 
+    // A blocked word, or a fix undone until unlearned, is never applied —
+    // including by the short-word table when space beats the strip.
+    val refusesFix: (String, String) -> Boolean = { typed, fix ->
+        fix.lowercase() in blockedWords || typingMemory.isRejected(typed, fix)
+    }
+
     fun handleKey(key: KeyboardKey) {
         blockedNotice = null
         if (key.type == KeyboardKeyType.DELETE) {
@@ -755,13 +761,19 @@ internal fun VocaPhoneKeyboard(
         // An emoji picked from the results still goes to the field.
         val query = emojiQuery
         if (query != null && keyboardState.layer == KeyboardLayer.EMOJI && !key.id.startsWith("emoji-")) {
-            when (key.type) {
-                KeyboardKeyType.CHARACTER -> emojiQuery = query + key.output.lowercase()
-                KeyboardKeyType.SPACE -> if (query.isNotEmpty() && !query.endsWith(" ")) emojiQuery = "$query "
-                KeyboardKeyType.RETURN, KeyboardKeyType.LAYER_SWITCH -> emojiQuery = null
-                else -> Unit
+            // `?123` and `ABC` close the search and still go where they say,
+            // through the ordinary path below.
+            if (key.type == KeyboardKeyType.LAYER_SWITCH) {
+                emojiQuery = null
+            } else {
+                when (key.type) {
+                    KeyboardKeyType.CHARACTER -> emojiQuery = query + key.output.lowercase()
+                    KeyboardKeyType.SPACE -> if (query.isNotEmpty() && !query.endsWith(" ")) emojiQuery = "$query "
+                    KeyboardKeyType.RETURN -> emojiQuery = null
+                    else -> Unit
+                }
+                return
             }
-            return
         }
         corrector.undo = null
         val tapX = tapSink[0]
@@ -788,6 +800,7 @@ internal fun VocaPhoneKeyboard(
                 typed, it, learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted,
                 isPersonal = typed.lowercase() in personalWords,
                 tokenBefore = tokenBefore(typed),
+                refuses = refusesFix,
             )
         }
         if (fix != null) onCommand(KeyboardCommand.SetComposingText(fix))
@@ -801,6 +814,7 @@ internal fun VocaPhoneKeyboard(
                     typed, ",", learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted,
                     isPersonal = typed.lowercase() in personalWords,
                     tokenBefore = tokenBefore(typed),
+                    refuses = refusesFix,
                 ),
             )
         }
