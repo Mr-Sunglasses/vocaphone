@@ -1062,6 +1062,7 @@ internal fun VocaPhoneKeyboard(
                             split = splitKeys,
                             spacerFraction = spacerFraction,
                             swipeEnabled = settings.swipeTypingEnabled &&
+                                editor.swipeAllowed &&
                                 keyboardState.layer == KeyboardLayer.LETTERS,
                             onSwipe = onSwipeStable,
                             onSwipeSeedUndo = onUndoSwipeStable,

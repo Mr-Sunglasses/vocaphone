@@ -31,6 +31,13 @@ internal data class KeyboardEditorConfig(
      * field that asked for no suggestions.
      */
     val learningAllowed: Boolean = false,
+    /**
+     * Swipe (glide) typing may run here: a text field that is not a password
+     * and has not asked for no suggestions. Gboard turns glide off in the
+     * same fields; a swiped word in a password would be a dictionary word
+     * typed into a secret.
+     */
+    val swipeAllowed: Boolean = false,
 ) {
     companion object {
         fun empty() = KeyboardEditorConfig(
@@ -99,6 +106,7 @@ internal data class KeyboardEditorConfig(
                 leadingPunctuation = leadingPunctuation,
                 dictationAllowed = ImeInputPolicy.acceptsDictation(inputType),
                 sensitive = ImeInputPolicy.isSensitive(inputType),
+                swipeAllowed = swipeAllowed(inputType),
                 learningAllowed = inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0 &&
                     CorrectionLearningPolicy.allowsLearning(
                         inputType,
@@ -108,6 +116,11 @@ internal data class KeyboardEditorConfig(
                     ),
             )
         }
+
+        fun swipeAllowed(inputType: Int): Boolean =
+            inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+                inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0 &&
+                !ImeInputPolicy.isSensitive(inputType)
 
         private fun editorAction(imeOptions: Int): Pair<ReturnKeyKind, Int?> {
             if (imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) {
