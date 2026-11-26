@@ -139,13 +139,17 @@ internal object KeyboardLanguages {
     fun layout(id: String): TypingLayout? = catalogue.firstOrNull { it.id == id }
 
     /**
-     * A fresh install's layouts: the ones for the phone's languages, or
-     * English if none match. [languageTags] are BCP 47 tags, `ru-RU`.
+     * The layouts when none were ever chosen: English first, plus one for each
+     * of the phone's languages the catalogue has. English is always in, so a
+     * user upgrading from the English-only keyboard on a German phone keeps
+     * English (and its suggestions, autocorrect and swipe) with a language key
+     * to reach German, rather than waking up on German with no way back.
+     * Turning English off is an explicit choice in Settings.
+     * [languageTags] are BCP 47 tags, `ru-RU`.
      */
     fun forPreferredLanguages(languageTags: List<String>): List<TypingLayout> {
-        val subtags = languageTags.map { it.substringBefore('-').substringBefore('_').lowercase() }
-        val matched = catalogue.filter { it.id in subtags }
-        return matched.ifEmpty { listOf(ENGLISH) }
+        val subtags = languageTags.map { it.substringBefore('-').substringBefore('_').lowercase() }.toSet()
+        return catalogue.filter { it.isEnglish || it.id in subtags }
     }
 
     /** The layouts turned on, in catalogue order; nothing stored follows the phone. */

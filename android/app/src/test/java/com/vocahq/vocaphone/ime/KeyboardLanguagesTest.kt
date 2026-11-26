@@ -75,6 +75,17 @@ class KeyboardLanguagesTest {
     }
 
     @Test
+    fun anUpgradeOnANonEnglishPhoneKeepsEnglishFirst() {
+        val derived = KeyboardLanguages.enabled(emptyList(), listOf("de-DE"))
+        assertEquals(listOf("en", "de"), derived.map { it.id })
+        // The stored active layout is empty on upgrade, so English is typed on.
+        assertTrue(KeyboardLanguages.active("", derived).isEnglish)
+        assertTrue(KeyboardLanguages.isEnglishLayout(VocaPhoneSettings(), listOf("de-DE")))
+        // And the language key is there to reach German.
+        assertEquals("de", KeyboardLanguages.next(derived.first(), derived)!!.id)
+    }
+
+    @Test
     fun nextWrapsAndIsNullWithOneLayout() {
         val layouts = KeyboardLanguages.enabled(listOf("en", "fr", "ru"), emptyList())
         val en = layouts[0]
