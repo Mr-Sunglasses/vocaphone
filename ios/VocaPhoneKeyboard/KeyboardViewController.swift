@@ -1677,11 +1677,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
 
     func keyGridDidToggleShift(_ grid: KeyGridView) {
-        // Over a selection, Shift changes the selection's case instead.
-        if documentEvent({ cycleSelectionCase() }) { return }
+        // One read of the document for the whole tap: the event's snapshot is
+        // the anchor too. `selectedText` is asked for only when the setting
+        // that uses it is on.
+        let anchor: DocumentSnapshot? = documentEvent {
+            // Over a selection, Shift changes the selection's case instead —
+            // only when asked for in Settings, since Apple's keyboard never does.
+            if shiftChangesSelectionCase, cycleSelectionCase() { return nil }
+            return document
+        }
+        guard let anchor else { return }
         // Remembered with the place it was made, so that it lasts exactly as
         // long as the cursor stays there. See ``updateAutomaticShift``.
-        manualShiftAnchor = readDocument()
+        manualShiftAnchor = anchor
         shiftLockIsAutomatic = false
     }
 
@@ -1699,14 +1707,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// one read here that hands over text the user did not just type, and a
     /// password field's selection is none of the keyboard's business.
     private func cycleSelectionCase() -> Bool {
-        guard typing.policy.allowsTypingIntelligence, !isPerformingInsertion else {
+        guard typing.policy.allowsTypingIntelligence, fieldAllowsSelectionCase, !isPerformingInsertion else {
             caseCycle = nil
             return false
         }
         let proxy = textDocumentProxy
         let next: String
         let original: String
-        if let selected = proxy.selectedText, selected.contains(where: \.isLetter) {
+        let selected = proxy.selectedText
+        if let selected, !selected.isEmpty {
+            // Long, multi-line or letterless: Shift is just Shift. See
+            // ``SelectionCaseGuard``.
+            guard SelectionCaseGuard.allows(selected) else {
+                caseCycle = nil
+                return false
+            }
             // A selection that is still what the last tap made continues that
             // cycle; any other selection starts a new one.
             original = caseCycle?.emitted == selected ? caseCycle?.original ?? selected : selected
@@ -1714,7 +1729,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             guard next != selected else { return false }
             proxy.insertText(next)
         } else if let session = caseCycle,
-                  proxy.selectedText?.isEmpty != false,
                   session.continues(before: document.before, after: document.after)
         {
             original = session.original
@@ -3307,6 +3321,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Swipe reads words as surely as the strip does, and goes with it.
         keyGrid.allowsSwipeTyping = policy.allowsSwipeTyping
         caseCycle = nil
+        shiftChangesSelectionCase = KeyboardPreferences.shiftChangesSelectionCase
+        // Two more trait reads, only for someone who turned the switch on.
+        fieldAllowsSelectionCase = shiftChangesSelectionCase && SelectionCaseGuard.fieldAllows(
+            keyboardType: proxy.keyboardType,
+            contentType: proxy.textContentType
+        )
         // No microphone in a password field. Redrawn at once when that
         // changes, so Dictate never stays live over a field it may not use.
         if fieldAllowsDictation != policy.allowsDictation {
@@ -3504,6 +3524,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// The document as it stood when the user last tapped Shift, until the
     /// cursor leaves that spot.
     private var manualShiftAnchor: DocumentSnapshot?
+    /// Settings' "Shift changes selected text's case", read per appearance.
+    private var shiftChangesSelectionCase = KeyboardDefaults.shiftChangesSelectionCase
+    /// Not a URL, web search or email field (``SelectionCaseGuard``), as of
+    /// the last ``applyDocumentTraits``.
+    private var fieldAllowsSelectionCase = false
     /// The field is a password, one-time-code or card number field
     /// (``TypingFieldPolicy/allowsDictation`` refused it), as of the last
     /// ``applyDocumentTraits``.
@@ -3942,6 +3967,14 @@ extension KeyboardViewController {
     private func copySelection(cutting: Bool) {
         guard hasFullAccess, let selected = textDocumentProxy.selectedText, !selected.isEmpty else {
             flash("Select some text first.")
+            return
+        }
+        // Cut deletes the whole selection in the host, whatever part of it
+        // the keyboard was handed; a long one is left to the app's own Cut.
+        guard SelectionEditGuard.allows(selected) else {
+            flash(cutting
+                ? "Too much is selected to cut from the keyboard. Use the app\u{2019}s Cut."
+                : "Too much is selected to copy from the keyboard. Use the app\u{2019}s Copy.")
             return
         }
         UIPasteboard.general.string = selected

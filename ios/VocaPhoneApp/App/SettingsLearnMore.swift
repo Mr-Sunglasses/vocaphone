@@ -323,6 +323,13 @@ enum SettingsHelp {
                 "Type a sum ending in “=”, such as 12*4= or 1,200/3=, and the answer "
                     + "is offered as a suggestion. Plain arithmetic only: no units "
                     + "or currencies.",
+                "Shift changes selected text\u{2019}s case is off unless you turn it "
+                    + "on, because the iPhone keyboard never does it: with it off, Shift "
+                    + "over a selection is just Shift. With it on, each tap of Shift over "
+                    + "selected text goes Sentence case, CAPITALS, lowercase, then back "
+                    + "to how it was. It works on one line of up to 200 characters, and "
+                    + "never in web address, search or email fields, so a selection the "
+                    + "keyboard cannot see all of is never rewritten.",
             ]),
             .init(heading: "Learn as I type", paragraphs: [
                 "Words you type three times without undoing a correction, and words "

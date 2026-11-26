@@ -165,6 +165,36 @@ struct CaseCycleTests {
         let tooLong = CaseCycleSession(original: long, emitted: long, after: nil)
         #expect(!tooLong.continues(before: long, after: nil))
     }
+
+    /// With the setting on, Shift rewrites only a short, single-line
+    /// selection with letters in it — small enough that what the host handed
+    /// over is all of it.
+    @Test func onlyAShortSingleLineSelectionIsRewritten() {
+        #expect(SelectionCaseGuard.allows("hello world"))
+        #expect(SelectionCaseGuard.allows(String(repeating: "a", count: SelectionCaseGuard.maximumLength)))
+        #expect(!SelectionCaseGuard.allows(String(repeating: "a", count: SelectionCaseGuard.maximumLength + 1)))
+        #expect(!SelectionCaseGuard.allows("first line\nsecond line"))
+        #expect(!SelectionCaseGuard.allows("12 34"))
+    }
+
+    /// An address has no sentence case: never in URL, search or email fields.
+    @Test func neverInAddressFields() {
+        #expect(SelectionCaseGuard.fieldAllows(keyboardType: .default, contentType: nil))
+        #expect(SelectionCaseGuard.fieldAllows(keyboardType: nil, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .URL, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .webSearch, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .emailAddress, contentType: nil))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .default, contentType: .URL))
+        #expect(!SelectionCaseGuard.fieldAllows(keyboardType: .default, contentType: .emailAddress))
+    }
+
+    /// Cut deletes the host's whole selection, so it takes only selections
+    /// small enough to trust the keyboard was handed all of.
+    @Test func cutAndCopyRefuseALongSelection() {
+        #expect(SelectionEditGuard.allows("word"))
+        #expect(!SelectionEditGuard.allows(""))
+        #expect(!SelectionEditGuard.allows(String(repeating: "a", count: SelectionEditGuard.maximumLength + 1)))
+    }
 }
 
 /// "12*4=" offers 48. Plain arithmetic, and only where it is unmistakably a sum.

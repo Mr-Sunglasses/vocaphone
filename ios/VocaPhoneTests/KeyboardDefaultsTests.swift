@@ -25,6 +25,8 @@ struct KeyboardDefaultsTests {
         // text can differ from is asked for, not assumed.
         #expect(!KeyboardDefaults.typingHaptics)
         #expect(!KeyboardDefaults.liveWords)
+        // Apple's keyboard never rewrites a selection from Shift.
+        #expect(!KeyboardDefaults.shiftChangesSelectionCase)
         // A 28 MB download that can change a correct sentence is never on by itself.
         #expect(!KeyboardDefaults.fixGrammar)
         // Same model, and it reads what is typed: never on by itself either.
@@ -41,6 +43,7 @@ struct KeyboardDefaultsTests {
             KeyboardPreferences.numbersAsDigitsKey,
             KeyboardPreferences.spokenEmojiKey,
             KeyboardPreferences.liveWordsKey,
+            KeyboardPreferences.shiftChangesSelectionCaseKey,
         ]
         let store = KeyboardPreferences.defaults
         let saved = keys.map { store?.object(forKey: $0) }
@@ -57,6 +60,7 @@ struct KeyboardDefaultsTests {
         #expect(KeyboardPreferences.numbersAsDigits == KeyboardDefaults.numbersAsDigits)
         #expect(KeyboardPreferences.spokenEmoji == KeyboardDefaults.spokenEmoji)
         #expect(KeyboardPreferences.liveWords == KeyboardDefaults.liveWords)
+        #expect(KeyboardPreferences.shiftChangesSelectionCase == KeyboardDefaults.shiftChangesSelectionCase)
     }
 
     /// The emoji panel kept recently used emoji in the App Group. With the

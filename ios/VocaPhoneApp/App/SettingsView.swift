@@ -230,6 +230,10 @@ struct KeyboardSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var spacebarCursorEnabled = KeyboardDefaults.spacebarCursor
     @AppStorage(
+        KeyboardPreferences.shiftChangesSelectionCaseKey,
+        store: KeyboardPreferences.defaults
+    ) private var shiftChangesSelectionCase = KeyboardDefaults.shiftChangesSelectionCase
+    @AppStorage(
         KeyboardPreferences.numberRowKey,
         store: KeyboardPreferences.defaults
     ) private var numberRowEnabled = KeyboardDefaults.numberRow
@@ -580,6 +584,12 @@ struct KeyboardSettingsView: View {
             }
             Toggle(isOn: $spacebarCursorEnabled) {
                 SettingLabel("Space bar cursor", detail: spaceBarHelp)
+            }
+            Toggle(isOn: $shiftChangesSelectionCase) {
+                SettingLabel(
+                    "Shift changes selected text\u{2019}s case",
+                    detail: "Select a few words and tap Shift: Sentence case, CAPITALS, lowercase."
+                )
             }
         } header: {
             LearnMoreHeader(title: "More", topic: SettingsHelp.typing, presented: $learnMore)
