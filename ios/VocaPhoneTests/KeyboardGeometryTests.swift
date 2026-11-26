@@ -62,11 +62,13 @@ struct KeyboardGeometryTests {
     }
 
     /// Reference measurements come from the Apple keyboard on the same 402pt
-    /// iPhone 17 simulator. The extension receives 390pt after its 6pt chrome
-    /// inset on each side, so screen coordinates below add that inset back.
+    /// iPhone 17 simulator. The extension's grid gets 396pt after its 3pt
+    /// chrome inset on each side, so screen coordinates below add that inset
+    /// back. This assumed a 6pt inset after the inset had become 3, and so
+    /// passed while every key sat 3pt further out than Apple's.
     @Test func defaultPortraitMatchesTheIPhone17SystemKeyboard() {
-        let chromeInset: CGFloat = 6
-        let grid = Self.makeGrid(width: 390, includesGlobe: false)
+        let chromeInset: CGFloat = 3
+        let grid = Self.makeGrid(width: 396, includesGlobe: false)
         let rows = Self.rows(in: grid)
         let q = rows[0][0]
         let a = rows[1][0]
@@ -76,9 +78,11 @@ struct KeyboardGeometryTests {
         let space = rows[3][1]
         let newline = rows[3][2]
 
-        // Apple: Q x 6.67, width 33.33; A x 26.33; Shift/Delete width 45.33.
-        #expect(abs(q.frame.minX + chromeInset - 6.67) < 0.75)
-        #expect(abs(q.frame.width - 33.33) < 0.75)
+        // Apple: Q x 6.83, width 32.83, 6.67 between keys; A x 26.33;
+        // Shift/Delete width 45.33.
+        #expect(abs(q.frame.minX + chromeInset - 6.83) < 0.4)
+        #expect(abs(q.frame.width - 32.83) < 0.4)
+        #expect(abs(rows[0][1].frame.minX - q.frame.maxX - 6.67) < 0.2)
         #expect(abs(a.frame.minX + chromeInset - 26.33) < 0.75)
         #expect(abs(shift.frame.width - 45.33) < 0.75)
         #expect(abs(delete.frame.width - 45.33) < 0.75)

@@ -3012,14 +3012,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// and x=291, and the ones past 287 typed a line break instead, because 287
     /// is where the spacebar's target ended. On the system's geometry it ends at
     /// 293. Three of them in one sentence, and none of them a slip of the thumb.
+    ///
+    /// The keys themselves now sit further in, on iOS 26's own geometry (see
+    /// `KeyboardMetrics.nativeSideInset`); the grid's hit map still runs the
+    /// edge keys' targets out to this margin, so the outermost columns keep
+    /// every point of touch target they had.
     private static let chromeInset: CGFloat = 3
 
-    /// Nothing under the last row of keys.
+    /// The air under the last row of keys.
     ///
     /// The system draws its own globe and dictation bar below this view and
     /// gives that bar its own padding; six more points of ours sat on top of it
-    /// and read as a gap the system keyboard does not have.
-    private static let chromeBottomInset: CGFloat = 0
+    /// and read as a gap the system keyboard does not have. None at all was
+    /// too little: over the same field in the iPhone 17 simulator, Apple's
+    /// bottom row ends 9 px (3 pt) higher above that system bar than ours did.
+    private static let chromeBottomInset: CGFloat = 3
 
     /// Sizes everything from the current traits instead of a single portrait
     /// iPhone constant, and gives the dictation bar only as much room as the

@@ -504,7 +504,10 @@ final class KeyGridView: UIView {
         // share of this keyboard's own column keeps the same feel at every
         // height preference and on iPad, where a fixed 8pt would be a much
         // smaller part of a 56pt key.
-        let hysteresis = max(unit * 0.2, metrics.columnGap)
+        // 0.21 rather than 0.2 since the columns took Apple's 32.8 pt width:
+        // it keeps the hysteresis at the 6.8 pt it was on 34 pt columns, just
+        // clear of the 6.67 pt gap, so a roll still stays on its key.
+        let hysteresis = max(unit * 0.21, metrics.columnGap)
 
         var keyIndex = 0
         var targets: [KeyHitMap.Target] = []
