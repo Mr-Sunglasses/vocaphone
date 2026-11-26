@@ -187,6 +187,7 @@ internal fun VocaPhoneKeyboard(
     onClearClipboardHistory: () -> Unit,
     onEmojiUsed: (String) -> Unit,
     onPinClipboardHistory: (String, Boolean) -> Unit = { _, _ -> },
+    onLayoutChanged: (String) -> Unit = {},
     onSpaceLongPress: () -> Unit = {},
     onWritingApply: (WritingSuggestion) -> Unit = {},
     onWritingDismiss: (WritingSuggestion) -> Unit = {},
@@ -364,7 +365,23 @@ internal fun VocaPhoneKeyboard(
         }
     }
 
-    val composeWords = settings.suggestionsEnabled && !editor.sensitive
+    // Typing layouts (KeyboardLanguages). The active one is local state so a
+    // switch shows on the next frame; the store catches up behind it.
+    val languageTags = remember { KeyboardLanguages.deviceLanguageTags() }
+    val enabledLayouts = remember(settings.keyboardLayouts, languageTags) {
+        KeyboardLanguages.enabled(settings.keyboardLayouts, languageTags)
+    }
+    var activeLayoutId by remember { mutableStateOf(settings.activeKeyboardLayout) }
+    LaunchedEffect(settings.activeKeyboardLayout) {
+        if (settings.activeKeyboardLayout.isNotEmpty()) activeLayoutId = settings.activeKeyboardLayout
+    }
+    val activeLayout = KeyboardLanguages.active(activeLayoutId, enabledLayouts)
+    val layoutSwitchable = enabledLayouts.size > 1
+    // The one flag the English-only machinery reads: word-list suggestions,
+    // swipe, autocorrect and learned fixes are off on other layouts.
+    val isEnglishLayout = activeLayout.isEnglish
+    SideEffect { keyFeedback.layoutSwipeOn = layoutSwitchable }
+    val composeWords = settings.suggestionsEnabled && !editor.sensitive && isEnglishLayout
     val keyHeight = settings.keyboardHeight.keyHeightDp.dp
     val letterRows = KeyboardLayouts.letterRowCount(settings.numberRowEnabled)
     val keyAreaHeight = keyHeight * letterRows + RowGap * (letterRows - 1)
@@ -578,9 +595,27 @@ internal fun VocaPhoneKeyboard(
         )
     }
 
+    fun switchLayout(forward: Boolean) {
+        val next = KeyboardLanguages.next(activeLayout, enabledLayouts, forward) ?: return
+        clearSwipe()
+        learnedUndo[0] = null
+        tapTrace.clear()
+        if (keyboardState.composing.isNotEmpty()) onCommand(KeyboardCommand.FinishComposing)
+        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false)
+        // The old layout's letters must not answer the strip's dead zone
+        // before the new keys have been laid out and recorded.
+        keyBounds.clear()
+        activeLayoutId = next.id
+        onLayoutChanged(next.id)
+    }
+
     fun handleKey(key: KeyboardKey) {
         if (key.type == KeyboardKeyType.DELETE) {
             handleDelete(0L)
+            return
+        }
+        if (key.type == KeyboardKeyType.LANGUAGE) {
+            switchLayout(forward = true)
             return
         }
         learnedUndo[0] = null
@@ -753,6 +788,8 @@ internal fun VocaPhoneKeyboard(
     val onCursorMoveStable = remember { { positions: Int, lines: Int -> latestCursorMove(positions, lines) } }
     val latestDeleteSlide by rememberUpdatedState<(Int) -> Unit>(::handleDeleteSlide)
     val onDeleteSlideStable = remember { { steps: Int -> latestDeleteSlide(steps) } }
+    val latestSwitchLayout by rememberUpdatedState<(Boolean) -> Unit>(::switchLayout)
+    val onLayoutSwipeStable = remember { { direction: Int -> latestSwitchLayout(direction > 0) } }
     // A tap low on the strip just after a key: the top-row letter under it.
     val latestDeadZone by rememberUpdatedState<(Float, Float) -> Boolean> { rootX, yFraction ->
         if (
@@ -1040,11 +1077,15 @@ internal fun VocaPhoneKeyboard(
                             settings.numberRowEnabled,
                             editor.initialLayer,
                             editor.padKind,
+                            activeLayout.id,
+                            layoutSwitchable,
                         ) {
                             KeyboardLayouts.rows(
                                 keyboardState.layer,
                                 editor,
                                 numberRow = settings.numberRowEnabled,
+                                layout = activeLayout,
+                                languageKey = layoutSwitchable,
                             )
                         }
                         val fittedKeyHeight = if (rows.size <= 1) {
@@ -1075,7 +1116,10 @@ internal fun VocaPhoneKeyboard(
                             spacerFraction = spacerFraction,
                             swipeEnabled = settings.swipeTypingEnabled &&
                                 editor.swipeAllowed &&
+                                isEnglishLayout &&
                                 keyboardState.layer == KeyboardLayer.LETTERS,
+                            layout = activeLayout,
+                            onLayoutSwipe = onLayoutSwipeStable,
                             onSwipe = onSwipeStable,
                             onSwipeSeedUndo = onUndoSwipeStable,
                             onLongPressVariant = onLongPressVariantStable,
@@ -2924,6 +2968,8 @@ private fun KeyboardRows(
     split: Boolean = false,
     spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     swipeEnabled: Boolean = false,
+    layout: TypingLayout = KeyboardLanguages.ENGLISH,
+    onLayoutSwipe: (Int) -> Unit = {},
     onSwipe: (SwipeInput) -> Unit = {},
     onSwipeSeedUndo: () -> Unit = {},
     onLongPressVariant: (String) -> Unit = {},
@@ -3037,6 +3083,8 @@ private fun KeyboardRows(
                                     longPressSymbols = longPressSymbols,
                                     quickAccents = quickAccents,
                                     numberRow = numberRow,
+                                    typingLayout = layout,
+                                    onLayoutSwipe = onLayoutSwipe.takeIf { key.type == KeyboardKeyType.SPACE },
                                     tapSink = tapSink.takeIf { key.type == KeyboardKeyType.CHARACTER },
                                     feedback = feedback,
                                     onDeleteSlide = onDeleteSlide.takeIf { key.type == KeyboardKeyType.DELETE },
@@ -3223,6 +3271,8 @@ private fun RowScope.KeyButton(
     numberRow: Boolean = false,
     tapSink: FloatArray? = null,
     feedback: KeyFeedback? = null,
+    typingLayout: TypingLayout = KeyboardLanguages.ENGLISH,
+    onLayoutSwipe: ((Int) -> Unit)? = null,
     onDeleteSlide: ((Int) -> Unit)? = null,
     swipeConsumed: MutableState<Boolean>? = null,
     onPress: () -> Unit,
@@ -3243,12 +3293,13 @@ private fun RowScope.KeyButton(
     var pressed by remember(key.id) { mutableStateOf(false) }
     var accentIndex by remember(key.id) { mutableStateOf(-1) }
     val layout = remember(key.id) { arrayOfNulls<LayoutCoordinates>(1) }
-    val accents = remember(key.id, shift, longPressSymbols, numberRow) {
-        KeyAccents.forKey(key, shift, longPressSymbols, numberRow)
+    val accents = remember(key.id, shift, longPressSymbols, numberRow, typingLayout.id) {
+        KeyAccents.forKey(key, shift, longPressSymbols, numberRow, typingLayout)
     }
     val accentStart = rememberUpdatedState(
-        KeyAccents.preselectIndex(key, accents, quickAccents, longPressSymbols, numberRow),
+        KeyAccents.preselectIndex(key, accents, quickAccents, longPressSymbols, numberRow, typingLayout),
     )
+    val currentOnLayoutSwipe = rememberUpdatedState(onLayoutSwipe)
     val isReturnAction = key.type == KeyboardKeyType.RETURN && returnKey != ReturnKeyKind.ENTER
     val activeShift = key.type == KeyboardKeyType.SHIFT && shift != ShiftState.OFF
     val background = when {
@@ -3317,6 +3368,8 @@ private fun RowScope.KeyButton(
             onTap = { currentOnPress.value() },
             onCursorMove = { positions, lines -> currentOnCursorMove.value(positions, lines) },
             cursorEnabled = { feedback?.spaceCursorOn != false },
+            layoutSwipeEnabled = { feedback?.layoutSwipeOn == true && currentOnLayoutSwipe.value != null },
+            onLayoutSwipe = { direction -> currentOnLayoutSwipe.value?.invoke(direction) },
             onArmed = { longPressHaptic() },
             onLongPress = {
                 longPressHaptic()
@@ -3408,6 +3461,7 @@ private fun RowScope.KeyButton(
                 numberKeyHints = numberKeyHints,
                 longPressSymbols = longPressSymbols,
                 numberRow = numberRow,
+                layout = typingLayout,
             ),
         )
     }
@@ -3500,6 +3554,8 @@ private fun Modifier.spacebarGesture(
     onTap: () -> Unit,
     onCursorMove: (Int, Int) -> Unit,
     cursorEnabled: () -> Boolean = { true },
+    layoutSwipeEnabled: () -> Boolean = { false },
+    onLayoutSwipe: (Int) -> Unit = {},
     onArmed: () -> Unit,
     onLongPress: () -> Unit,
     onPressedChange: (Boolean) -> Unit,
@@ -3523,6 +3579,11 @@ private fun Modifier.spacebarGesture(
                 downY = down.position.y,
                 downTimeMs = down.uptimeMillis,
                 cursorEnabled = cursorEnabled(),
+                layoutSwipePx = if (layoutSwipeEnabled()) {
+                    SpacebarGesture.layoutSwipePx(size.width.toFloat(), density)
+                } else {
+                    0f
+                },
             )
             val arm = launch {
                 delay(SpacebarGesture.ARM_MS)
@@ -3544,7 +3605,11 @@ private fun Modifier.spacebarGesture(
                         break
                     }
                     val moved = tracker.move(change.position.x, change.position.y, change.uptimeMillis)
-                    if (!moved.isEmpty) {
+                    if (moved.layout != 0) {
+                        onPressedChange(false)
+                        onHaptic()
+                        onLayoutSwipe(moved.layout)
+                    } else if (!moved.isEmpty) {
                         onCursorMove(moved.characters, moved.lines)
                         onHaptic()
                     }
@@ -3705,8 +3770,19 @@ private fun KeyContent(
             ReturnKeyKind.SEND -> KeyLabel("Send", tint, utility = true)
         }
         KeyboardKeyType.SPACE -> {
-            // Unlabeled, same as the system space bar.
+            // Unlabeled, same as the system space bar, unless several layouts
+            // are on: then it names the one that is up, as Gboard and iOS do.
+            key.caption?.let {
+                Text(
+                    text = it,
+                    color = tint.copy(alpha = 0.6f),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
+        KeyboardKeyType.LANGUAGE -> KeyboardIcon(Glyph.GLOBE, tint)
         // Drawn like the other function keys. The label was a ☺ character,
         // which most fonts render as a full-colour emoji: the one coloured
         // glyph on the keyboard, and not the colour of the keys around it.
@@ -3922,6 +3998,7 @@ private fun keyDescription(
         ShiftState.LOCKED -> "Caps lock on"
     }
     KeyboardKeyType.DELETE -> "Delete"
+    KeyboardKeyType.LANGUAGE -> "Next language"
     KeyboardKeyType.SPACE ->
         "Space. Touch and hold, then slide to move the cursor. Keep holding to switch keyboards."
     KeyboardKeyType.RETURN -> when (returnKey) {

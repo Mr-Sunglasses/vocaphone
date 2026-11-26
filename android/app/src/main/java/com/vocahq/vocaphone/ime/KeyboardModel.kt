@@ -34,6 +34,8 @@ internal enum class KeyboardKeyType {
     SPACE,
     RETURN,
     LAYER_SWITCH,
+    /** Next typing layout ([KeyboardLanguages]). Handled by the keyboard, not the reducer. */
+    LANGUAGE,
 }
 
 internal data class KeyboardKey(
@@ -604,6 +606,11 @@ internal object KeyboardReducer {
                 lastWasSpace = false,
                 composing = "",
             ),
+            command = if (state.composing.isNotEmpty()) KeyboardCommand.FinishComposing else null,
+        )
+
+        KeyboardKeyType.LANGUAGE -> KeyboardReduction(
+            state = state.copy(composing = "", lastWasSpace = false, capitalizeAfterSpace = false),
             command = if (state.composing.isNotEmpty()) KeyboardCommand.FinishComposing else null,
         )
 

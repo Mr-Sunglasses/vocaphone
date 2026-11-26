@@ -561,6 +561,7 @@ fun SettingsScreen(
                         onCheckedChange = onAsciiEmoji,
                     )
                 }
+                KeyboardLanguagesSettingsGroup(settings, surface)
                 KeyPressSettingsGroup(settings, surface)
                 WritingCheckSettingsGroup(settings, grammarModel, writing, onCancelGrammarDownload)
                 SettingsGroup(title = "Clipboard", learnMore = SettingsHelp.clipboard) {

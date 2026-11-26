@@ -1,12 +1,19 @@
 package com.vocahq.vocaphone.ime
 
 internal object KeyboardLayouts {
+    /**
+     * [layout] picks the letter rows. [languageKey] is on when more than one
+     * layout is turned on: a language key joins the bottom row and the space
+     * bar says which layout is up, as on iOS and Gboard.
+     */
     fun rows(
         layer: KeyboardLayer,
         editor: KeyboardEditorConfig,
         numberRow: Boolean = false,
+        layout: TypingLayout = KeyboardLanguages.ENGLISH,
+        languageKey: Boolean = false,
     ): List<KeyboardRow> = when (layer) {
-        KeyboardLayer.LETTERS -> letterRows(editor, numberRow)
+        KeyboardLayer.LETTERS -> letterRows(editor, numberRow, layout, languageKey)
         KeyboardLayer.NUMBERS -> numberRows(editor, extraRow = true)
         KeyboardLayer.SYMBOLS -> symbolRows(editor, extraRow = true)
         KeyboardLayer.EMOJI -> listOf(emojiBottomRow(editor))
@@ -73,21 +80,46 @@ internal object KeyboardLayouts {
 
     fun letterRowCount(numberRow: Boolean) = if (numberRow) 5 else 4
 
-    private fun letterRows(editor: KeyboardEditorConfig, numberRow: Boolean): List<KeyboardRow> = buildList {
+    private fun letterRows(
+        editor: KeyboardEditorConfig,
+        numberRow: Boolean,
+        layout: TypingLayout,
+        languageKey: Boolean,
+    ): List<KeyboardRow> = buildList {
+        val (top, home, bottom) = layout.rows
+        val columns = top.length
         if (numberRow) add(characters("1234567890"))
-        add(characters("qwertyuiop"))
-        add(characters("asdfghjkl", inset = 0.5f))
+        add(characters(top))
+        // A shorter home row is centred under the top one (QWERTY's half-key
+        // indent); a full-width one (AZERTY, Spanish, ЙЦУКЕН) is not.
+        add(characters(home, inset = ((columns - home.length) / 2f).coerceAtLeast(0f)))
         add(
             KeyboardRow(
                 keys = listOf(
-                    special("shift", "Shift", KeyboardKeyType.SHIFT, 1.35f),
-                    *"zxcvbnm".map { character(it.toString()) }.toTypedArray(),
-                    special("delete", "Delete", KeyboardKeyType.DELETE, 1.35f),
+                    special("shift", "Shift", KeyboardKeyType.SHIFT, sideKeyWeight(columns, bottom.length)),
+                    *bottom.map { character(it.toString()) }.toTypedArray(),
+                    special("delete", "Delete", KeyboardKeyType.DELETE, sideKeyWeight(columns, bottom.length)),
                 ),
             ),
         )
-        add(utilityRow(editor, "?123", KeyboardLayer.NUMBERS))
+        add(
+            utilityRow(
+                editor,
+                "?123",
+                KeyboardLayer.NUMBERS,
+                languageKey = languageKey,
+                spaceCaption = layout.displayName.takeIf { languageKey },
+            ),
+        )
     }
+
+    /**
+     * Shift and delete share what the bottom row's letters leave of the top
+     * row's width, so letters stay one width across rows: 1.35 on QWERTY (as
+     * before), wider beside AZERTY's six, never under one key.
+     */
+    fun sideKeyWeight(columns: Int, bottomLetters: Int): Float =
+        ((columns - bottomLetters) / 2f - 0.15f).coerceAtLeast(1f)
 
     private fun numberRows(editor: KeyboardEditorConfig, extraRow: Boolean) = buildList {
         add(characters("1234567890"))
@@ -147,12 +179,18 @@ internal object KeyboardLayouts {
         editor: KeyboardEditorConfig,
         layerLabel: String,
         targetLayer: KeyboardLayer,
+        languageKey: Boolean = false,
+        spaceCaption: String? = null,
     ) = KeyboardRow(
-        keys = listOf(
+        keys = listOfNotNull(
             layer("layer-$layerLabel", layerLabel, targetLayer, 1.25f),
             layer("emoji", "☺", KeyboardLayer.EMOJI, 0.7f),
             character(editor.leadingPunctuation, 0.85f),
-            special("space", "space", KeyboardKeyType.SPACE, 4.1f),
+            // The language key takes its width from the space bar, so the
+            // keys either side of it stay where thumbs expect them.
+            if (languageKey) special("language", "Language", KeyboardKeyType.LANGUAGE, 0.85f) else null,
+            special("space", "space", KeyboardKeyType.SPACE, if (languageKey) 3.25f else 4.1f)
+                .copy(caption = spaceCaption),
             character(".", 0.85f),
             special("return", editor.returnKey.name, KeyboardKeyType.RETURN, 1.95f),
         ),

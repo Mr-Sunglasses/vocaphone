@@ -369,6 +369,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onRemoveClipboardHistory = ::removeClipboardHistory,
                 onClearClipboardHistory = ::clearClipboardHistory,
                 onPinClipboardHistory = ::pinClipboardHistory,
+                onLayoutChanged = ::setActiveLayout,
                 onEmojiUsed = ::recordEmojiRecent,
                 onSpaceLongPress = ::showKeyboardPicker,
                 onWritingApply = ::applyWriting,
@@ -906,6 +907,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun clearClipboardHistory() {
         persistPreference { container.settings.clearClipboardHistory() }
+    }
+
+    /** Not [persistPreference]: two layout swipes in a row must both land. */
+    private fun setActiveLayout(id: String) {
+        scope.launch { container.settings.setActiveKeyboardLayout(id) }
     }
 
     private fun pinClipboardHistory(text: String, pinned: Boolean) {

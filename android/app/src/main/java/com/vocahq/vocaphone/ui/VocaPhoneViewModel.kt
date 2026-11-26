@@ -703,6 +703,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
         onKeyPopup = { viewModelScope.launch { container.settings.setKeyPopupEnabled(it) } },
         onSpaceCursor = { viewModelScope.launch { container.settings.setSpaceCursorEnabled(it) } },
         onEmojiSuggestions = { viewModelScope.launch { container.settings.setEmojiSuggestionsEnabled(it) } },
+        onKeyboardLayouts = { viewModelScope.launch { container.settings.setKeyboardLayouts(it) } },
     )
 
     fun setOnboardingStage(stage: String) =

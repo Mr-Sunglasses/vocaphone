@@ -84,6 +84,10 @@ internal class KeyFeedback(private val audio: AudioManager?) {
     @Volatile
     var spaceCursorOn: Boolean = true
 
+    /** More than one typing layout is on, so a sideways swipe on space changes layout. */
+    @Volatile
+    var layoutSwipeOn: Boolean = false
+
     fun play(type: KeyboardKeyType) {
         if (!soundOn) return
         runCatching { audio?.playSoundEffect(KeyClick.effectFor(type), -1f) }
