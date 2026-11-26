@@ -13,7 +13,8 @@ import Foundation
 /// anything that merely contains an equals sign:
 ///
 /// - The sum ends in "=" with nothing after it, and starts at the beginning
-///   of the text or after a space. "x=3+4=" and "$12*4=" are left alone.
+///   of the text or after a space, including the one after a sentence's
+///   full stop ("Thanks. 3+4="). "x=3+4=" and "$12*4=" are left alone.
 /// - At least one operator: + - * / × ÷ −, with parentheses and spaces
 ///   allowed between the numbers.
 /// - Numbers use "." for decimals and "," only to group thousands. "1,5" is
@@ -43,10 +44,21 @@ enum InlineArithmetic {
         // before the first number then has to be a boundary: a space, or the
         // start of the text. A letter, "$" or "=" there means this is not a
         // sum on its own.
-        let run = String(characters.reversed())
+        var run = String(characters.reversed())
+        // A full stop and a space end a sentence, never a number — a decimal
+        // point has a digit after it — so "Thanks. 3+4=" is a sum starting
+        // after the space. The full stop is a sum character, which is why the
+        // walk took it and why it has to come off here.
+        var startsAfterSentence = false
+        if let stop = run.range(of: ". ", options: .backwards) {
+            run = String(run[stop.upperBound...])
+            startsAfterSentence = true
+        }
         let expression = run.drop { $0 == " " || $0 == "," }
         guard !expression.isEmpty else { return nil }
-        if expression.count < run.count {
+        if startsAfterSentence {
+            // Already after a space.
+        } else if expression.count < run.count {
             guard run[run.index(run.startIndex, offsetBy: run.count - expression.count - 1)] == " "
             else { return nil }
         } else if index > documentBefore.startIndex {

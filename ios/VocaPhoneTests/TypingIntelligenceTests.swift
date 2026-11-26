@@ -215,6 +215,13 @@ struct InlineArithmeticTests {
         ("Total is 12 * 4=", "48"),
         ("Well, 3+4=", "7"),
         ("ok\n5-2=", "3"),
+        // After a sentence: its full stop is not part of the sum.
+        ("Thanks. 3+4=", "7"),
+        ("Note: 3+4=", "7"),
+        ("Done! 2*3=", "6"),
+        ("Step 1. 2+2=", "4"),
+        ("So. .5+1=", "1.5"),
+        (".5+1=", "1.5"),
     ])
     func aSumIsAnswered(text: String, answer: String) {
         #expect(InlineArithmetic.result(before: text) == answer)
@@ -232,6 +239,8 @@ struct InlineArithmeticTests {
         "4/0=",       // nothing to say
         "3+=",        // unfinished
         "(3+4=",      // unbalanced
+        "Thanks.3+4=", // no space after the full stop: not a sentence end
+        "e.g.3+4=",
         "=",
         "",
     ])
