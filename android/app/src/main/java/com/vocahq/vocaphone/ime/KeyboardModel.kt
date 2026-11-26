@@ -511,6 +511,116 @@ internal object EditorCursorSync {
 }
 
 /**
+ * Where the keyboard's own edits will leave the cursor, so the selection
+ * updates they cause are not taken for a tap in the field.
+ *
+ * [EditorCursorSync] only recognises updates around a composing region. A
+ * plain `commitText` — every letter on a layout that does not compose words,
+ * a space or punctuation after one — moves the cursor with no composing region
+ * on either side, so it looked like a tap: a `finishComposingText` and a
+ * `getCursorCapsMode` round trip into the app per key, and the keyboard's own
+ * state (the space a double space closes, the token "etc." is judged by, a
+ * held correction) wiped each time.
+ *
+ * The keyboard knows what each of its edits does to the cursor, so it says so
+ * here as it sends them, and an update landing exactly where one of them
+ * lands is that edit's echo. Updates arrive in the order the edits went out;
+ * an editor may coalesce several into one, which then matches the last, so
+ * a match also drops every expectation before it. Anything that does not
+ * match — a tap, an app rewriting its text, an edit the keyboard could not
+ * predict — re-anchors the forecast on what the editor reported and is left
+ * to [EditorCursorSync], exactly as before. A wrong forecast therefore
+ * costs only what every key cost before it existed.
+ *
+ * No editor reads: a few integers per edit, on the main thread.
+ */
+internal class SelectionForecast {
+    /** Where the cursor will be once every edit sent so far has landed; -1 when unknown. */
+    var cursor: Int = -1
+        private set
+
+    /** Where the composing region those edits leave starts; -1 for none. */
+    private var composingStart = -1
+
+    private val pending = IntArray(CAPACITY)
+    private var pendingCount = 0
+
+    /** The editor reported [selStart]..[selEnd] (and a composing region from [candidatesStart]). */
+    fun reset(selStart: Int, selEnd: Int, candidatesStart: Int = -1) {
+        cursor = if (selStart >= 0 && selStart == selEnd) selStart else -1
+        composingStart = if (cursor >= 0 && candidatesStart in 0..cursor) candidatesStart else -1
+        pendingCount = 0
+    }
+
+    /** An edit whose result cannot be worked out here: wait for the editor to say. */
+    fun forget() {
+        cursor = -1
+        composingStart = -1
+    }
+
+    /** `setComposingText(text, 1)` with [length] characters. */
+    fun compose(length: Int) {
+        if (cursor < 0) return
+        val start = if (composingStart >= 0) composingStart else cursor
+        cursor = start + length
+        composingStart = if (length > 0) start else -1
+        expect(cursor)
+    }
+
+    /**
+     * Composing finished (when there was a region), [deleteBefore] characters
+     * deleted before the cursor, then `commitText(text, 1)` with [length]
+     * characters, all in one batch.
+     */
+    fun commit(length: Int, deleteBefore: Int = 0) {
+        if (cursor < 0) return
+        cursor = (cursor - deleteBefore).coerceAtLeast(0) + length
+        composingStart = -1
+        expect(cursor)
+    }
+
+    /** `finishComposingText` alone: the region goes, the cursor stays. */
+    fun finishComposing() {
+        if (cursor < 0 || composingStart < 0) return
+        composingStart = -1
+        expect(cursor)
+    }
+
+    /**
+     * An `onUpdateSelection`: true when it is the echo of an edit the keyboard
+     * forecast, false when the editor has to be believed instead.
+     */
+    fun onUpdate(selStart: Int, selEnd: Int, candidatesStart: Int): Boolean {
+        if (selStart >= 0 && selStart == selEnd) {
+            for (index in 0 until pendingCount) {
+                if (pending[index] != selStart) continue
+                val rest = pendingCount - index - 1
+                pending.copyInto(pending, 0, index + 1, pendingCount)
+                pendingCount = rest
+                return true
+            }
+        }
+        reset(selStart, selEnd, candidatesStart)
+        return false
+    }
+
+    private fun expect(position: Int) {
+        if (pendingCount == CAPACITY) {
+            // Thirty-two edits with no word back from the editor: it is not
+            // reporting, so stop guessing rather than match a stale position.
+            forget()
+            pendingCount = 0
+            return
+        }
+        pending[pendingCount++] = position
+    }
+
+    private companion object {
+        const val CAPACITY = 32
+    }
+}
+
+/**
  * Whether the editor's selected text has to be asked for.
  *
  * `InputConnection.getSelectedText` is a blocking round trip into the app being

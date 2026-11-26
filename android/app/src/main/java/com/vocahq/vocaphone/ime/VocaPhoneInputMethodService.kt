@@ -171,6 +171,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     /** True while the editor still has a composing region we set. */
     private var composingRegionActive = false
 
+    /** Where the keyboard's own edits leave the cursor; see [SelectionForecast]. */
+    private val selectionForecast = SelectionForecast()
+
     private val editorTextRefresh = Runnable { refreshEditorText() }
 
     /** Writing check's rules, parsed off the main thread in [onCreate]. */
@@ -423,6 +426,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastCandidatesEnd = -1
         lastSelStart = attribute?.initialSelStart ?: -1
         lastSelEnd = attribute?.initialSelEnd ?: -1
+        selectionForecast.reset(lastSelStart, lastSelEnd)
         composingRegionActive = false
         val autoCapitalize = visibleSettings.value.autoCapitalizeEnabled
         // Off, the answer is ignored, so skip the Binder call.
@@ -552,9 +556,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             lastCandidatesEnd = candidatesEnd
             lastSelStart = newSelStart
             lastSelEnd = newSelEnd
+            selectionForecast.reset(newSelStart, newSelEnd, candidatesStart)
             return
         }
-        val userMove = EditorCursorSync.isUserMove(
+        // The echo of the keyboard's own commit is not a tap, whatever the
+        // composing region did. Checked first and with no editor read.
+        val forecast = selectionForecast.onUpdate(newSelStart, newSelEnd, candidatesStart)
+        val userMove = !forecast && EditorCursorSync.isUserMove(
             oldSelStart,
             oldSelEnd,
             newSelStart,
@@ -621,6 +629,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastCandidatesEnd = -1
         lastSelStart = -1
         lastSelEnd = -1
+        selectionForecast.reset(-1, -1)
         caseCycleOriginal = null
         caseCycleEmitted = null
         composingRegionActive = false
@@ -690,6 +699,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             }
             val target = DictationSelection.target(dictationSelection, lastSelStart, lastSelEnd, selectedText)
             dictationSelection = null
+            selectionForecast.forget()
             replacesSelection.value = false
             val committedText = commitDictationText(
                 connection,
@@ -744,6 +754,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             if (!DictationUndo.matches(insertion.inserted, insertion.insertionStart, before, lastSelStart)) {
                 return@withContext false
             }
+            selectionForecast.forget()
             connection.beginBatchEdit()
             if (composingRegionActive) connection.finishComposingText()
             val deleted = connection.deleteSurroundingText(insertion.inserted.length, 0)
@@ -763,6 +774,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         when (command) {
             is KeyboardCommand.CommitText -> {
                 if (connection == null) return
+                selectionForecast.commit(command.text.length)
                 if (composingRegionActive) {
                     connection.beginBatchEdit()
                     connection.finishComposingText()
@@ -774,11 +786,15 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 composingRegionActive = false
             }
             is KeyboardCommand.SetComposingText -> {
+                if (connection != null && (composingRegionActive || command.text.isNotEmpty())) {
+                    selectionForecast.compose(command.text.length)
+                }
                 connection?.setComposingText(command.text, 1)
                 composingRegionActive = command.text.isNotEmpty()
             }
             is KeyboardCommand.ReplaceBeforeCursor -> {
                 if (connection == null) return
+                selectionForecast.commit(command.text.length, deleteBefore = command.length.coerceAtLeast(0))
                 connection.beginBatchEdit()
                 if (composingRegionActive) connection.finishComposingText()
                 if (command.length > 0) connection.deleteSurroundingText(command.length, 0)
@@ -787,15 +803,22 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 composingRegionActive = false
             }
             KeyboardCommand.FinishComposing -> {
+                if (composingRegionActive && connection != null) selectionForecast.finishComposing()
                 if (composingRegionActive) connection?.finishComposingText()
                 composingRegionActive = false
             }
             KeyboardCommand.DeleteBackward -> {
+                // One key event, but how many characters it takes (a surrogate
+                // pair, a whole emoji sequence) is the editor's call.
+                selectionForecast.forget()
                 sendKey(KeyEvent.KEYCODE_DEL)
                 composingRegionActive = false
             }
             is KeyboardCommand.DeleteSurrounding -> {
                 if (connection == null) return
+                // Left to the editor on purpose: a delete that reaches the
+                // start of a sentence should re-read the caps mode there.
+                selectionForecast.forget()
                 connection.beginBatchEdit()
                 if (composingRegionActive) connection.finishComposingText()
                 if (command.before > 0 || command.after > 0) {
@@ -805,11 +828,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 composingRegionActive = false
             }
             KeyboardCommand.PerformEditorAction -> {
+                selectionForecast.forget()
                 if (composingRegionActive) connection?.finishComposingText()
                 composingRegionActive = false
                 performEditorAction()
             }
             is KeyboardCommand.MoveCursor -> {
+                selectionForecast.forget()
                 if (composingRegionActive) connection?.finishComposingText()
                 composingRegionActive = false
                 moveCursor(command.positions)
@@ -817,6 +842,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             }
             is KeyboardCommand.ReplaceLastCommitted -> {
                 if (connection == null) return
+                selectionForecast.commit(command.text.length, deleteBefore = 1)
                 connection.beginBatchEdit()
                 if (composingRegionActive) connection.finishComposingText()
                 connection.deleteSurroundingText(1, 0)
@@ -826,6 +852,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             }
             KeyboardCommand.DoubleSpacePeriod -> {
                 if (connection == null) return
+                selectionForecast.commit(2, deleteBefore = 1)
                 connection.beginBatchEdit()
                 if (composingRegionActive) connection.finishComposingText()
                 connection.deleteSurroundingText(1, 0)
@@ -834,6 +861,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 composingRegionActive = false
             }
             is KeyboardCommand.EditText -> {
+                selectionForecast.forget()
                 if (composingRegionActive) connection?.finishComposingText()
                 composingRegionActive = false
                 editText(command.action, command.selecting)
@@ -863,6 +891,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun commitSuggestion(word: String, replaceWord: Boolean) {
         val connection = currentInputConnection ?: return
+        selectionForecast.forget()
         var after = runCatching {
             connection.getTextAfterCursor(32, 0)?.toString().orEmpty()
         }.getOrDefault("")
@@ -890,6 +919,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun commitEmojiSuggestion(emoji: String) {
         val connection = currentInputConnection ?: return
+        selectionForecast.forget()
         connection.finishComposingText()
         val before = runCatching {
             connection.getTextBeforeCursor(32, 0)?.toString().orEmpty()
@@ -914,6 +944,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun pasteClipboard(text: String = visibleClipboard.value?.fullText.orEmpty()) {
         if (text.isEmpty()) return
+        selectionForecast.forget()
         currentInputConnection?.finishComposingText()
         val image = ClipboardHistory.parseImage(text)
         val pasted = if (image != null) {
@@ -1011,6 +1042,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             start = start,
             composingActive = composingRegionActive,
         ) ?: return false
+        selectionForecast.forget()
         connection.beginBatchEdit()
         if (plan.restoreSelectionAfterFinish) {
             connection.finishComposingText()
@@ -1293,6 +1325,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         fresh: WritingCheckSession.Field,
         fixes: List<WritingFix>,
     ): WritingCommit {
+        selectionForecast.forget()
         val commit = commitWritingFixes(connection, fixes, fresh.offset + fresh.cursor, composingRegionActive)
         composingRegionActive = false
         writingCheck.applied(commit.applied.mapNotNull { it.suggestion })
@@ -1336,6 +1369,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // The occurrence that was fixed, still as the fix left it, with the
         // cursor still where the fix put it; anything else is left alone.
         val undo = fix.undoIn(field) ?: return
+        selectionForecast.forget()
         val commit = commitWritingFixes(connection, listOf(undo), field.offset + field.cursor, composingRegionActive)
         composingRegionActive = false
         // Undone means "I meant that": the same fix is not made again here,
@@ -1752,6 +1786,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val transcript = state.transcript?.let(TranscriptSanitizer::clean)?.takeIf { it.isNotBlank() } ?: return
         if (!ImeInputPolicy.acceptsDictation(currentInputType)) return
         val connection = currentInputConnection ?: return
+        selectionForecast.forget()
         val committedText = commitDictationText(connection, transcript, composingRegionActive, lastSelStart, lastSelEnd)
         composingRegionActive = false
         editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
