@@ -381,6 +381,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 typingMemory = memory,
                 onLearnPick = ::learnTypingPick,
                 onRejectFix = ::rejectTypingFix,
+                onBlockSuggestion = ::blockSuggestion,
                 onMicHoldStart = ::startPushToTalk,
                 onMicHoldEnd = ::finishPushToTalk,
                 readTextBeforeCursor = ::readTextBeforeCursorForSlide,
@@ -1327,6 +1328,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private fun learnTypingPick(typed: String, picked: String) {
         if (!visibleSettings.value.learnTypingFixes || !editorConfig.learningAllowed || editorConfig.sensitive) return
         scope.launch { container.typingFixes.recordPick(typed, picked) }
+    }
+
+    /** A word long-pressed off the strip: never suggested or corrected to again. */
+    private fun blockSuggestion(word: String) {
+        // Not persistPreference, for the same reason as addPersonalWord.
+        scope.launch { container.settings.addBlockedSuggestion(word) }
     }
 
     /** An automatic fix taken back: undone twice, it is not made again. */

@@ -84,7 +84,14 @@ internal object SettingsHelp {
                 "They read a short window of text around the cursor, and are off in " +
                 "password fields.",
             "Corrections offer nearby dictionary words in the toolbar. Tap a word, or " +
-                "a swipe alternative, to replace it.",
+                "a swipe alternative, to replace it. Space or punctuation also fixes a typo " +
+                "when one word is clearly meant; delete right after puts back what you typed, " +
+                "and that word is left alone in the field from then on. Autocorrect strength " +
+                "decides how sure it has to be. Never in passwords, addresses, links or names.",
+            "Long-press a suggestion to never see it again. Settings shows how many words " +
+                "are blocked and can reset them.",
+            "Typing a snippet trigger offers its expansion in the toolbar, and a sum " +
+                "ending in = (12*4=) offers its result. Nothing changes until you tap it.",
             "Hold for digits and symbols shows a punctuation mark or digit on each " +
                 "letter key. Hold the key to type it; slide for accents. It is off by " +
                 "default so a hold on E still types è.",

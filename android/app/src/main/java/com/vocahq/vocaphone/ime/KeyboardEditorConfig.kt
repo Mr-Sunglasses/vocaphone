@@ -31,6 +31,8 @@ internal data class KeyboardEditorConfig(
      * field that asked for no suggestions.
      */
     val learningAllowed: Boolean = false,
+    /** Space may correct a typed word here: prose, not an address, a password or a name ([Autocorrect.allowedIn]). */
+    val autocorrectAllowed: Boolean = false,
 ) {
     companion object {
         fun empty() = KeyboardEditorConfig(
@@ -106,6 +108,7 @@ internal data class KeyboardEditorConfig(
                         info?.hintText,
                         info?.fieldName,
                     ),
+                autocorrectAllowed = Autocorrect.allowedIn(inputType),
             )
         }
 

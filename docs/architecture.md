@@ -740,9 +740,19 @@ On Android the same behaviours live in `ime/AutocorrectMemory.kt` (with
 `ime/KeyboardTouch.kt` (key clicks, strip dead zone), `DeleteSlide` and
 `SpacebarGesture` in the IME, `MicPress` in `MicDictationControl.kt`,
 `KeyAccents.preselectIndex`, `DictationSelection` in `DictationCommit.kt` and
-`ime/InlineAutofill.kt` (inline autofill chips, API 30+). Android has no
-space-bar autocorrect of its own, so learned fixes are the only correction
-space applies there, and tap positions rank the strip's corrections. Dictation
+`ime/InlineAutofill.kt` (inline autofill chips, API 30+). Android's own
+space-bar autocorrect is `ime/Autocorrect.kt`: the strip's scan
+(`SuggestionDictionary.autocorrectCandidates`, off the composition thread)
+ranks the shipped list's words within two edits by a keyboard-aware edit cost
+plus frequency and bigram context, and `.,!?;:` or space apply it only when it
+leads the runner-up by the "Autocorrect strength" margin; `TypingCorrector`
+applies it at the boundary, offers the typed word back, and a delete right
+after reverts it (counted in `AutocorrectMemory`, and the word is left alone
+in that field). Learned fixes still come first, and tap positions rank the
+strip's corrections. `SentenceBoundary` and `ShortWordCorrections` are ports
+of the iOS tables, and `TypingChips` offers snippet expansions and `12*4=`
+results. Words long-pressed off the strip are kept as
+`keyboard_blocked_suggestions` in the settings store. Dictation
 from the phone microphone requests `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, so
 music ducks instead of pausing; a Bluetooth headset microphone keeps exclusive
 focus. A focus loss still ends capture.

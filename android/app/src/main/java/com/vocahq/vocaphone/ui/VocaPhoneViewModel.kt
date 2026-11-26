@@ -38,6 +38,7 @@ import com.vocahq.vocaphone.local.ModelDownloadService
 import com.vocahq.vocaphone.local.LocalModelIntegrityException
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
+import com.vocahq.vocaphone.settings.AutocorrectStrength
 import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.CorrectionLearningState
 import com.vocahq.vocaphone.settings.KeyboardHeight
@@ -614,6 +615,16 @@ class VocaPhoneViewModel @JvmOverloads constructor(
 
     fun setCorrectionsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setCorrectionsEnabled(enabled) }
+
+    fun setAutocorrectStrength(strength: AutocorrectStrength) =
+        viewModelScope.launch { container.settings.setAutocorrectStrength(strength) }
+
+    fun setDoubleSpacePeriod(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setDoubleSpacePeriod(enabled) }
+
+    /** "Reset blocked suggestions": every long-pressed word may be suggested again. */
+    fun resetBlockedSuggestions() =
+        viewModelScope.launch { container.settings.clearBlockedSuggestions() }
 
     fun setNumberKeyHintsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumberKeyHintsEnabled(enabled) }

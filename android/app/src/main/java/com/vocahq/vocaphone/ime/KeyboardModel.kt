@@ -248,7 +248,30 @@ internal data class SuggestionItem(
     val isEmoji: Boolean = false,
     /** Tapping this chip saves [text] to the personal dictionary. */
     val savesWord: Boolean = false,
+    val kind: SuggestionKind = SuggestionKind.WORD,
+    /** What a [SuggestionKind.SNIPPET] chip replaces before the cursor: its trigger. */
+    val replaces: String = "",
 )
+
+internal enum class SuggestionKind {
+    WORD,
+    /** The word space will put in place of the one being typed. Drawn bold. */
+    AUTOCORRECT,
+    /** The word being typed, as typed: tapping it keeps it, and it is not corrected again here. */
+    KEEP_TYPED,
+    /** Right after a correction: what was typed. Tapping it puts it back. */
+    REVERT,
+    /** Right after a correction: another word to put in place of the fix. */
+    REPLACE_FIX,
+    /** A snippet whose trigger was just typed; tapping it expands the trigger. */
+    SNIPPET,
+    /** The result of the sum before the cursor; tapping it types it. */
+    RESULT,
+    ;
+
+    /** Chips that are a dictionary word on offer, and so can be blocked with a long press. */
+    val blockable: Boolean get() = this == WORD || this == AUTOCORRECT || this == REPLACE_FIX
+}
 
 /** What the single Gboard-style toolbar row should show. */
 internal object KeyboardChrome {
@@ -389,13 +412,42 @@ internal data class SuggestionStrip(
     val emojis: List<String> = emptyList(),
     val replacesWord: Boolean = false,
     val saveWord: String? = null,
+    /** What space or `.,!?;:` will put in place of [forWord]; see [Autocorrect]. */
+    val autocorrection: String? = null,
+    /** The composing word this strip was worked out for. Space applies [autocorrection] only to that word. */
+    val forWord: String? = null,
+    /** The typed word, offered as typed beside a pending [autocorrection]. */
+    val keepTyped: String? = null,
+    /** Snippet and sum chips ([TypingChips]), ahead of everything else. */
+    val extras: List<SuggestionItem> = emptyList(),
 ) {
     val items: List<SuggestionItem>
         get() = buildList {
+            addAll(extras)
             saveWord?.let { add(SuggestionItem(it, savesWord = true)) }
-            addAll(words.map { SuggestionItem(it) })
+            keepTyped?.let { add(SuggestionItem(it, kind = SuggestionKind.KEEP_TYPED)) }
+            addAll(
+                words.map {
+                    SuggestionItem(it, kind = if (it == autocorrection) SuggestionKind.AUTOCORRECT else SuggestionKind.WORD)
+                },
+            )
             addAll(emojis.map { SuggestionItem(it, isEmoji = true) })
         }
+
+    /** The autocorrection for [typed], if this strip was worked out for it. */
+    fun autocorrectionFor(typed: String): String? =
+        autocorrection?.takeIf { typed.isNotEmpty() && forWord == typed }
+
+    /** This strip with [word] gone, for a chip just blocked. */
+    fun without(word: String): SuggestionStrip {
+        val key = word.lowercase(Locale.ROOT)
+        val dropped = autocorrection?.lowercase(Locale.ROOT) == key
+        return copy(
+            words = words.filter { it.lowercase(Locale.ROOT) != key },
+            autocorrection = autocorrection.takeUnless { dropped },
+            keepTyped = keepTyped.takeUnless { dropped },
+        )
+    }
 }
 
 /**

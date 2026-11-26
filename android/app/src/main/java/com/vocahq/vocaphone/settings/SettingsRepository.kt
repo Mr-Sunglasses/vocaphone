@@ -328,6 +328,15 @@ data class VocaPhoneSettings(
     val dynamicColorEnabled: Boolean = false,
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,
+    /** How sure space has to be before it replaces a typed word; only with [correctionsEnabled]. */
+    val autocorrectStrength: AutocorrectStrength = AutocorrectStrength.DEFAULT,
+    /** "Double-space period": a second space right after a word types ". ". */
+    val doubleSpacePeriod: Boolean = true,
+    /**
+     * Words blocked from the strip with a long press, comma separated like
+     * [personalDictionary]: never suggested, predicted or corrected to.
+     */
+    val blockedSuggestions: String = "",
     /**
      * "Check while typing": Writing check in the keyboard. After a pause the
      * field is checked on the phone, with the rules and, once it is
@@ -696,6 +705,23 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setCorrectionsEnabled(enabled: Boolean) = put(Keys.CORRECTIONS, enabled)
 
+    suspend fun setAutocorrectStrength(strength: AutocorrectStrength) =
+        put(Keys.AUTOCORRECT_STRENGTH, strength.storedValue)
+
+    suspend fun setDoubleSpacePeriod(enabled: Boolean) = put(Keys.DOUBLE_SPACE_PERIOD, enabled)
+
+    /** One more word never to suggest, in a single edit so two long presses in a row both land. */
+    suspend fun addBlockedSuggestion(word: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.BLOCKED_SUGGESTIONS] =
+                BlockedSuggestions.add(preferences[Keys.BLOCKED_SUGGESTIONS], word)
+        }
+    }
+
+    suspend fun clearBlockedSuggestions() {
+        context.dataStore.edit { it.remove(Keys.BLOCKED_SUGGESTIONS) }
+    }
+
     suspend fun setTypingGrammar(enabled: Boolean) = put(Keys.TYPING_GRAMMAR, enabled)
 
     suspend fun setWritingClarity(enabled: Boolean) = put(Keys.WRITING_CLARITY, enabled)
@@ -1019,6 +1045,9 @@ class SettingsRepository(private val context: Context) {
         dynamicColorEnabled = this[Keys.DYNAMIC_COLOR] ?: false,
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
         correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
+        autocorrectStrength = AutocorrectStrength.fromStored(this[Keys.AUTOCORRECT_STRENGTH]),
+        doubleSpacePeriod = this[Keys.DOUBLE_SPACE_PERIOD] ?: true,
+        blockedSuggestions = this[Keys.BLOCKED_SUGGESTIONS].orEmpty(),
         typingGrammar = this[Keys.TYPING_GRAMMAR] ?: false,
         writingClarity = this[Keys.WRITING_CLARITY] ?: true,
         writingEngagement = this[Keys.WRITING_ENGAGEMENT] ?: false,
@@ -1097,6 +1126,9 @@ class SettingsRepository(private val context: Context) {
         val DYNAMIC_COLOR = booleanPreferencesKey("keyboard_dynamic_color")
         val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
         val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
+        val AUTOCORRECT_STRENGTH = stringPreferencesKey("keyboard_autocorrect_strength")
+        val DOUBLE_SPACE_PERIOD = booleanPreferencesKey("keyboard_double_space_period")
+        val BLOCKED_SUGGESTIONS = stringPreferencesKey("keyboard_blocked_suggestions")
         val TYPING_GRAMMAR = booleanPreferencesKey("keyboard_typing_grammar")
         val WRITING_CLARITY = booleanPreferencesKey("writing_clarity")
         val WRITING_ENGAGEMENT = booleanPreferencesKey("writing_engagement")

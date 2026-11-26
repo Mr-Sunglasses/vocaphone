@@ -31,12 +31,29 @@ internal data class AutocorrectMemory(
         return fix
     }
 
+    /**
+     * One more undo of `typed → fix`, whether space made it as a learned fix
+     * or as an ordinary correction. Undone [REJECTED_AFTER] times, the pair is
+     * unlearned too: the picks that taught it are forgotten, so it has to be
+     * picked twice again before space makes it.
+     */
     fun withRejection(typed: String, fix: String): AutocorrectMemory {
         val pair = pairKey(typed, fix)
         val next = LinkedHashMap(rejections)
         val count = (next.remove(pair) ?: 0) + 1
         next[pair] = count
-        return copy(rejections = next.trimmed())
+        val unlearned = if (count >= REJECTED_AFTER) withoutPick(typed, fix) else picks
+        return copy(rejections = next.trimmed(), picks = unlearned)
+    }
+
+    private fun withoutPick(typed: String, fix: String): Map<String, Map<String, Int>> {
+        val typedKey = key(typed)
+        val fixes = picks[typedKey] ?: return picks
+        if (key(fix) !in fixes) return picks
+        val next = LinkedHashMap(picks)
+        val remaining = fixes - key(fix)
+        if (remaining.isEmpty()) next.remove(typedKey) else next[typedKey] = remaining
+        return next
     }
 
     fun withPick(typed: String, picked: String): AutocorrectMemory {
@@ -135,13 +152,4 @@ internal object LearnedFixes {
         val stored = personalSpelling(fix)
         return if (stored != null) PersonalDictionary.present(typed, stored) else SuggestionEngine.matchCase(typed, fix)
     }
-}
-
-/**
- * A learned fix the space bar just made: delete right after it puts [typed]
- * back, and that counts against the fix.
- */
-internal data class LearnedFixUndo(val typed: String, val fixed: String) {
-    /** The edit that takes back "[fixed] " and types [typed] again. */
-    fun command(): KeyboardCommand = KeyboardCommand.ReplaceBeforeCursor(fixed.length + 1, typed)
 }
