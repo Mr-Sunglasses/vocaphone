@@ -1659,7 +1659,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             editSelectionAnchor = null
             return
         }
-        if (selecting && lastSelStart >= 0 && lastSelEnd >= 0) {
+        val sideways = action == TextEditAction.LEFT || action == TextEditAction.RIGHT
+        if (selecting && sideways && lastSelStart >= 0 && lastSelEnd >= 0) {
             val current = setOf(lastSelStart, lastSelEnd)
             val anchor = editSelectionAnchor
             val focus = editSelectionFocus
