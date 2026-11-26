@@ -55,6 +55,47 @@ enum LocalModelIntegrity {
         let path: String
         let size: Int64
         let sha256: String?
+        let remotePath: String?
+
+        init(path: String, size: Int64, sha256: String?, remotePath: String? = nil) {
+            self.path = path
+            self.size = size
+            self.sha256 = sha256
+            self.remotePath = remotePath
+        }
+    }
+
+    /// Repository-relative path to fetch for `file`, honoring `remotePath`
+    /// when a file lives outside the model's `pathPrefix` (for example a
+    /// repository-root `config.json`).
+    static func remotePath(for file: ManifestFile, pathPrefix: String?) -> String {
+        if let remotePath = file.remotePath {
+            return remotePath
+        }
+        return [pathPrefix, file.path].compactMap { $0 }.joined(separator: "/")
+    }
+
+    /// Splits a model's files into download phases: parallel small files,
+    /// sequential large weights, and repository-root `config.json` strictly
+    /// last so cancelled transfers do not inflate Hugging Face download counts.
+    static func downloadPhases(
+        for files: [ManifestFile],
+        pathPrefix: String?,
+        largeFileThreshold: Int64
+    ) -> (small: [ManifestFile], large: [ManifestFile], final: [ManifestFile]) {
+        var small: [ManifestFile] = []
+        var large: [ManifestFile] = []
+        var final: [ManifestFile] = []
+        for file in files {
+            if remotePath(for: file, pathPrefix: pathPrefix) == "config.json" {
+                final.append(file)
+            } else if file.size >= largeFileThreshold {
+                large.append(file)
+            } else {
+                small.append(file)
+            }
+        }
+        return (small: small, large: large, final: final)
     }
 
     /// Written inside a directory whose digests have all been checked.

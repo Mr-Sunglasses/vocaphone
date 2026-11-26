@@ -1808,8 +1808,13 @@ final class LocalModelManager {
         try fileManager.createDirectory(at: stagingModel, withIntermediateDirectories: true)
         defer { Self.removeItemLater(stagingRoot) }
 
-        for file in files where !isSafeRelativePath(file.path) {
-            throw LocalModelManagerError.integrityFileMissing(file.path)
+        for file in files {
+            guard isSafeRelativePath(file.path) else {
+                throw LocalModelManagerError.integrityFileMissing(file.path)
+            }
+            if let remotePath = file.remotePath, !isSafeRelativePath(remotePath) {
+                throw LocalModelManagerError.integrityFileMissing(remotePath)
+            }
         }
 
         message = "Downloading \(descriptor.displayName)…"
@@ -1820,9 +1825,16 @@ final class LocalModelManager {
         // Face redirect in turn, which is most of what they cost. The large ones
         // stay sequential: splitting a single stream into parallel byte ranges
         // measured no reliable gain and sometimes lost, which does not justify
-        // the reassembly pass or giving up resume on a retry.
-        let large = files.filter { $0.size >= Self.largeFileThreshold }
-        let small = files.filter { $0.size < Self.largeFileThreshold }
+        // the reassembly pass or giving up resume on a retry. Any repository-root
+        // `config.json` runs strictly last so cancelled downloads do not count as
+        // completed installs on Hugging Face.
+        let phases = LocalModelIntegrity.downloadPhases(
+            for: files,
+            pathPrefix: pathPrefix,
+            largeFileThreshold: Self.largeFileThreshold
+        )
+        let small = phases.small
+        let large = phases.large
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             var pending = small.makeIterator()
@@ -1873,6 +1885,19 @@ final class LocalModelManager {
             )
         }
 
+        for file in phases.final {
+            try Task.checkCancellation()
+            try await downloadAndVerify(
+                file,
+                modelIdentifier: descriptor.id,
+                repository: repository,
+                revision: revision,
+                pathPrefix: pathPrefix,
+                into: stagingModel,
+                progressTracker: progressTracker
+            )
+        }
+
         // Every file was hashed as it landed, so all that is left is confirming
         // the set is complete and recording the marker the cheap launch path
         // reads. The whole-directory digest pass that used to run here hashed
@@ -1906,7 +1931,7 @@ final class LocalModelManager {
         let url = try fileURL(
             repository: repository,
             revision: revision,
-            path: [pathPrefix, file.path].compactMap { $0 }.joined(separator: "/")
+            path: LocalModelIntegrity.remotePath(for: file, pathPrefix: pathPrefix)
         )
         let destination = stagingModel.appendingPathComponent(file.path)
         let temporaryFile = try await downloadFile(

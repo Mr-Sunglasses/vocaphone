@@ -3,7 +3,7 @@ import re
 import unittest
 from pathlib import Path
 
-from check_catalogs import check_bpe_vocab, check_grammar
+from check_catalogs import check_bpe_vocab, check_grammar, read_android
 
 ROOT = Path(__file__).resolve().parents[2]
 KOTLIN = (ROOT / "android/app/src/main/java/com/vocahq/vocaphone/local/GrammarModelCatalog.kt").read_text()
@@ -48,8 +48,35 @@ class GrammarPinTests(unittest.TestCase):
         self.assertTrue(check_grammar("internal object GrammarModelCatalog {}", {"models": {}}))
 
 
+SHERPA_KOTLIN = (ROOT / "android/app/src/main/java/com/vocahq/vocaphone/local/SherpaModelCatalog.kt").read_text()
 SHERPA_PINS = json.loads((ROOT / "ios/VocaPhoneApp/Models/sherpa_model_pins.json").read_text())["models"]
 VOCABULARIES = sorted((ROOT / "assets/speech").glob("*.bpe.vocab"))
+
+
+class SherpaRemotePathTests(unittest.TestCase):
+    def test_fourier_pins_root_config_last_on_both_platforms(self):
+        android = read_android(SHERPA_KOTLIN)["oruk-fourier-2b"]
+        ios = SHERPA_PINS["oruk-fourier-2b"]
+
+        android_paths = list(android["files"])
+        self.assertEqual(android_paths[-1], "config.json")
+        self.assertEqual(android["files"]["config.json"][2], "config.json")
+
+        self.assertEqual(ios["files"][-1]["path"], "config.json")
+        self.assertEqual(ios["files"][-1].get("remotePath"), "config.json")
+
+        ios_map = {f["path"]: (f["size"], f["sha256"], f.get("remotePath")) for f in ios["files"]}
+        self.assertEqual(android["files"], ios_map)
+
+    def test_a_changed_remote_path_is_caught(self):
+        mutated = SHERPA_KOTLIN.replace('remotePath = "config.json"', 'remotePath = "other/config.json"', 1)
+        self.assertNotEqual(mutated, SHERPA_KOTLIN)
+        android = read_android(mutated)["oruk-fourier-2b"]
+        ios_map = {
+            f["path"]: (f["size"], f["sha256"], f.get("remotePath"))
+            for f in SHERPA_PINS["oruk-fourier-2b"]["files"]
+        }
+        self.assertNotEqual(android["files"], ios_map)
 
 
 class BpeVocabularyTests(unittest.TestCase):

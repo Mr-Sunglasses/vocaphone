@@ -32,8 +32,28 @@ struct LocalModelCatalogTests {
         )
         let pins = try #require(manifest.models[model.id])
         #expect(pins.pathPrefix == "onnx/sherpa-int8")
-        #expect(pins.files.count == 10)
-        #expect(pins.files.contains { $0.path == "decoder.int8.onnx.data" })
+        #expect(pins.files.count == 11)
+        let decoderData = try #require(pins.files.first { $0.path == "decoder.int8.onnx.data" })
+        #expect(
+            LocalModelIntegrity.remotePath(for: decoderData, pathPrefix: pins.pathPrefix)
+                == "onnx/sherpa-int8/decoder.int8.onnx.data"
+        )
+        let config = try #require(pins.files.last)
+        #expect(config.path == "config.json")
+        #expect(config.remotePath == "config.json")
+        #expect(
+            LocalModelIntegrity.remotePath(for: config, pathPrefix: pins.pathPrefix)
+                == "config.json"
+        )
+        let phases = LocalModelIntegrity.downloadPhases(
+            for: pins.files,
+            pathPrefix: pins.pathPrefix,
+            largeFileThreshold: 32 * 1024 * 1024
+        )
+        #expect(phases.final.map(\.path) == ["config.json"])
+        #expect(!phases.small.contains { $0.path == "config.json" })
+        #expect(!phases.large.contains { $0.path == "config.json" })
+        #expect(phases.small.count + phases.large.count + phases.final.count == pins.files.count)
     }
 
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
