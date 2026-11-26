@@ -38,7 +38,13 @@ internal data class KeyboardEditorConfig(
      * typed into a secret.
      */
     val swipeAllowed: Boolean = false,
+    /** Which pad [KeyboardLayer.NUMPAD] draws; only read on a numeric field. */
+    val padKind: PadKind = PadKind.NUMBER,
 ) {
+    /** The field started on a dial or number pad, so `ABC` on the symbols page goes back to it. */
+    val startsOnPad: Boolean
+        get() = initialLayer == KeyboardLayer.PHONE || initialLayer == KeyboardLayer.NUMPAD
+
     companion object {
         fun empty() = KeyboardEditorConfig(
             sessionId = 0,
@@ -70,13 +76,17 @@ internal data class KeyboardEditorConfig(
         ): KeyboardEditorConfig {
             val inputType = info?.inputType ?: InputType.TYPE_NULL
             val inputClass = inputType and InputType.TYPE_MASK_CLASS
-            val initialLayer = when (inputClass) {
-                InputType.TYPE_CLASS_NUMBER,
-                InputType.TYPE_CLASS_PHONE,
-                InputType.TYPE_CLASS_DATETIME,
-                -> KeyboardLayer.NUMBERS
-
-                else -> KeyboardLayer.LETTERS
+            val padKind = when (inputClass) {
+                InputType.TYPE_CLASS_PHONE -> PadKind.PHONE
+                InputType.TYPE_CLASS_DATETIME -> PadKind.DATETIME
+                // A numeric PIN is a password; it still gets the pad.
+                InputType.TYPE_CLASS_NUMBER -> PadKind.NUMBER
+                else -> null
+            }
+            val initialLayer = when (padKind) {
+                PadKind.PHONE -> KeyboardLayer.PHONE
+                PadKind.NUMBER, PadKind.DATETIME -> KeyboardLayer.NUMPAD
+                null -> KeyboardLayer.LETTERS
             }
             // Only the cursor's current caps mode matters. CAP_SENTENCES on the
             // inputType is almost always set, and treating that as "shift on"
@@ -100,6 +110,7 @@ internal data class KeyboardEditorConfig(
             return KeyboardEditorConfig(
                 sessionId = sessionId,
                 initialLayer = initialLayer,
+                padKind = padKind ?: PadKind.NUMBER,
                 initialShift = initialShift,
                 returnKey = action.first,
                 editorActionId = action.second,

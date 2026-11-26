@@ -21,7 +21,9 @@ class KeyboardLayoutsTest {
     @Test
     fun `bottom row keeps space and editor action and has no globe key`() {
         val editor = KeyboardEditorConfig.empty()
-        KeyboardLayer.entries.forEach { layer ->
+        // The pads keep space (phone) or have no use for it (numbers) in
+        // their fourth column instead; see PadLayoutsTest.
+        KeyboardLayer.entries.filter { it != KeyboardLayer.PHONE && it != KeyboardLayer.NUMPAD }.forEach { layer ->
             val bottomRow = KeyboardLayouts.rows(layer, editor).last().keys
             assertTrue(bottomRow.any { it.type == KeyboardKeyType.SPACE })
             assertTrue(bottomRow.any { it.type == KeyboardKeyType.RETURN })

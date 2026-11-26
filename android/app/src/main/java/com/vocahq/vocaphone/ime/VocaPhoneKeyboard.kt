@@ -1038,6 +1038,8 @@ internal fun VocaPhoneKeyboard(
                             editor.returnKey,
                             editor.leadingPunctuation,
                             settings.numberRowEnabled,
+                            editor.initialLayer,
+                            editor.padKind,
                         ) {
                             KeyboardLayouts.rows(
                                 keyboardState.layer,
@@ -3714,7 +3716,18 @@ private fun KeyContent(
             KeyLabel(displayLabel, tint, utility = true)
         }
         KeyboardKeyType.CHARACTER -> {
-            if (hint == null) {
+            if (key.caption != null) {
+                // A dial pad's 2 with ABC under it.
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    KeyLabel(displayLabel, tint, utility = false)
+                    Text(
+                        text = key.caption,
+                        color = tint.copy(alpha = 0.6f),
+                        fontSize = with(LocalDensity.current) { 10.dp.toSp() },
+                        lineHeight = with(LocalDensity.current) { 11.dp.toSp() },
+                    )
+                }
+            } else if (hint == null) {
                 KeyLabel(displayLabel, tint, utility = false)
             } else {
                 Box(Modifier.fillMaxWidth().fillMaxHeight()) {
@@ -3924,6 +3937,8 @@ private fun keyDescription(
         KeyboardLayer.EMOJI -> "Show emoji keyboard"
         KeyboardLayer.LETTERS -> "Show letters keyboard"
         KeyboardLayer.NUMBERS -> "Show numbers keyboard"
+        KeyboardLayer.PHONE -> "Show phone keypad"
+        KeyboardLayer.NUMPAD -> "Show number pad"
         KeyboardLayer.SYMBOLS -> "Show symbols keyboard"
         null -> "Switch keyboard layer"
     }

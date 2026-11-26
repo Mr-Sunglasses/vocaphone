@@ -69,6 +69,7 @@ internal object KeyAccents {
         numberRow: Boolean = false,
     ): List<String> {
         if (key.type != KeyboardKeyType.CHARACTER) return emptyList()
+        key.popup?.let { return it }
         val base = key.output.lowercase(Locale.ROOT)
         val accents = variants[base].orEmpty()
         val symbol = letterSymbol(base, longPressSymbols, numberRow)
@@ -96,7 +97,7 @@ internal object KeyAccents {
         longPressSymbols: Boolean = false,
         numberRow: Boolean = false,
     ): Int {
-        if (!quickAccents || accents.size < 2 || key.type != KeyboardKeyType.CHARACTER) return 0
+        if (!quickAccents || accents.size < 2 || key.type != KeyboardKeyType.CHARACTER || key.popup != null) return 0
         val base = key.output.lowercase(Locale.ROOT)
         if (base.length != 1 || !base[0].isLetter()) return 0
         val symbol = letterSymbol(base, longPressSymbols, numberRow) ?: return 0
@@ -116,6 +117,7 @@ internal object KeyAccents {
         numberRow: Boolean = false,
     ): String? {
         if (key.type != KeyboardKeyType.CHARACTER) return null
+        key.popup?.let { return it.firstOrNull() }
         val base = key.output
         if (base.length != 1) return null
         if (base[0].isDigit()) {

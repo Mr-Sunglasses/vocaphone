@@ -8,6 +8,17 @@ internal enum class KeyboardLayer {
     NUMBERS,
     SYMBOLS,
     EMOJI,
+    /** Dial pad for phone-number fields. */
+    PHONE,
+    /** Number pad for number and date/time fields. */
+    NUMPAD,
+}
+
+/** Which number pad a numeric field gets; see [KeyboardLayouts.padRows]. */
+internal enum class PadKind {
+    NUMBER,
+    DATETIME,
+    PHONE,
 }
 
 internal enum class ShiftState {
@@ -32,6 +43,13 @@ internal data class KeyboardKey(
     val type: KeyboardKeyType = KeyboardKeyType.CHARACTER,
     val weight: Float = 1f,
     val targetLayer: KeyboardLayer? = null,
+    /**
+     * What a hold offers instead of [KeyAccents]' table, or null for the
+     * table. Empty means nothing: a dial pad's 2 should not offer `@`.
+     */
+    val popup: List<String>? = null,
+    /** Small second line under the label, like ABC on a dial pad's 2. */
+    val caption: String? = null,
 )
 
 internal data class KeyboardRow(

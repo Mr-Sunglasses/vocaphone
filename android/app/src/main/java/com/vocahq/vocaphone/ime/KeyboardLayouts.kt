@@ -10,7 +10,66 @@ internal object KeyboardLayouts {
         KeyboardLayer.NUMBERS -> numberRows(editor, extraRow = true)
         KeyboardLayer.SYMBOLS -> symbolRows(editor, extraRow = true)
         KeyboardLayer.EMOJI -> listOf(emojiBottomRow(editor))
+        KeyboardLayer.PHONE -> padRows(PadKind.PHONE, editor)
+        KeyboardLayer.NUMPAD -> padRows(editor.padKind, editor)
     }
+
+    /**
+     * Gboard's pads: three digit columns and a fourth for the keys a number
+     * field needs, four rows like the letters so the keyboard does not
+     * resize between a name field and a phone field. The bottom-left key
+     * opens the full symbols page, whose `123` key comes back here.
+     *
+     * - Phone: `-`, space, delete; `*#`, 0, `+`, return. Letters under 2-9
+     *   as on a dial pad.
+     * - Number: `-`, `,`, delete; `?123`, 0, `.`, return.
+     * - Date/time: `/`, `:`, delete; `?123`, 0, `-`, return.
+     */
+    fun padRows(kind: PadKind, editor: KeyboardEditorConfig): List<KeyboardRow> {
+        val side: List<KeyboardKey> = when (kind) {
+            PadKind.PHONE -> listOf(padKey("-"), special("space", "space", KeyboardKeyType.SPACE, 1f))
+            PadKind.NUMBER -> listOf(padKey("-"), padKey(","))
+            PadKind.DATETIME -> listOf(padKey("/"), padKey(":"))
+        }
+        val bottom = when (kind) {
+            PadKind.PHONE -> listOf(
+                layer("pad-symbols", "*#", KeyboardLayer.NUMBERS, 1f),
+                padKey("0"),
+                padKey("+"),
+            )
+            PadKind.NUMBER -> listOf(
+                layer("pad-symbols", "?123", KeyboardLayer.NUMBERS, 1f),
+                padKey("0"),
+                padKey(".", popup = listOf(",")),
+            )
+            PadKind.DATETIME -> listOf(
+                layer("pad-symbols", "?123", KeyboardLayer.NUMBERS, 1f),
+                padKey("0"),
+                padKey("-"),
+            )
+        }
+        val letters = if (kind == PadKind.PHONE) DIAL_LETTERS else emptyMap()
+        fun digits(text: String) = text.map { padKey(it.toString(), caption = letters[it]) }
+        return listOf(
+            KeyboardRow(keys = digits("123") + side[0]),
+            KeyboardRow(keys = digits("456") + side[1]),
+            KeyboardRow(keys = digits("789") + special("delete", "Delete", KeyboardKeyType.DELETE, 1f)),
+            KeyboardRow(keys = bottom + special("return", editor.returnKey.name, KeyboardKeyType.RETURN, 1f)),
+        )
+    }
+
+    private val DIAL_LETTERS = mapOf(
+        '2' to "ABC", '3' to "DEF", '4' to "GHI", '5' to "JKL",
+        '6' to "MNO", '7' to "PQRS", '8' to "TUV", '9' to "WXYZ",
+    )
+
+    private fun padKey(output: String, caption: String? = null, popup: List<String> = emptyList()) = KeyboardKey(
+        id = "pad-$output",
+        label = output,
+        output = output,
+        popup = popup,
+        caption = caption,
+    )
 
     fun letterRowCount(numberRow: Boolean) = if (numberRow) 5 else 4
 
@@ -47,7 +106,12 @@ internal object KeyboardLayouts {
                 ),
             ),
         )
-        add(utilityRow(editor, "ABC", KeyboardLayer.LETTERS))
+        // Opened from a dial or number pad, the way back is to the pad.
+        if (editor.startsOnPad) {
+            add(utilityRow(editor, "123", editor.initialLayer))
+        } else {
+            add(utilityRow(editor, "ABC", KeyboardLayer.LETTERS))
+        }
     }
 
     private fun symbolRows(editor: KeyboardEditorConfig, extraRow: Boolean) = buildList {
