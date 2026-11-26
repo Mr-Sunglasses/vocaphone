@@ -124,6 +124,20 @@ class AutocorrectTest {
     }
 
     @Test
+    fun `contractions that are also words are offered, not made`() {
+        for ((typed, contraction) in listOf("lets" to "let's", "ill" to "I'll", "id" to "I'd", "hows" to "how's", "whos" to "who's")) {
+            assertNull(typed, ShortWordCorrections.replacement(typed))
+            val strip = strip(typed)
+            assertNull(typed, strip.autocorrection)
+            assertTrue(typed, contraction in strip.words)
+        }
+        for (word in listOf("were", "well", "shell", "wed", "its")) {
+            assertNull(word, ShortWordCorrections.replacement(word))
+        }
+        assertEquals("won't", ShortWordCorrections.replacement("wont"))
+    }
+
+    @Test
     fun `swaps and doubles cost less than other slips`() {
         assertTrue(Autocorrect.editCost("teh", "the") < Autocorrect.editCost("tex", "the"))
         assertTrue(Autocorrect.editCost("realy", "really") < Autocorrect.editCost("rely", "relay") + 0.5f)

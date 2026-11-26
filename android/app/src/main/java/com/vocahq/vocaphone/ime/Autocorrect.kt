@@ -110,7 +110,7 @@ internal object Autocorrect {
         if (context.asserted) return refused("restored in this field")
         if (context.isPersonal) return refused("in the personal dictionary")
         // A handle, an address, a number with letters on it, a path.
-        if (context.tokenBefore.any { it !in OPENERS }) return refused("not a word token")
+        if (!startsWord(context.tokenBefore)) return refused("not a word token")
         if (typed.any { !it.isLetter() && it != '\'' && it != '’' }) return refused("not a word token")
         if (context.heldBack) return refused("a word the keyboard does not offer")
         // "WIP" is not a misspelling of "wip"; caps lock has chosen its letters.
@@ -146,6 +146,13 @@ internal object Autocorrect {
         }
         return AutocorrectDecision.Apply(cased(typed, best.word))
     }
+
+    /**
+     * Whether [tokenBefore], what sits between the last whitespace and the
+     * word, leaves it a word: nothing, or opening brackets and quotes. `@`,
+     * `www.` or `user@` in front make it a handle, a link or an address.
+     */
+    fun startsWord(tokenBefore: String): Boolean = tokenBefore.all { it in OPENERS }
 
     /** Two edits only once a word is long enough that two edits still leave it recognisable. */
     private fun editsFor(length: Int): Int = if (length >= 5) 2 else 1
@@ -277,13 +284,17 @@ internal object Autocorrect {
  * ahead of the general path. A port of the iOS keyboard's table, with its
  * reasons: "its", "were", "well", "hell", "shell", "wed", "shes" and "hes"
  * are all real words often enough to leave alone.
+ *
+ * Only spellings that are not words of their own are corrected on space.
+ * "cant" and "wont" are words, but rare enough that Gboard corrects them too.
+ * "lets", "ill", "id", "hows" and "whos" are words people do mean ("she lets
+ * him", "feeling ill", "the id field"), so they are only offered on the strip
+ * ([suggestion]), never made by space.
  */
 internal object ShortWordCorrections {
     private val TABLE: Map<String, String> = mapOf(
         "i" to "I",
         "im" to "I'm",
-        "id" to "I'd",
-        "ill" to "I'll",
         "ive" to "I've",
         "dont" to "don't",
         "doesnt" to "doesn't",
@@ -312,16 +323,32 @@ internal object ShortWordCorrections {
         "whats" to "what's",
         "thats" to "that's",
         "wheres" to "where's",
-        "hows" to "how's",
-        "whos" to "who's",
-        "lets" to "let's",
         "aint" to "ain't",
         "oclock" to "o'clock",
+    )
+
+    /** Contractions whose apostrophe-less spelling is also a word: suggested, not applied. */
+    private val SUGGEST_ONLY: Map<String, String> = mapOf(
+        "id" to "I'd",
+        "ill" to "I'll",
+        "lets" to "let's",
+        "hows" to "how's",
+        "whos" to "who's",
     )
 
     /** The replacement for [typed], cased like it unless it carries its own capitals; null when there is none. */
     fun replacement(typed: String): String? {
         val found = TABLE[typed.lowercase(Locale.ROOT)] ?: return null
+        return Autocorrect.cased(typed, found)
+    }
+
+    /**
+     * The contraction the strip offers for [typed] without space applying it:
+     * any in the table, and the ambiguous ones ([SUGGEST_ONLY]) too.
+     */
+    fun suggestion(typed: String): String? {
+        val key = typed.lowercase(Locale.ROOT)
+        val found = TABLE[key] ?: SUGGEST_ONLY[key] ?: return null
         return Autocorrect.cased(typed, found)
     }
 

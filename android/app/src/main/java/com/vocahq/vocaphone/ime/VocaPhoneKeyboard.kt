@@ -705,6 +705,15 @@ internal fun VocaPhoneKeyboard(
         )
     }
 
+    /**
+     * What sits in front of [typed] back to the last whitespace (`@`, `www.`):
+     * from the keyboard's own token while it saw the whole word typed, else
+     * from the last editor read. No editor read here.
+     */
+    fun tokenBefore(typed: String): String =
+        keyboardState.token.takeIf { typed.isNotEmpty() && it.endsWith(typed) }?.dropLast(typed.length)
+            ?: SuggestionEngine.beforeComposing(currentEditorText.value.before, typed).takeLastWhile { !it.isWhitespace() }
+
     fun switchLayout(forward: Boolean) {
         val next = KeyboardLanguages.next(activeLayout, enabledLayouts, forward) ?: return
         clearSwipe()
@@ -761,14 +770,25 @@ internal fun VocaPhoneKeyboard(
         val boundary = TypingCorrector.boundary(key)
             ?.takeUnless { key.type == KeyboardKeyType.SPACE && keyboardState.lastWasSpace }
         val fix = boundary?.let {
-            TypingCorrector.correction(typed, it, learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted)
+            TypingCorrector.correction(
+                typed, it, learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted,
+                isPersonal = typed.lowercase() in personalWords,
+                tokenBefore = tokenBefore(typed),
+            )
         }
         if (fix != null) onCommand(KeyboardCommand.SetComposingText(fix))
         // `?123` finished the word; the `?` it was switched for still corrects it.
         val held = corrector.takeHeld(boundary)
         held?.let { (word, heldFix) -> onCommand(KeyboardCommand.ReplaceBeforeCursor(word.length, heldFix)) }
         if (key.type == KeyboardKeyType.LAYER_SWITCH) {
-            corrector.hold(typed, TypingCorrector.correction(typed, ",", learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted))
+            corrector.hold(
+                typed,
+                TypingCorrector.correction(
+                    typed, ",", learnedFixForSpace(typed), suggestionStrip, autocorrects, corrector.asserted,
+                    isPersonal = typed.lowercase() in personalWords,
+                    tokenBefore = tokenBefore(typed),
+                ),
+            )
         }
         val text = currentEditorText.value
         val reduction = KeyboardReducer.press(

@@ -130,6 +130,10 @@ internal class TypingCorrector {
             strip: SuggestionStrip,
             autocorrect: Boolean,
             asserted: Set<String>,
+            /** The personal dictionary has [typed]: the user's own spelling. */
+            isPersonal: Boolean = false,
+            /** What sits between the last whitespace and [typed]; see [Autocorrect.startsWord]. */
+            tokenBefore: String = "",
         ): String? {
             if (typed.isEmpty()) return null
             val apostrophe = boundary == "'" || boundary == "’"
@@ -140,6 +144,9 @@ internal class TypingCorrector {
             if (!autocorrect || typed.lowercase(Locale.ROOT) in asserted) return null
             // "Mr." and "etc." are typed on purpose.
             if (boundary == "." && SentenceBoundary.isAbbreviation(typed)) return null
+            // The strip refuses these too; this covers space arriving before
+            // it has caught up, when only the short-word table answers.
+            if (isPersonal || !Autocorrect.startsWord(tokenBefore)) return null
             learned?.takeIf { it != typed }?.let { return it }
             // The strip has decided for this word, correction or none.
             if (strip.forWord == typed) return strip.autocorrection?.takeIf { it != typed }

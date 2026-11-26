@@ -67,6 +67,18 @@ class TypingCorrectorTest {
     }
 
     @Test
+    fun `a stale strip leaves a handle, an address or a personal word alone`() {
+        val stale = SuggestionStrip(emptyList(), forWord = "i")
+        assertEquals("I'm", correction("im", strip = stale))
+        assertNull(TypingCorrector.correction("im", " ", null, stale, true, emptySet(), tokenBefore = "@"))
+        assertNull(TypingCorrector.correction("dont", " ", null, stale, true, emptySet(), tokenBefore = "www."))
+        assertNull(TypingCorrector.correction("dont", " ", null, stale, true, emptySet(), isPersonal = true))
+        assertEquals("don't", TypingCorrector.correction("dont", " ", null, stale, true, emptySet(), tokenBefore = "("))
+        // The learned path is held to the same.
+        assertNull(TypingCorrector.correction("teh", " ", "the", ready, true, emptySet(), tokenBefore = "@"))
+    }
+
+    @Test
     fun `a stale strip still capitalises i, and nothing else`() {
         val stale = SuggestionStrip(listOf("in"), forWord = "")
         assertEquals("I", correction("i", strip = stale))

@@ -222,7 +222,10 @@ internal class SuggestionDictionary(
             // The word as typed sits beside a pending correction, unless the
             // + chip already offers it.
             val keepTyped = composing.takeIf { autocorrection != null && save == null }
-            val words = (listOfNotNull(learned, autocorrection) + personalHits + completions + corrections)
+            // "lets" may be "let's": offered, never made by space.
+            val contraction = ShortWordCorrections.suggestion(composing)
+                ?.takeIf { it != composing && allowed(it) && !typedHeldBack }
+            val words = (listOfNotNull(learned, autocorrection, contraction) + personalHits + completions + corrections)
                 .distinct()
                 // A fix the user undid twice is never the first offer.
                 .sortedBy { options.memory.isRejected(composing, it) }
