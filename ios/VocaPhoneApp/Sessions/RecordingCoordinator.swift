@@ -1712,18 +1712,35 @@ final class RecordingCoordinator {
             activeRecord = record
             DiagnosticLog.record(.uploadStarted)
             let sessionID = record.sessionID
-            let uploaded = try await client.uploadAudio(
-                sessionID: sessionID, fileURL: output, finishOnUpload: true,
-                onUploadFinished: { [weak self] in
-                    await self?.gatewayUploadBodyFinished(sessionID: sessionID)
+            let transcript: String
+            do {
+                let uploaded = try await client.uploadAudio(
+                    sessionID: sessionID, fileURL: output, finishOnUpload: true,
+                    onUploadFinished: { [weak self] in
+                        await self?.gatewayUploadBodyFinished(sessionID: sessionID)
+                    }
+                )
+                try record.transition(to: .transcribing)
+                try commit(&record)
+                activeRecord = record
+                let finished = try await client.finishUploaded(sessionID: record.sessionID, uploaded: uploaded)
+                guard let text = finished.transcript, !text.isEmpty else {
+                    throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
                 }
-            )
-            try record.transition(to: .transcribing)
-            try commit(&record)
-            activeRecord = record
-            let finished = try await client.finishUploaded(sessionID: record.sessionID, uploaded: uploaded)
-            guard let transcript = finished.transcript, !transcript.isEmpty else {
-                throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
+                transcript = text
+            } catch let GatewayError.api(_, code)
+                where GatewayLanguageFallback.shouldResend(code: code, language: record.language) {
+                // Usually a misread of a clear recording rather than a language
+                // the model lacks: see `GatewayLanguageFallback`.
+                transcript = try await client.resendAsAutomatic(
+                    refusedSessionID: sessionID, fileURL: output,
+                    requested: record.language, style: record.style
+                )
+                if record.state == .uploading {
+                    try record.transition(to: .transcribing)
+                    try commit(&record)
+                    activeRecord = record
+                }
             }
             // A gateway transcript: Fix grammar is on-device only.
             record.transcriptWithoutGrammar = nil
@@ -1775,6 +1792,18 @@ final class RecordingCoordinator {
                     code: code,
                     message: "Your gateway's model does not support this language. "
                         + "Choose Automatic or another language in Settings.",
+                    recoverable: false
+                )
+                return
+            }
+            // Refused in the chosen language and again as Automatic. The same
+            // audio cannot do better, and saying it again usually does.
+            if code == GatewayLanguageFallback.misreadCode {
+                await fail(
+                    &record,
+                    state: .transcriptionFailedPermanent,
+                    code: code,
+                    message: GatewayLanguageFallback.misreadMessage,
                     recoverable: false
                 )
                 return
@@ -2613,6 +2642,7 @@ final class RecordingCoordinator {
         case "microphone_permission_denied": .microphonePermissionDenied
         case "microphone_silenced": .microphoneSilenced
         case "language_unsupported": .languageUnsupported
+        case GatewayLanguageFallback.misreadCode: .languageMisread
         case "server_unavailable": .serverUnavailable
         default:
             state == .uploadFailedRecoverable ? .uploadFailed : .transcriptionFailed

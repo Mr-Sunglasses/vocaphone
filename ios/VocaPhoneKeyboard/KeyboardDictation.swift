@@ -514,15 +514,25 @@ final class KeyboardDictation {
                     if created.state == "completed", let text = created.transcript, !text.isEmpty {
                         transcript = text
                     } else {
-                        let uploaded = try await client.uploadAudio(
-                            sessionID: id, fileURL: fileURL, finishOnUpload: true,
-                            onUploadFinished: { [weak self] in await self?.uploadBodyFinished(id) }
-                        )
-                        let finished = try await client.finishUploaded(sessionID: id, uploaded: uploaded)
-                        guard let text = finished.transcript, !text.isEmpty else {
-                            throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
+                        do {
+                            let uploaded = try await client.uploadAudio(
+                                sessionID: id, fileURL: fileURL, finishOnUpload: true,
+                                onUploadFinished: { [weak self] in await self?.uploadBodyFinished(id) }
+                            )
+                            let finished = try await client.finishUploaded(sessionID: id, uploaded: uploaded)
+                            guard let text = finished.transcript, !text.isEmpty else {
+                                throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
+                            }
+                            transcript = text
+                        } catch let GatewayError.api(_, code)
+                            where GatewayLanguageFallback.shouldResend(code: code, language: language) {
+                            // Usually a misread of a clear recording: see
+                            // `GatewayLanguageFallback`.
+                            transcript = try await client.resendAsAutomatic(
+                                refusedSessionID: id, fileURL: fileURL, requested: language, style: style,
+                                onUploadFinished: { [weak self] in await self?.uploadBodyFinished(id) }
+                            )
                         }
-                        transcript = text
                     }
                 }
                 try Task.checkCancellation()
@@ -604,6 +614,9 @@ final class KeyboardDictation {
                  message: "Your gateway's model does not support this language. "
                      + "Choose Automatic or another language in Settings.",
                  recoverable: false)
+        } else if code == GatewayLanguageFallback.misreadCode {
+            fail(id, state: .transcriptionFailedPermanent, code: code,
+                 message: GatewayLanguageFallback.misreadMessage, recoverable: false)
         } else if code == "audio_missing" {
             fail(id, state: .uploadFailedRecoverable, code: code,
                  message: "Only part of this recording could be saved — this iPhone may be out of storage. "

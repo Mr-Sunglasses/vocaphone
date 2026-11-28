@@ -445,6 +445,49 @@ private struct APIErrorEnvelope: Decodable {
 
 private struct EmptyResponse: Decodable {}
 
+extension GatewayClient {
+    /// Sends a recording the gateway refused as the wrong language once more,
+    /// with Automatic, and returns its transcript. See ``GatewayLanguageFallback``.
+    ///
+    /// A fresh session, because the gateway keeps the language a session was
+    /// created with. The refused one is deleted first: it holds the recording,
+    /// and nothing will ask for it again.
+    ///
+    /// Throws `language_misread` when Automatic is refused too, or comes back
+    /// in an alphabet the requested language is not written in. Anything else
+    /// (no speech, an unreachable gateway) is thrown as it came.
+    func resendAsAutomatic(
+        refusedSessionID: UUID, fileURL: URL, requested language: String, style: String,
+        onUploadFinished: @escaping @Sendable () async -> Void = {}
+    ) async throws -> String {
+        try Task.checkCancellation()
+        try? await delete(sessionID: refusedSessionID)
+        let id = UUID()
+        do {
+            _ = try await createSession(
+                id: id, language: TranscriptionLanguage.automatic.rawValue, style: style
+            )
+            let uploaded = try await uploadAudio(
+                sessionID: id, fileURL: fileURL, finishOnUpload: true, onUploadFinished: onUploadFinished
+            )
+            let finished = try await finishUploaded(sessionID: id, uploaded: uploaded)
+            guard let transcript = finished.transcript, !transcript.isEmpty else {
+                throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
+            }
+            guard GatewayLanguageFallback.accepts(transcript, for: language) else {
+                throw GatewayError.api(status: 422, code: GatewayLanguageFallback.misreadCode)
+            }
+            return transcript
+        } catch {
+            try? await delete(sessionID: id)
+            if case let GatewayError.api(status, code) = error, code == GatewayLanguageFallback.refusedCode {
+                throw GatewayError.api(status: status, code: GatewayLanguageFallback.misreadCode)
+            }
+            throw error
+        }
+    }
+}
+
 enum GatewayError: LocalizedError {
     case invalidResponse
     case api(status: Int, code: String)

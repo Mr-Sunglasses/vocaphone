@@ -144,6 +144,9 @@ enum DiagnosticErrorCode: String, Codable, Sendable {
     case diagnosticExportFailed
     case gatewayNotConfigured
     case languageUnsupported
+    /// Refused in the chosen language and again as Automatic: a misread of
+    /// the recording, not a language the model lacks.
+    case languageMisread
     case localModelCleanupFailed
     /// The on-device engine could not be built from files already on disk.
     case localEngineLoadFailed

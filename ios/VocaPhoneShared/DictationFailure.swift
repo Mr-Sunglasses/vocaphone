@@ -19,6 +19,9 @@ enum DictationFailure: Equatable, Sendable {
     case microphoneSilenced
     /// The gateway's model cannot transcribe the chosen language.
     case languageUnsupported
+    /// The gateway's model misread a recording in a language it does support,
+    /// even when sent again as Automatic. A new recording usually works.
+    case languageMisread
     /// Longer than the gateway accepts: the route or gateway changed after
     /// recording began. Kept, so Retry works once either changes back.
     case tooLongForGateway
@@ -36,6 +39,7 @@ enum DictationFailure: Equatable, Sendable {
         case Self.voiceModelMissingCode: self = .voiceModelMissing
         case "microphone_silenced": self = .microphoneSilenced
         case "language_unsupported": self = .languageUnsupported
+        case GatewayLanguageFallback.misreadCode: self = .languageMisread
         case Self.tooLongForGatewayCode: self = .tooLongForGateway
         default: self = .other
         }
@@ -58,6 +62,7 @@ enum DictationFailure: Equatable, Sendable {
         case .voiceModelMissing: "Voice model needed"
         case .microphoneSilenced: "No sound recorded"
         case .languageUnsupported: "Language not supported"
+        case .languageMisread: "Couldn't make that out"
         case .tooLongForGateway: "Too long for your gateway"
         case .other: "Transcription failed"
         }
@@ -70,6 +75,7 @@ enum DictationFailure: Equatable, Sendable {
         case .voiceModelMissing: "Download one in vocaphone to dictate."
         case .microphoneSilenced: "The microphone was muted or in use."
         case .languageUnsupported: "Pick another language, then dictate."
+        case .languageMisread: "Tap Dictate and say it again."
         case .tooLongForGateway: "Switch to on-device, then tap Retry."
         case .other: "Couldn't transcribe this recording."
         }
